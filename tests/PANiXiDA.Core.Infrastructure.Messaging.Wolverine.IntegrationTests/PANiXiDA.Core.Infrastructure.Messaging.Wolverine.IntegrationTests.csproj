@@ -7,6 +7,9 @@
         <PackageReference Include="FluentAssertions" />
         <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
         <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+        <PackageReference Include="Testcontainers.Kafka" />
+        <PackageReference Include="Testcontainers.PostgreSql" />
         <PackageReference Include="xunit.v3" />
     </ItemGroup>
 
@@ -16,15 +19,15 @@
 
     <ItemGroup>
         <Using Include="PANiXiDA.Core.Application.Messaging.EventBus" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.EventBus.Handlers" />
         <Using Include="PANiXiDA.Core.Application.Messaging.Mediator" />
         <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Behaviors.Abstractions" />
         <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Contracts" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Handlers" />
         <Using Include="PANiXiDA.Core.Application.Persistence" />
         <Using Include="PANiXiDA.Core.Domain.DomainEvents" />
         <Using Include="PANiXiDA.Core.ResultPattern" />
-        <Using Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Behaviors" />
-        <Using Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Messages" />
-        <Using Include="Xunit" />
         <Using Include="FluentAssertions" />
+        <Using Include="Xunit" />
     </ItemGroup>
 </Project>

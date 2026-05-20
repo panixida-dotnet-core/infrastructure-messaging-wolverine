@@ -19,6 +19,7 @@
     <Project Path="src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.csproj" />
     <Project Path="tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.csproj" />
   </Folder>
 </Solution>

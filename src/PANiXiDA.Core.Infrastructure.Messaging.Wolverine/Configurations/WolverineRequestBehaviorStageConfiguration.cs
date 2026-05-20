@@ -26,8 +26,6 @@ public sealed class WolverineRequestBehaviorStageConfiguration
     /// <returns>The same configuration instance for fluent configuration.</returns>
     public WolverineRequestBehaviorStageConfiguration Add(Type behaviorType)
     {
-        ArgumentNullException.ThrowIfNull(behaviorType);
-
         ValidateBehaviorType(behaviorType);
         behaviorTypes.Add(behaviorType);
 
