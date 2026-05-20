@@ -168,6 +168,64 @@ Domain events are published through `IEventBus`. By default, Wolverine dispatche
 
 Kafka consumers use durable inbox and map incoming topic messages to the configured event type with `DefaultIncomingMessage<TEvent>()`.
 
+## Request Behaviors
+
+The default request behavior pipeline is:
+
+```text
+before:  BeginTransactionBehavior
+after:   PublishDomainEventsBehavior
+after:   SaveChangesBehavior
+after:   CommitTransactionBehavior
+after:   FlushOutgoingMessagesBehavior
+finally: CleanupTransactionBehavior
+```
+
+Custom behaviors can be appended or inserted before or after any behavior in the same stage:
+
+```csharp
+using PANiXiDA.Core.Application.Messaging.Mediator.Behaviors;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Behaviors;
+
+builder.Host.UseWolverineMediator<AppDbContext>(
+    builder.Configuration.GetConnectionString("PostgreSqlConnectionString")!,
+    behaviors =>
+    {
+        behaviors.Before.InsertAfter(
+            typeof(ValidateRequestBehavior<,>),
+            typeof(BeginTransactionBehavior<,>));
+
+        behaviors.After.InsertBefore(
+            typeof(AuditRequestResultBehavior<,>),
+            typeof(CommitTransactionBehavior<,>));
+
+        behaviors.Finally.InsertAfter(
+            typeof(ReleaseRequestLockBehavior<,>),
+            typeof(CleanupTransactionBehavior<,>));
+    },
+    typeof(CreateUserHandler).Assembly);
+```
+
+The same behavior configuration can be combined with Kafka topology registration:
+
+```csharp
+builder.Host.UseWolverineMediator<AppDbContext>(
+    builder.Configuration.GetConnectionString("PostgreSqlConnectionString")!,
+    builder.Configuration,
+    kafka =>
+    {
+        kafka.AddKafkaBroker<MainKafkaBrokerOption>();
+        kafka.AddKafkaProducer<UserCreatedKafkaProducerOption, UserCreated>();
+    },
+    behaviors =>
+    {
+        behaviors.After.InsertBefore(
+            typeof(AuditRequestResultBehavior<,>),
+            typeof(FlushOutgoingMessagesBehavior<,>));
+    },
+    typeof(UserCreatedHandler).Assembly);
+```
+
 ## Development
 
 ```bash

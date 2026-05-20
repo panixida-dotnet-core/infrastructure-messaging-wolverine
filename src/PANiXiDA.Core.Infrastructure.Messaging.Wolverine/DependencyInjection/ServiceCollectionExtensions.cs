@@ -6,8 +6,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
-using PANiXiDA.Core.Application.Messaging.Mediator.Behaviors;
-using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Behaviors;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
@@ -62,6 +60,34 @@ public static class ServiceCollectionExtensions
                 options,
                 messageStoreConnectionString,
                 configureWolverine: null,
+                configureRequestBehaviors: null,
+                discoveryAssemblies);
+        });
+    }
+
+    /// <summary>
+    /// Configures Wolverine with PostgreSQL message persistence and configurable mediator request behaviors.
+    /// </summary>
+    /// <typeparam name="TDbContext">The EF Core DbContext type enrolled in Wolverine message storage.</typeparam>
+    /// <param name="hostBuilder">The application host builder.</param>
+    /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <param name="discoveryAssemblies">The assemblies where Wolverine should discover message handlers.</param>
+    /// <returns>The same host builder instance for fluent configuration.</returns>
+    public static IHostBuilder UseWolverineMediator<TDbContext>(
+        this IHostBuilder hostBuilder,
+        string messageStoreConnectionString,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors,
+        params Assembly[] discoveryAssemblies)
+        where TDbContext : DbContext
+    {
+        return hostBuilder.UseWolverine(options =>
+        {
+            ConfigureWolverineMediator<TDbContext>(
+                options,
+                messageStoreConnectionString,
+                configureWolverine: null,
+                configureRequestBehaviors,
                 discoveryAssemblies);
         });
     }
@@ -84,19 +110,50 @@ public static class ServiceCollectionExtensions
         params Assembly[] discoveryAssemblies)
         where TDbContext : DbContext
     {
+        return hostBuilder.UseWolverineMediator<TDbContext>(
+            messageStoreConnectionString,
+            configuration,
+            configureKafka,
+            configureRequestBehaviors: null,
+            discoveryAssemblies);
+    }
+
+    /// <summary>
+    /// Configures Wolverine with PostgreSQL message persistence, configurable mediator request behaviors, and typed Kafka topology helpers.
+    /// </summary>
+    /// <typeparam name="TDbContext">The EF Core DbContext type enrolled in Wolverine message storage.</typeparam>
+    /// <param name="hostBuilder">The application host builder.</param>
+    /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
+    /// <param name="configuration">The application configuration used to resolve typed Kafka options.</param>
+    /// <param name="configureKafka">An optional callback for registering typed Kafka brokers, producers, and consumers.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <param name="discoveryAssemblies">The assemblies where Wolverine should discover message handlers.</param>
+    /// <returns>The same host builder instance for fluent configuration.</returns>
+    public static IHostBuilder UseWolverineMediator<TDbContext>(
+        this IHostBuilder hostBuilder,
+        string messageStoreConnectionString,
+        IConfiguration configuration,
+        Action<WolverineKafkaConfiguration>? configureKafka,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors,
+        params Assembly[] discoveryAssemblies)
+        where TDbContext : DbContext
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
         return hostBuilder.UseWolverine(options =>
         {
             ConfigureWolverineMediator<TDbContext>(
                 options,
                 messageStoreConnectionString,
                 configuredOptions =>
-            {
-                var kafkaTopologyBuilder = new WolverineKafkaConfiguration(
-                    configuredOptions,
-                    configuration);
+                {
+                    var kafkaTopologyBuilder = new WolverineKafkaConfiguration(
+                        configuredOptions,
+                        configuration);
 
-                configureKafka?.Invoke(kafkaTopologyBuilder);
-            },
+                    configureKafka?.Invoke(kafkaTopologyBuilder);
+                },
+                configureRequestBehaviors,
                 discoveryAssemblies);
         });
     }
@@ -105,6 +162,7 @@ public static class ServiceCollectionExtensions
         WolverineOptions options,
         string messageStoreConnectionString,
         Action<WolverineOptions>? configureWolverine,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors,
         Assembly[] discoveryAssemblies)
         where TDbContext : DbContext
     {
@@ -121,7 +179,9 @@ public static class ServiceCollectionExtensions
             options,
             messageStoreConnectionString);
 
-        ConfigureRequestMiddlewares(options);
+        ConfigureRequestMiddlewares(
+            options,
+            configureRequestBehaviors);
 
         configureWolverine?.Invoke(options);
 
@@ -153,18 +213,13 @@ public static class ServiceCollectionExtensions
         options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     }
 
-    private static void ConfigureRequestMiddlewares(WolverineOptions options)
+    private static void ConfigureRequestMiddlewares(
+        WolverineOptions options,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors)
     {
-        var registry = RequestMiddlewareRegistry.Create(builder =>
-        {
-            builder.AddBefore(typeof(BeginTransactionBehavior<,>));
-            builder.AddAfter(typeof(PublishDomainEventsBehavior<,>));
-            builder.AddAfter(typeof(SaveChangesBehavior<,>));
-            builder.AddAfter(typeof(CommitTransactionBehavior<,>));
-            builder.AddAfter(typeof(FlushOutgoingMessagesBehavior<,>));
-            builder.AddFinally(typeof(CleanupTransactionBehavior<,>));
-        });
+        var configuration = WolverineRequestBehaviorConfiguration.CreateDefault();
+        configureRequestBehaviors?.Invoke(configuration);
 
-        options.Policies.Add(new RequestMiddlewareChainPolicy(registry));
+        options.Policies.Add(new RequestMiddlewareChainPolicy(configuration.Build()));
     }
 }

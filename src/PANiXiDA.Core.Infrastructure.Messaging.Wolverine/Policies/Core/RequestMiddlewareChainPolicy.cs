@@ -45,7 +45,7 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
 
     private void AddFinallyMiddleware(HandlerChain chain, Variable resultVariable)
     {
-        for (var i = 0; i < registry.FinallyMiddlewareTypes.Count; i++)
+        for (var i = registry.FinallyMiddlewareTypes.Count - 1; i >= 0; i--)
         {
             var frame = FinallyRequestMiddlewareFrame.TryCreate(
                 chain.MessageType,
