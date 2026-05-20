@@ -1,266 +1,174 @@
-## What to do after creating a repository from this template
+# PANiXiDA.Core.Infrastructure.Messaging.Wolverine
 
-### 1. Rename repository metadata
-- change repository name
-- change solution / project names
-- change package ID
-- change assembly name
-- change repository URLs
-- change ProjectReference in test project
+`PANiXiDA.Core.Infrastructure.Messaging.Wolverine` is a .NET library that connects PANiXiDA.Core application messaging abstractions to WolverineFx.
 
-### 2. Update package metadata
-- description
-- tags
-
-### 3. Update documentation
-- replace this template README with the project README
-- fill all placeholder sections
-- update badges
-- update installation instructions
-- add real usage examples
-
-### 4. Configure GitHub repository
-- check repository visibility
-- configure default branch
-- configure branch protection rules
-- configure Issues / Discussions if needed
-- configure repository description, topics and website
-
-### 5. Prepare the first release
-- update versioning configuration pathFilters in version.json
-- verify NuGet metadata
-- verify README and icon inside the package
-- publish the first package version
-- the version is updated automatically based on the commit history
-
----
-
-# Universal README template for the NuGet package
-
-# <PackageName>
-
-`<PackageName>` is a .NET library for <short purpose>.
-
-It is designed for <target audience> who need <main value / main scenario>.
+It provides an in-process mediator, in-process domain event publishing by default, optional Kafka topic routing for selected event types, and durable inbox/outbox support backed by PostgreSQL.
 
 ## Status
 
-[![CI](https://github.com/<OWNER>/<REPOSITORY>/actions/workflows/ci.yml/badge.svg)](https://github.com/<OWNER>/<REPOSITORY>/actions/workflows/ci.yml)
-[![NuGet](https://img.shields.io/nuget/v/<PACKAGE_ID>.svg)](https://www.nuget.org/packages/<PACKAGE_ID>)
-[![NuGet downloads](https://img.shields.io/nuget/dt/<PACKAGE_ID>.svg)](https://www.nuget.org/packages/<PACKAGE_ID>)
+[![CI](https://github.com/panixida-dotnet-core/infrastructure-messaging-wolverine/actions/workflows/ci.yml/badge.svg)](https://github.com/panixida-dotnet-core/infrastructure-messaging-wolverine/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.svg)](https://www.nuget.org/packages/PANiXiDA.Core.Infrastructure.Messaging.Wolverine)
+[![NuGet downloads](https://img.shields.io/nuget/dt/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.svg)](https://www.nuget.org/packages/PANiXiDA.Core.Infrastructure.Messaging.Wolverine)
 [![Target Framework](https://img.shields.io/badge/target-net10.0-512BD4)](https://dotnet.microsoft.com/)
-[![License](https://img.shields.io/github/license/<OWNER>/<REPOSITORY>.svg)](LICENSE)
-
-## Overview
-
-Describe:
-
-- what problem this package solves;
-- why it exists;
-- where it fits in the system or ecosystem;
-- how it differs from alternatives, if that matters.
-
-Keep this section short and practical.
+[![License](https://img.shields.io/github/license/panixida-dotnet-core/infrastructure-messaging-wolverine.svg)](LICENSE)
 
 ## Features
 
-- Feature 1
-- Feature 2
-- Feature 3
-- Feature 4
-- Feature 5
+- `IMediator` implementation based on Wolverine in-process invocation.
+- `IEventBus` implementation based on Wolverine EF Core outbox.
+- Default in-process event handling for domain events.
+- Explicit Kafka producer and consumer registration per event type.
+- Durable inbox and outbox policies for listeners, local queues, and external senders.
+- PostgreSQL message storage with EF Core transaction integration.
 
 ## Quick Start
 
 ### Requirements
 
 - .NET 10 SDK
+- PostgreSQL for Wolverine message storage
+- Kafka only when external event topics are registered
 
 ### Installation
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="<PACKAGE_ID>" Version="..." />
+  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="..." />
 </ItemGroup>
-````
+```
 
-### Minimal import
+### Minimal Setup
 
 ```csharp
-using <RootNamespace>;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
+
+builder.Services.AddWolverineMediator<AppDbContext>();
+
+builder.Host.UseWolverineMediator<AppDbContext>(
+    builder.Configuration.GetConnectionString("PostgreSqlConnectionString")!,
+    typeof(CreateUserHandler).Assembly);
 ```
 
-### First example
+`AddWolverineMediator<TDbContext>()` registers PANiXiDA `IMediator`, `IEventBus`, and the EF Core outbox dispatcher.
+
+`UseWolverineMediator<TDbContext>()` configures Wolverine, PostgreSQL message storage, EF Core transactions, request middleware, durable local queues, durable inbox, and durable outbox.
+
+## Kafka Topics
+
+Kafka is opt-in per event type. If no Kafka producer is registered for an event, publishing stays in-process.
+
+Create typed option models in the consuming infrastructure project:
 
 ```csharp
-// Add a minimal example here
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options;
+
+public sealed class MainKafkaBrokerOption : KafkaBrokerOption
+{
+}
+
+public sealed class UserCreatedKafkaProducerOption : KafkaProducerOption
+{
+}
+
+public sealed class UserCreatedKafkaConsumerOption : KafkaConsumerOption
+{
+}
 ```
 
-## Usage
-
-### Basic usage
+Register brokers, producers, and consumers in the Wolverine mediator configuration:
 
 ```csharp
-// Add a basic example here
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
+
+builder.Services.AddWolverineMediator<AppDbContext>();
+
+builder.Host.UseWolverineMediator<AppDbContext>(
+    builder.Configuration.GetConnectionString("PostgreSqlConnectionString")!,
+    builder.Configuration,
+    options =>
+    {
+        options.AddKafkaBroker<MainKafkaBrokerOption>();
+        options.AddKafkaProducer<UserCreatedKafkaProducerOption, UserCreated>();
+        options.AddKafkaConsumer<UserCreatedKafkaConsumerOption, UserCreated>();
+    },
+    typeof(UserCreatedHandler).Assembly);
 ```
 
-### Typical scenario
+Configuration sections are resolved by option type name:
+
+```json
+{
+  "ConnectionStrings": {
+    "PostgreSqlConnectionString": "Host=localhost;Port=5432;Database=app;Username=app;Password=app"
+  },
+  "MainKafkaBrokerOption": {
+    "BootstrapServers": "localhost:9092"
+  },
+  "UserCreatedKafkaProducerOption": {
+    "TopicName": "users.created"
+  },
+  "UserCreatedKafkaConsumerOption": {
+    "TopicName": "users.created",
+    "ConsumerGroupId": "users-service",
+    "AutoOffsetReset": "Earliest"
+  }
+}
+```
+
+For named Kafka brokers, put the broker name into broker and topic options:
 
 ```csharp
-// Add a realistic example here
+public sealed class ExternalKafkaBrokerOption : KafkaBrokerOption
+{
+}
+
+public sealed class ExternalUserCreatedKafkaProducerOption : KafkaProducerOption
+{
+}
 ```
 
-### Advanced scenario
+```json
+{
+  "ExternalKafkaBrokerOption": {
+    "BrokerName": "external",
+    "BootstrapServers": "external-kafka:9092"
+  },
+  "ExternalUserCreatedKafkaProducerOption": {
+    "BrokerName": "external",
+    "TopicName": "external.users.created"
+  }
+}
+```
 
 ```csharp
-// Add an advanced example here if needed
+options.AddKafkaBroker<ExternalKafkaBrokerOption>();
+options.AddKafkaProducer<ExternalUserCreatedKafkaProducerOption, UserCreated>();
 ```
 
-## Configuration
+## EF Core Storage
 
-Describe configuration only if the package actually requires it.
+The package enrolls `TDbContext` in Wolverine PostgreSQL message storage. If the application keeps Wolverine envelope tables in EF Core migrations, map them in the DbContext model:
 
-Possible topics:
+```csharp
+using Wolverine.EntityFrameworkCore;
 
-* environment variables;
-* `appsettings.json`;
-* feature flags;
-* external services;
-* secrets;
-* runtime prerequisites.
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    base.OnModelCreating(modelBuilder);
 
-If the package does not require runtime configuration, say so explicitly.
-
-## Project Structure
-
-```text
-.
-├── src/
-│   └── <ProjectName>/
-├── tests/
-│   └── <ProjectName>.UnitTests/
-├── .editorconfig
-├── .gitattributes
-├── .gitignore
-├── Directory.Build.props
-├── Directory.Build.targets
-├── Directory.Packages.props
-├── global.json
-├── version.json
-├── LICENSE
-└── README.md
+    modelBuilder.MapWolverineEnvelopeStorage("wolverine");
+}
 ```
 
-### Main repository files
+## Behavior
 
-* `src/` — source code
-* `tests/` — automated tests
-* `Directory.Build.props` — shared MSBuild settings
-* `Directory.Build.targets` — shared build / packaging settings
-* `Directory.Packages.props` — centralized package versions
-* `global.json` — SDK and tooling configuration
-* `version.json` — versioning configuration
-* `README.md` — package overview and usage documentation
+Commands and queries are invoked in-process through Wolverine and PANiXiDA request contracts.
+
+Domain events are published through `IEventBus`. By default, Wolverine dispatches them to local handlers. When a Kafka producer is registered for the event type, the same event is also routed to the configured Kafka topic through durable outbox.
+
+Kafka consumers use durable inbox and map incoming topic messages to the configured event type with `DefaultIncomingMessage<TEvent>()`.
 
 ## Development
-
-### Build
-
-```bash
-dotnet restore
-dotnet build --configuration Release
-```
-
-### Format
-
-```bash
-dotnet format
-```
-
-### Test
-
-```bash
-dotnet test --configuration Release
-```
-
-### Pack
-
-```bash
-dotnet pack --configuration Release
-```
-
-### Full local validation
-
-```bash
-dotnet restore
-dotnet format
-dotnet build --configuration Release
-dotnet test --configuration Release
-dotnet pack --configuration Release
-```
-
-### Tooling and conventions
-
-This repository uses:
-
-* .NET 10
-* Nullable enabled
-* Implicit usings enabled
-* Central package management
-* GitHub Actions
-* Nerdbank.GitVersioning
-
-Add more items only if they are actually relevant for the repository.
-
-## API / Contracts / Examples
-
-Describe the public API surface here.
-
-Suggested structure:
-
-* core abstractions;
-* main entry points;
-* key extension methods;
-* important behavioral notes;
-* typical integration examples.
-
-## Roadmap / TODO
-
-Potential future improvements:
-
-* item 1;
-* item 2;
-* item 3.
-
-Remove this section if it does not provide value.
-
-## Contributing
-
-Contributions are welcome.
-
-### General rules
-
-* keep the public API intentional;
-* avoid unnecessary dependencies;
-* preserve repository conventions;
-* do not introduce breaking changes without review;
-* keep documentation updated.
-
-### Code style
-
-* follow the repository `.editorconfig`;
-* prefer readable and explicit code;
-* keep naming consistent with the existing codebase.
-
-### Tests
-
-* add or update tests for meaningful behavior changes;
-* cover both success and failure scenarios where applicable;
-* add regression tests for bug fixes.
-
-### Validation before completion
-
-Run:
 
 ```bash
 dotnet restore
@@ -271,16 +179,6 @@ dotnet test --configuration Release
 
 ## License
 
-This project is licensed under the <LicenseName> license.
+This project is licensed under the Apache-2.0 license.
 
 See the [LICENSE](LICENSE) file for details.
-
-## Maintainers / Contacts
-
-Maintained by <Author / Team / Organization>.
-
-For questions or improvements, use:
-
-* GitHub Issues
-* Pull Requests
-* GitHub Discussions, if enabled
