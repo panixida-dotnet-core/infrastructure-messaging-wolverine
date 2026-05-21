@@ -188,12 +188,10 @@ public static class ServiceCollectionExtensions
         for (var i = 0; i < discoveryAssemblies.Length; i++)
         {
             var assembly = discoveryAssemblies[i];
-            if (assembly is null)
+            if (assembly is not null)
             {
-                continue;
+                options.Discovery.IncludeAssembly(assembly);
             }
-
-            options.Discovery.IncludeAssembly(assembly);
         }
     }
 

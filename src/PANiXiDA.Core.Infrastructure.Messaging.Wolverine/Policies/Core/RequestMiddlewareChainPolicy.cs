@@ -16,12 +16,8 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
     {
         for (var i = 0; i < chains.Count; i++)
         {
-            if (chains[i] is not HandlerChain chain)
-            {
-                continue;
-            }
-
-            if (!IsRequestMessageType(chain.MessageType))
+            if (chains[i] is not HandlerChain chain ||
+                !IsRequestMessageType(chain.MessageType))
             {
                 continue;
             }
