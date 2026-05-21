@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+
+        <AssemblyName>PANiXiDA.Core.Infrastructure.Messaging.Wolverine</AssemblyName>
+
+        <PackageId>PANiXiDA.Core.Infrastructure.Messaging.Wolverine</PackageId>
+        <Description>Wolverine-based messaging infrastructure adapter for PANiXiDA.Core applications, providing mediator, command, query and event publishing integration.</Description>
+        <PackageTags>PANiXiDA;Core;Infrastructure;Messaging;Wolverine;WolverineFx;Mediator;MessageBus;EventBus;CQRS;Commands;Queries;Events;DomainEvents;EventDrivenArchitecture</PackageTags>
+
+        <RepositoryUrl>https://github.com/panixida-dotnet-core/infrastructure-messaging-wolverine</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/panixida-dotnet-core/infrastructure-messaging-wolverine</PackageProjectUrl>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Nerdbank.GitVersioning">
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+        <PackageReference Include="PANiXiDA.Core.Application" />
+        <PackageReference Include="WolverineFx" />
+        <PackageReference Include="WolverineFx.EntityFrameworkCore" />
+        <PackageReference Include="WolverineFx.Kafka" />
+        <PackageReference Include="WolverineFx.Postgresql" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="PANiXiDA.Core.Application.Messaging.EventBus" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Behaviors.Abstractions" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Contracts" />
+        <Using Include="PANiXiDA.Core.Application.Persistence" />
+        <Using Include="PANiXiDA.Core.Domain.DomainEvents" />
+        <Using Include="PANiXiDA.Core.ResultPattern" />
+    </ItemGroup>
+</Project>
