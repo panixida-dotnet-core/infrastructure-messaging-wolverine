@@ -48,7 +48,6 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         app.Journal.Entries.Should().ContainInOrder(
             "unitOfWork.begin",
             "handler.command",
-            "unitOfWork.save",
             "unitOfWork.commit");
     }
 
@@ -104,7 +103,6 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         app.Journal.Entries.Should().ContainInOrder(
             "unitOfWork.begin",
             "handler.command",
-            "unitOfWork.save",
             "unitOfWork.commit",
             "handler.event");
     }

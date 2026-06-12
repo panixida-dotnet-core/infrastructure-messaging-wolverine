@@ -6,8 +6,6 @@ public sealed class TestUnitOfWork : IUnitOfWork
 
     public int BeginTransactionCallCount { get; private set; }
 
-    public int SaveChangesCallCount { get; private set; }
-
     public int CommitTransactionCallCount { get; private set; }
 
     public int RollbackTransactionCallCount { get; private set; }
@@ -18,13 +16,6 @@ public sealed class TestUnitOfWork : IUnitOfWork
     {
         BeginTransactionCallCount++;
         HasActiveTransaction = true;
-
-        return Task.CompletedTask;
-    }
-
-    public Task SaveChangesAsync(CancellationToken cancellationToken)
-    {
-        SaveChangesCallCount++;
 
         return Task.CompletedTask;
     }
@@ -62,7 +53,6 @@ public sealed class TestUnitOfWork : IUnitOfWork
         try
         {
             await action(cancellationToken);
-            await SaveChangesAsync(cancellationToken);
             await CommitTransactionAsync(cancellationToken);
         }
         catch

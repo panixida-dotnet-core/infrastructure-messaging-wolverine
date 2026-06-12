@@ -175,7 +175,6 @@ The default request behavior pipeline is:
 ```text
 before:  BeginTransactionBehavior
 after:   PublishDomainEventsBehavior
-after:   SaveChangesBehavior
 after:   CommitTransactionBehavior
 after:   FlushOutgoingMessagesBehavior
 finally: CleanupTransactionBehavior

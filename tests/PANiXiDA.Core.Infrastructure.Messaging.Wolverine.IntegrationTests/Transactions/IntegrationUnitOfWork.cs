@@ -18,20 +18,15 @@ public sealed class IntegrationUnitOfWork(
         transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
     }
 
-    public async Task SaveChangesAsync(CancellationToken cancellationToken)
-    {
-        journal.Add("unitOfWork.save");
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
-
     public async Task CommitTransactionAsync(CancellationToken cancellationToken)
     {
-        journal.Add("unitOfWork.commit");
-
         if (transaction is null)
         {
             return;
         }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        journal.Add("unitOfWork.commit");
 
         await transaction.CommitAsync(cancellationToken);
         await transaction.DisposeAsync();
@@ -70,7 +65,6 @@ public sealed class IntegrationUnitOfWork(
         try
         {
             await action(cancellationToken);
-            await SaveChangesAsync(cancellationToken);
             await CommitTransactionAsync(cancellationToken);
         }
         catch

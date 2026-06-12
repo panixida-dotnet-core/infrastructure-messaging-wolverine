@@ -16,7 +16,6 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         registry.BeforeMiddlewareTypes.Should().Equal(typeof(BeginTransactionBehavior<,>));
         registry.AfterMiddlewareTypes.Should().Equal(
             typeof(PublishDomainEventsBehavior<,>),
-            typeof(SaveChangesBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>));
         registry.FinallyMiddlewareTypes.Should().Equal(typeof(CleanupTransactionBehavior<,>));
@@ -44,7 +43,6 @@ public sealed class WolverineRequestBehaviorConfigurationTests
             typeof(TestBeforeBehavior<,>));
         registry.AfterMiddlewareTypes.Should().Equal(
             typeof(PublishDomainEventsBehavior<,>),
-            typeof(SaveChangesBehavior<,>),
             typeof(TestAfterBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>));
