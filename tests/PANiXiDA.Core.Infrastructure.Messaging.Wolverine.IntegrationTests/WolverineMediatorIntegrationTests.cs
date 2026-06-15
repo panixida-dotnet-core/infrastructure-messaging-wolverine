@@ -17,11 +17,23 @@ using Testcontainers.Kafka;
 using Wolverine;
 using Wolverine.Tracking;
 
+using System.Reflection;
+
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
 
 public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture fixture)
     : IClassFixture<PostgreSqlContainerFixture>
 {
+    [Fact(DisplayName = "Mediator configures Wolverine application assembly from entry assembly")]
+    public async Task MediatorShouldConfigureWolverineApplicationAssemblyFromEntryAssembly()
+    {
+        await using var app = await fixture.CreateApplicationAsync();
+
+        var options = app.Host.Services.GetRequiredService<WolverineOptions>();
+
+        options.ApplicationAssembly.Should().BeSameAs(Assembly.GetEntryAssembly());
+    }
+
     [Fact(DisplayName = "Mediator dispatches command and query to Wolverine handlers")]
     public async Task MediatorShouldDispatchCommandAndQueryToWolverineHandlers()
     {

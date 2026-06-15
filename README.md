@@ -20,6 +20,7 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - Explicit Kafka producer and consumer registration per event type.
 - Durable inbox and outbox policies for listeners, local queues, and external senders.
 - PostgreSQL message storage with EF Core transaction integration.
+- Wolverine application assembly resolution from the entry assembly for pre-generated handler code.
 
 ## Quick Start
 
@@ -52,6 +53,8 @@ builder.Host.UseWolverineMediator<AppDbContext>(
 `AddWolverineMediator<TDbContext>()` registers PANiXiDA `IMediator`, `IEventBus`, and the EF Core outbox dispatcher.
 
 `UseWolverineMediator<TDbContext>()` configures Wolverine, PostgreSQL message storage, EF Core transactions, request middleware, durable local queues, durable inbox, and durable outbox.
+
+The package sets Wolverine's application assembly to the process entry assembly. This keeps generated handler code in the publishable application assembly when using Wolverine code generation commands such as `dotnet run -- codegen write`.
 
 ## Kafka Topics
 

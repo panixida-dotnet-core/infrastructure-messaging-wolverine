@@ -173,6 +173,7 @@ public static class ServiceCollectionExtensions
                 nameof(messageStoreConnectionString));
         }
 
+        options.ApplicationAssembly = ResolveApplicationAssembly();
         options.CodeGeneration.TypeLoadMode = TypeLoadMode.Auto;
 
         ConfigureInboxOutbox<TDbContext>(
@@ -193,6 +194,11 @@ public static class ServiceCollectionExtensions
                 options.Discovery.IncludeAssembly(assembly);
             }
         }
+    }
+
+    private static Assembly ResolveApplicationAssembly()
+    {
+        return Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
     }
 
     private static void ConfigureInboxOutbox<TDbContext>(
