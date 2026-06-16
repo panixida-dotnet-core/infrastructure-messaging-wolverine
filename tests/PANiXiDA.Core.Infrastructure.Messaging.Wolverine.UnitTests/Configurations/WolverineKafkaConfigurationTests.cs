@@ -21,7 +21,7 @@ public sealed class WolverineKafkaConfigurationTests
 
         var act = () => kafka.AddKafkaBroker<TestBrokerOption>();
 
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact(DisplayName = "AddKafkaBroker registers named broker from option section")]
@@ -35,7 +35,7 @@ public sealed class WolverineKafkaConfigurationTests
 
         var act = () => kafka.AddKafkaBroker<TestBrokerOption>();
 
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact(DisplayName = "AddKafkaBroker rejects missing option section")]
@@ -46,9 +46,9 @@ public sealed class WolverineKafkaConfigurationTests
 
         var act = () => kafka.AddKafkaBroker<TestBrokerOption>();
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Configuration section 'TestBrokerOption' was not found.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldBe("Configuration section 'TestBrokerOption' was not found.");
     }
 
     [Fact(DisplayName = "AddKafkaBroker rejects blank bootstrap servers")]
@@ -61,9 +61,9 @@ public sealed class WolverineKafkaConfigurationTests
 
         var act = () => kafka.AddKafkaBroker<TestBrokerOption>();
 
-        act.Should()
-            .Throw<ArgumentException>()
-            .WithMessage("The Kafka bootstrap servers value must not be empty. (Parameter 'option')");
+        var exception = Should.Throw<ArgumentException>(act);
+
+        exception.Message.ShouldBe("The Kafka bootstrap servers value must not be empty. (Parameter 'option')");
     }
 
     [Fact(DisplayName = "AddKafkaProducer registers durable producer for default broker")]
@@ -76,7 +76,7 @@ public sealed class WolverineKafkaConfigurationTests
 
         var act = () => kafka.AddKafkaProducer<TestProducerOption, TestDomainEvent>();
 
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact(DisplayName = "AddKafkaProducer registers durable producer for named broker")]
@@ -90,7 +90,7 @@ public sealed class WolverineKafkaConfigurationTests
 
         var act = () => kafka.AddKafkaProducer<TestProducerOption, TestDomainEvent>();
 
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact(DisplayName = "AddKafkaProducer rejects blank topic name")]
@@ -103,9 +103,9 @@ public sealed class WolverineKafkaConfigurationTests
 
         var act = () => kafka.AddKafkaProducer<TestProducerOption, TestDomainEvent>();
 
-        act.Should()
-            .Throw<ArgumentException>()
-            .WithMessage("The Kafka topic name must not be empty. (Parameter 'topicName')");
+        var exception = Should.Throw<ArgumentException>(act);
+
+        exception.Message.ShouldBe("The Kafka topic name must not be empty. (Parameter 'topicName')");
     }
 
     [Fact(DisplayName = "AddKafkaConsumer registers durable consumer with optional consumer settings")]
@@ -120,7 +120,7 @@ public sealed class WolverineKafkaConfigurationTests
 
         var act = () => kafka.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>();
 
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     [Fact(DisplayName = "AddKafkaConsumer registers durable consumer for named broker")]
@@ -134,7 +134,7 @@ public sealed class WolverineKafkaConfigurationTests
 
         var act = () => kafka.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>();
 
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 
     private static ConfigurationManager CreateConfiguration(params (string Key, string? Value)[] values)

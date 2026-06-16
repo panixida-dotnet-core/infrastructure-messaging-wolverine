@@ -13,10 +13,10 @@ public sealed class BehaviorWithMultiplePublicConstructors : IBeforeRequestBehav
 
     public string? Value { get; }
 
-    public Task BeforeAsync(
+    public Task<Result> BeforeAsync(
         TestCommand request,
         CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return Task.FromResult(Result.Success());
     }
 }

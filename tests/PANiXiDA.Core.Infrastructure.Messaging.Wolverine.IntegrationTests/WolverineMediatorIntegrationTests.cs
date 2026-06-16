@@ -31,7 +31,7 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
 
         var options = app.Host.Services.GetRequiredService<WolverineOptions>();
 
-        options.ApplicationAssembly.Should().BeSameAs(Assembly.GetEntryAssembly());
+        options.ApplicationAssembly.ShouldBeSameAs(Assembly.GetEntryAssembly());
     }
 
     [Fact(DisplayName = "Mediator dispatches command and query to Wolverine handlers")]
@@ -54,13 +54,48 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
                 cancellationToken),
             cancellationToken);
 
-        commandResult.IsSuccess.Should().BeTrue();
-        queryResult.IsSuccess.Should().BeTrue();
-        queryResult.Value.Should().Be(new IntegrationRecordView(id, name));
-        app.Journal.Entries.Should().ContainInOrder(
+        commandResult.IsSuccess.ShouldBeTrue();
+        queryResult.IsSuccess.ShouldBeTrue();
+        queryResult.Value.ShouldBe(new IntegrationRecordView(id, name));
+        ShouldContainInOrder(
+            app.Journal.Entries,
             "unitOfWork.begin",
             "handler.command",
             "unitOfWork.commit");
+    }
+
+    [Fact(DisplayName = "Mediator returns validation failure before command handler")]
+    public async Task MediatorShouldReturnValidationFailureBeforeCommandHandler()
+    {
+        await using var app = await fixture.CreateApplicationAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var id = Guid.NewGuid();
+
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, cancellationToken) => mediator.SendAsync(
+                new CreateIntegrationRecordCommand(id, string.Empty),
+                cancellationToken),
+            cancellationToken);
+
+        ShouldContainValidationError(result);
+        (await app.CountRecordsAsync(id)).ShouldBe(0);
+        app.Journal.Entries.ShouldNotContain("unitOfWork.begin");
+        app.Journal.Entries.ShouldNotContain("handler.command");
+    }
+
+    [Fact(DisplayName = "Mediator returns validation failure before query handler")]
+    public async Task MediatorShouldReturnValidationFailureBeforeQueryHandler()
+    {
+        await using var app = await fixture.CreateApplicationAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, cancellationToken) => mediator.QueryAsync(
+                new GetIntegrationRecordQuery(Guid.Empty),
+                cancellationToken),
+            cancellationToken);
+
+        ShouldContainValidationError(result);
     }
 
     [Fact(DisplayName = "Mediator supports custom request behavior configuration overload")]
@@ -82,7 +117,8 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
                 cancellationToken),
             cancellationToken);
 
-        app.Journal.Entries.Should().ContainInOrder(
+        ShouldContainInOrder(
+            app.Journal.Entries,
             "unitOfWork.begin",
             "behavior.before",
             "handler.command");
@@ -108,11 +144,12 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
                     cancellationToken);
             }));
 
-        (await app.CountRecordsAsync(id)).Should().Be(1);
+        (await app.CountRecordsAsync(id)).ShouldBe(1);
         await WolverineIntegrationApp.WaitUntilAsync(
             async () => await app.CountHandledEventsAsync(id) == 1,
             TimeSpan.FromSeconds(10));
-        app.Journal.Entries.Should().ContainInOrder(
+        ShouldContainInOrder(
+            app.Journal.Entries,
             "unitOfWork.begin",
             "handler.command",
             "unitOfWork.commit",
@@ -132,13 +169,14 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
                 cancellationToken),
             cancellationToken);
 
-        result.IsFailure.Should().BeTrue();
-        (await app.CountRecordsAsync(id)).Should().Be(0);
-        app.Journal.Entries.Should().ContainInOrder(
+        result.IsFailure.ShouldBeTrue();
+        (await app.CountRecordsAsync(id)).ShouldBe(0);
+        ShouldContainInOrder(
+            app.Journal.Entries,
             "unitOfWork.begin",
             "handler.command",
             "unitOfWork.rollback");
-        app.Journal.Entries.Should().NotContain("unitOfWork.commit");
+        app.Journal.Entries.ShouldNotContain("unitOfWork.commit");
     }
 
     [Fact(DisplayName = "Outbox and handler changes roll back in one transaction when command throws")]
@@ -157,14 +195,15 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
                 cancellationToken);
         };
 
-        await act.Should()
-            .ThrowAsync<Exception>()
-            .Where(exception =>
-                exception is PlannedCommandException ||
-                exception.InnerException is PlannedCommandException);
-        (await app.CountRecordsAsync(id)).Should().Be(0);
-        (await app.CountHandledEventsAsync(id)).Should().Be(0);
-        app.Journal.Entries.Should().ContainInOrder(
+        var exception = await Should.ThrowAsync<Exception>(act);
+
+        (exception is PlannedCommandException ||
+            exception.InnerException is PlannedCommandException)
+            .ShouldBeTrue();
+        (await app.CountRecordsAsync(id)).ShouldBe(0);
+        (await app.CountHandledEventsAsync(id)).ShouldBe(0);
+        ShouldContainInOrder(
+            app.Journal.Entries,
             "unitOfWork.begin",
             "handler.command",
             "unitOfWork.rollback");
@@ -212,7 +251,7 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             }));
 
         await AssertHandledExactlyOnceAsync(app, id, cancellationToken);
-        app.Journal.Entries.Should().Contain("handler.kafkaEvent");
+        app.Journal.Entries.ShouldContain("handler.kafkaEvent");
     }
 
     private static async Task PublishThroughOutboxAsync<TEvent>(
@@ -241,7 +280,47 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
 
         await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
 
-        (await app.CountHandledEventsAsync(eventId)).Should().Be(1);
+        (await app.CountHandledEventsAsync(eventId)).ShouldBe(1);
+    }
+
+    private static void ShouldContainInOrder(
+        IReadOnlyList<string> actual,
+        params string[] expected)
+    {
+        var startIndex = 0;
+
+        for (var i = 0; i < expected.Length; i++)
+        {
+            var index = IndexOf(
+                actual,
+                expected[i],
+                startIndex);
+
+            index.ShouldNotBe(-1);
+            startIndex = index + 1;
+        }
+    }
+
+    private static int IndexOf(
+        IReadOnlyList<string> actual,
+        string expected,
+        int startIndex)
+    {
+        for (var i = startIndex; i < actual.Count; i++)
+        {
+            if (actual[i] == expected)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static void ShouldContainValidationError(Result result)
+    {
+        result.IsFailure.ShouldBeTrue();
+        result.Errors.Any(error => error.Type == ErrorType.Validation).ShouldBeTrue();
     }
 
     private static ConfigurationManager CreateConfiguration(params (string Key, string? Value)[] values)

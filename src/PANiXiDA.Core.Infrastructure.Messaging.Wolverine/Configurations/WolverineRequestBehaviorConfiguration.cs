@@ -43,6 +43,7 @@ public sealed class WolverineRequestBehaviorConfiguration
     {
         var configuration = new WolverineRequestBehaviorConfiguration();
 
+        configuration.Before.Add(typeof(ValidationBehavior<,>));
         configuration.Before.Add(typeof(BeginTransactionBehavior<,>));
 
         configuration.After.Add(typeof(PublishDomainEventsBehavior<,>));

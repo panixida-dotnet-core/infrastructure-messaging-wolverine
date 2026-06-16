@@ -4,7 +4,7 @@ public abstract class AbstractBeforeBehavior<TRequest, TResult> : IBeforeRequest
     where TRequest : IRequest<TResult>
     where TResult : Result
 {
-    public abstract Task BeforeAsync(
+    public abstract Task<Result> BeforeAsync(
         TRequest request,
         CancellationToken cancellationToken);
 }

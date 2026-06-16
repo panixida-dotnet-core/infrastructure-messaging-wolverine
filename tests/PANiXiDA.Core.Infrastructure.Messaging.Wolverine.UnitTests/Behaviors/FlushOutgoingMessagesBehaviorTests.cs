@@ -19,7 +19,7 @@ public sealed class FlushOutgoingMessagesBehaviorTests
             Result.Success(),
             TestContext.Current.CancellationToken);
 
-        outboxDispatcher.FlushCallCount.Should().Be(1);
+        outboxDispatcher.FlushCallCount.ShouldBe(1);
     }
 
     [Fact(DisplayName = "AfterAsync does not flush when result failed")]
@@ -36,7 +36,7 @@ public sealed class FlushOutgoingMessagesBehaviorTests
             Result.Failure(Error.Failure("Failure")),
             TestContext.Current.CancellationToken);
 
-        outboxDispatcher.FlushCallCount.Should().Be(0);
+        outboxDispatcher.FlushCallCount.ShouldBe(0);
     }
 
     [Fact(DisplayName = "AfterAsync does not flush when transaction is active")]
@@ -56,6 +56,6 @@ public sealed class FlushOutgoingMessagesBehaviorTests
             Result.Success(),
             TestContext.Current.CancellationToken);
 
-        outboxDispatcher.FlushCallCount.Should().Be(0);
+        outboxDispatcher.FlushCallCount.ShouldBe(0);
     }
 }

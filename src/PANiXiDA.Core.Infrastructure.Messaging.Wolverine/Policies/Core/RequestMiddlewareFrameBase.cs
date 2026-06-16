@@ -3,11 +3,14 @@ using JasperFx.CodeGeneration.Model;
 
 using System.Reflection;
 
+using Wolverine.Runtime;
+
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 
 internal abstract class RequestMiddlewareFrameBase(
     Type requestType,
-    Type closedMiddlewareType) : AsyncFrame
+    Type closedMiddlewareType,
+    bool requiresMessageContext = false) : AsyncFrame
 {
     protected readonly Type requestType = requestType;
     protected readonly Type closedMiddlewareType = closedMiddlewareType;
@@ -16,6 +19,7 @@ internal abstract class RequestMiddlewareFrameBase(
 
     protected Variable requestVariable = null!;
     protected Variable cancellationVariable = null!;
+    protected Variable messageContextVariable = null!;
     protected Variable[] constructorVariables = null!;
 
     public sealed override IEnumerable<Variable> FindVariables(IMethodVariables chain)
@@ -25,6 +29,12 @@ internal abstract class RequestMiddlewareFrameBase(
 
         cancellationVariable = chain.FindVariable(typeof(CancellationToken));
         yield return cancellationVariable;
+
+        if (requiresMessageContext)
+        {
+            messageContextVariable = chain.FindVariable(typeof(MessageContext));
+            yield return messageContextVariable;
+        }
 
         constructorVariables = RequestMiddlewareCodeGeneration.ResolveConstructorVariables(
             chain,

@@ -15,7 +15,7 @@ public sealed class WolverineEventBusTests
             domainEvent,
             TestContext.Current.CancellationToken);
 
-        outboxDispatcher.PublishCallCount.Should().Be(1);
-        outboxDispatcher.LastPublishedEvent.Should().BeSameAs(domainEvent);
+        outboxDispatcher.PublishCallCount.ShouldBe(1);
+        outboxDispatcher.LastPublishedEvent.ShouldBeSameAs(domainEvent);
     }
 }

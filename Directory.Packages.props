@@ -6,17 +6,19 @@
     <ItemGroup>
         <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.0.4" />
         <PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="1.8.1" />
+        <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
         <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.0" />
         <PackageVersion Include="Nerdbank.GitVersioning" Version="3.9.50" />
-        <PackageVersion Include="PANiXiDA.Core.Application" Version="1.0.3" />
+        <PackageVersion Include="PANiXiDA.Core.Application" Version="2.0.1" />
         <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
         <PackageVersion Include="Testcontainers.Kafka" Version="4.7.0" />
         <PackageVersion Include="Testcontainers.PostgreSql" Version="4.7.0" />
-        <PackageVersion Include="WolverineFx" Version="5.39.2" />
-        <PackageVersion Include="WolverineFx.EntityFrameworkCore" Version="5.39.2" />
-        <PackageVersion Include="WolverineFx.Kafka" Version="5.39.2" />
-        <PackageVersion Include="WolverineFx.Postgresql" Version="5.39.2" />
+        <PackageVersion Include="WolverineFx" Version="6.10.0" />
+        <PackageVersion Include="WolverineFx.EntityFrameworkCore" Version="6.10.0" />
+        <PackageVersion Include="WolverineFx.Kafka" Version="6.10.0" />
+        <PackageVersion Include="WolverineFx.Postgresql" Version="6.10.0" />
+        <PackageVersion Include="WolverineFx.RuntimeCompilation" Version="6.10.0" />
         <PackageVersion Include="xunit.v3" Version="3.2.2" />
-        <PackageVersion Include="FluentAssertions" Version="8.9.0" />
+        <PackageVersion Include="Shouldly" Version="4.3.0" />
     </ItemGroup>
 </Project>

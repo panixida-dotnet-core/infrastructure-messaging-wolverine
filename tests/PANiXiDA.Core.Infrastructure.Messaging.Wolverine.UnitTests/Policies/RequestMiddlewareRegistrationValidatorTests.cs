@@ -12,9 +12,10 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
             typeof(IDisposable),
             "Before");
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Expected behavior interface '*' must be an open generic interface.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Expected behavior interface '");
+        exception.Message.ShouldEndWith("' must be an open generic interface.");
     }
 
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects abstract middleware")]
@@ -25,9 +26,10 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
             typeof(IBeforeRequestBehavior<,>),
             "Before");
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Before middleware '*' must not be abstract.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Before middleware '");
+        exception.Message.ShouldEndWith("' must not be abstract.");
     }
 
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects interface middleware")]
@@ -38,9 +40,10 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
             typeof(IBeforeRequestBehavior<,>),
             "Before");
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Before middleware '*' must be a class, not an interface.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Before middleware '");
+        exception.Message.ShouldEndWith("' must be a class, not an interface.");
     }
 
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects partially open middleware")]
@@ -55,9 +58,10 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
             typeof(IBeforeRequestBehavior<,>),
             "Before");
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Before middleware '*' must be either a closed type or an open generic type definition.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Before middleware '");
+        exception.Message.ShouldEndWith("' must be either a closed type or an open generic type definition.");
     }
 
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects open generic middleware with invalid parameter count")]
@@ -68,9 +72,10 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
             typeof(IBeforeRequestBehavior<,>),
             "Before");
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Before middleware '*' must have exactly 2 generic parameters.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Before middleware '");
+        exception.Message.ShouldEndWith("' must have exactly 2 generic parameters.");
     }
 
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects middleware without a single public constructor")]
@@ -81,9 +86,10 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
             typeof(IBeforeRequestBehavior<,>),
             "Before");
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Middleware '*' must have exactly one public constructor.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Middleware '");
+        exception.Message.ShouldEndWith("' must have exactly one public constructor.");
     }
 
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects middleware without expected contract")]
@@ -94,9 +100,11 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
             typeof(IBeforeRequestBehavior<,>),
             "Before");
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Before middleware '*' must implement '*IBeforeRequestBehavior*'.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Before middleware '");
+        exception.Message.ShouldContain("IBeforeRequestBehavior");
+        exception.Message.ShouldEndWith("'.");
     }
 
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects open generic middleware without expected contract")]
@@ -107,9 +115,11 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
             typeof(IBeforeRequestBehavior<,>),
             "Before");
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Before middleware '*' must implement '*IBeforeRequestBehavior*'.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Before middleware '");
+        exception.Message.ShouldContain("IBeforeRequestBehavior");
+        exception.Message.ShouldEndWith("'.");
     }
 
     [Fact(DisplayName = "ValidateBehaviorRegistration accepts a valid open generic middleware")]
@@ -120,6 +130,6 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
             typeof(IBeforeRequestBehavior<,>),
             "Before");
 
-        act.Should().NotThrow();
+        Should.NotThrow(act);
     }
 }

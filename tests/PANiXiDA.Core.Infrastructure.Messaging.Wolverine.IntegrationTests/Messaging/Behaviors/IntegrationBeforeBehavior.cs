@@ -7,12 +7,12 @@ public sealed class IntegrationBeforeBehavior<TRequest, TResult>(
     where TRequest : IRequest<TResult>
     where TResult : Result
 {
-    public Task BeforeAsync(
+    public Task<Result> BeforeAsync(
         TRequest request,
         CancellationToken cancellationToken)
     {
         journal.Add("behavior.before");
 
-        return Task.CompletedTask;
+        return Task.FromResult(Result.Success());
     }
 }

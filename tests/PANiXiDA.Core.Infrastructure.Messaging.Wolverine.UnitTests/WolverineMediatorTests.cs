@@ -15,9 +15,9 @@ public sealed class WolverineMediatorTests
             command,
             TestContext.Current.CancellationToken);
 
-        result.Should().BeSameAs(proxy.Result);
-        proxy.LastMessage.Should().BeSameAs(command);
-        proxy.LastCancellationToken.Should().Be(TestContext.Current.CancellationToken);
+        result.ShouldBeSameAs(proxy.Result);
+        proxy.LastMessage.ShouldBeSameAs(command);
+        proxy.LastCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
     }
 
     [Fact(DisplayName = "QueryAsync invokes Wolverine message bus with query")]
@@ -33,8 +33,8 @@ public sealed class WolverineMediatorTests
             query,
             TestContext.Current.CancellationToken);
 
-        result.Should().BeSameAs(expected);
-        proxy.LastMessage.Should().BeSameAs(query);
-        proxy.LastCancellationToken.Should().Be(TestContext.Current.CancellationToken);
+        result.ShouldBeSameAs(expected);
+        proxy.LastMessage.ShouldBeSameAs(query);
+        proxy.LastCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
     }
 }

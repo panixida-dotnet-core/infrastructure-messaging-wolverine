@@ -16,8 +16,8 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(IBeforeRequestBehavior<,>),
             out var closedMiddlewareType);
 
-        resolved.Should().BeTrue();
-        closedMiddlewareType.Should().Be<TestBeforeBehavior<TestCommand, Result>>();
+        resolved.ShouldBeTrue();
+        closedMiddlewareType.ShouldBe(typeof(TestBeforeBehavior<TestCommand, Result>));
     }
 
     [Fact(DisplayName = "TryResolveClosedMiddlewareType returns compatible closed middleware")]
@@ -30,8 +30,8 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(IBeforeRequestBehavior<,>),
             out var closedMiddlewareType);
 
-        resolved.Should().BeTrue();
-        closedMiddlewareType.Should().Be<BaseCommandBeforeBehavior>();
+        resolved.ShouldBeTrue();
+        closedMiddlewareType.ShouldBe(typeof(BaseCommandBeforeBehavior));
     }
 
     [Fact(DisplayName = "TryResolveClosedMiddlewareType returns false for incompatible closed middleware")]
@@ -44,8 +44,8 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(IBeforeRequestBehavior<,>),
             out var closedMiddlewareType);
 
-        resolved.Should().BeFalse();
-        closedMiddlewareType.Should().BeNull();
+        resolved.ShouldBeFalse();
+        closedMiddlewareType.ShouldBeNull();
     }
 
     [Fact(DisplayName = "TryResolveClosedMiddlewareType returns false for partially open middleware")]
@@ -62,23 +62,27 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(IBeforeRequestBehavior<,>),
             out var closedMiddlewareType);
 
-        resolved.Should().BeFalse();
-        closedMiddlewareType.Should().BeNull();
+        resolved.ShouldBeFalse();
+        closedMiddlewareType.ShouldBeNull();
     }
 
     [Fact(DisplayName = "TryResolveClosedMiddlewareType throws for open generic middleware with invalid parameter count")]
     public void TryResolveClosedMiddlewareTypeShouldThrowForOpenGenericMiddlewareWithInvalidParameterCount()
     {
-        var act = () => RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-            typeof(ThreeParameterBeforeBehavior<,,>),
-            typeof(TestCommand),
-            typeof(Result),
-            typeof(IBeforeRequestBehavior<,>),
-            out _);
+        var act = () =>
+        {
+            RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
+                typeof(ThreeParameterBeforeBehavior<,,>),
+                typeof(TestCommand),
+                typeof(Result),
+                typeof(IBeforeRequestBehavior<,>),
+                out _);
+        };
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Open generic middleware '*' must have exactly 2 generic parameters.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Open generic middleware '");
+        exception.Message.ShouldEndWith("' must have exactly 2 generic parameters.");
     }
 
     [Fact(DisplayName = "TryResolveClosedMiddlewareType returns false when generic constraints do not match")]
@@ -91,8 +95,8 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(IBeforeRequestBehavior<,>),
             out var closedMiddlewareType);
 
-        resolved.Should().BeFalse();
-        closedMiddlewareType.Should().BeNull();
+        resolved.ShouldBeFalse();
+        closedMiddlewareType.ShouldBeNull();
     }
 
     [Fact(DisplayName = "TryResolveClosedMiddlewareType returns false when open generic middleware does not support contract")]
@@ -105,8 +109,8 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(IBeforeRequestBehavior<,>),
             out var closedMiddlewareType);
 
-        resolved.Should().BeFalse();
-        closedMiddlewareType.Should().BeNull();
+        resolved.ShouldBeFalse();
+        closedMiddlewareType.ShouldBeNull();
     }
 
     [Fact(DisplayName = "ResolveConstructor rejects middleware without a single public constructor")]
@@ -114,9 +118,10 @@ public sealed class RequestMiddlewareCodeGenerationTests
     {
         var act = () => RequestMiddlewareCodeGeneration.ResolveConstructor(typeof(BehaviorWithoutPublicConstructor));
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Type '*BehaviorWithoutPublicConstructor' must have exactly one public constructor.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldContain("BehaviorWithoutPublicConstructor");
+        exception.Message.ShouldEndWith("' must have exactly one public constructor.");
     }
 
     [Fact(DisplayName = "ResolveConstructor returns a single public constructor")]
@@ -124,8 +129,8 @@ public sealed class RequestMiddlewareCodeGenerationTests
     {
         var constructor = RequestMiddlewareCodeGeneration.ResolveConstructor(typeof(ClosedCommandBeforeBehavior));
 
-        constructor.DeclaringType.Should().Be<ClosedCommandBeforeBehavior>();
-        constructor.GetParameters().Should().BeEmpty();
+        constructor.DeclaringType.ShouldBe(typeof(ClosedCommandBeforeBehavior));
+        constructor.GetParameters().ShouldBeEmpty();
     }
 
     [Theory(DisplayName = "BuildVariableName builds stable variable names")]
@@ -138,7 +143,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
     {
         var variableName = RequestMiddlewareCodeGeneration.BuildVariableName(type, suffix);
 
-        variableName.Should().Be(expected);
+        variableName.ShouldBe(expected);
     }
 
     [Fact(DisplayName = "ToCamelCase returns fallback for a blank name")]
@@ -150,7 +155,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
 
         var variableName = method!.Invoke(null, [" "]);
 
-        variableName.Should().Be("middleware");
+        variableName.ShouldBe("middleware");
     }
 
     [Fact(DisplayName = "GetCodeTypeName returns generated code name for non-generic type")]
@@ -158,7 +163,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
     {
         var typeName = RequestMiddlewareCodeGeneration.GetCodeTypeName(typeof(string));
 
-        typeName.Should().Be("System.String");
+        typeName.ShouldBe("System.String");
     }
 
     [Fact(DisplayName = "GetCodeTypeName returns generated code name for generic type")]
@@ -166,7 +171,18 @@ public sealed class RequestMiddlewareCodeGenerationTests
     {
         var typeName = RequestMiddlewareCodeGeneration.GetCodeTypeName(typeof(Dictionary<string, List<int>>));
 
-        typeName.Should().Be(
+        typeName.ShouldBe(
             "System.Collections.Generic.Dictionary<System.String, System.Collections.Generic.List<System.Int32>>");
+    }
+
+    [Fact(DisplayName = "BuildFailureResultCode converts failed result to generic result")]
+    public void BuildFailureResultCodeShouldConvertFailedResultToGenericResult()
+    {
+        var code = RequestMiddlewareCodeGeneration.BuildFailureResultCode(
+            typeof(Result<TestQueryView>),
+            "beforeResult");
+
+        code.ShouldBe(
+            "global::PANiXiDA.Core.ResultPattern.Result.Failure<PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Messages.TestQueryView>(beforeResult.Errors)");
     }
 }

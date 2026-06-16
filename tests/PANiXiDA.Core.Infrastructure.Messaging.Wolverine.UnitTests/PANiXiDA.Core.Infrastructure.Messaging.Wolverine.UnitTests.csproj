@@ -4,9 +4,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="FluentAssertions" />
         <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
         <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+        <PackageReference Include="Shouldly" />
         <PackageReference Include="xunit.v3" />
     </ItemGroup>
 
@@ -25,6 +25,6 @@
         <Using Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Behaviors" />
         <Using Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Messages" />
         <Using Include="Xunit" />
-        <Using Include="FluentAssertions" />
+        <Using Include="Shouldly" />
     </ItemGroup>
 </Project>

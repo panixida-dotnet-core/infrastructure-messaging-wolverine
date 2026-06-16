@@ -17,8 +17,8 @@ public sealed class EfCoreOutboxDispatcherTests
             domainEvent,
             TestContext.Current.CancellationToken);
 
-        proxy.PublishCallCount.Should().Be(1);
-        proxy.LastPublishedMessage.Should().BeSameAs(domainEvent);
+        proxy.PublishCallCount.ShouldBe(1);
+        proxy.LastPublishedMessage.ShouldBeSameAs(domainEvent);
     }
 
     [Fact(DisplayName = "FlushAsync delegates flush to EF Core outbox")]
@@ -29,6 +29,6 @@ public sealed class EfCoreOutboxDispatcherTests
 
         await dispatcher.FlushAsync(TestContext.Current.CancellationToken);
 
-        proxy.FlushCallCount.Should().Be(1);
+        proxy.FlushCallCount.ShouldBe(1);
     }
 }

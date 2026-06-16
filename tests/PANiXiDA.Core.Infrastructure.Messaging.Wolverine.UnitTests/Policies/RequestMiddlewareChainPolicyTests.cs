@@ -23,7 +23,7 @@ public sealed class RequestMiddlewareChainPolicyTests
 
         policy.Apply([chain], null!, null!);
 
-        chain.Middleware.Should().BeEmpty();
+        chain.Middleware.ShouldBeEmpty();
     }
 
     [Fact(DisplayName = "Apply throws when request handler chain has more than one Result return variable")]
@@ -36,9 +36,10 @@ public sealed class RequestMiddlewareChainPolicyTests
 
         var act = () => policy.Apply([chain], null!, null!);
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Handler chain '*' has more than one Result return variable. *");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Handler chain '");
+        exception.Message.ShouldContain("' has more than one Result return variable.");
     }
 
     private static void AddHandlerCall(

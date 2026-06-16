@@ -4,10 +4,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="FluentAssertions" />
         <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
         <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+        <PackageReference Include="Shouldly" />
         <PackageReference Include="Testcontainers.Kafka" />
         <PackageReference Include="Testcontainers.PostgreSql" />
         <PackageReference Include="xunit.v3" />
@@ -27,7 +27,7 @@
         <Using Include="PANiXiDA.Core.Application.Persistence" />
         <Using Include="PANiXiDA.Core.Domain.DomainEvents" />
         <Using Include="PANiXiDA.Core.ResultPattern" />
-        <Using Include="FluentAssertions" />
+        <Using Include="Shouldly" />
         <Using Include="Xunit" />
     </ItemGroup>
 </Project>

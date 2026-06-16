@@ -15,11 +15,13 @@ public sealed class RequestMiddlewareRegistryBuilderTests
             builder.AddFinally(typeof(TestFinallyBehavior<,>));
         });
 
-        registry.BeforeMiddlewareTypes.Should().Equal(
+        registry.BeforeMiddlewareTypes.ShouldBe(new[]
+        {
             typeof(TestBeforeBehavior<,>),
-            typeof(SecondBeforeBehavior<,>));
-        registry.AfterMiddlewareTypes.Should().Equal(typeof(TestAfterBehavior<,>));
-        registry.FinallyMiddlewareTypes.Should().Equal(typeof(TestFinallyBehavior<,>));
+            typeof(SecondBeforeBehavior<,>)
+        });
+        registry.AfterMiddlewareTypes.ShouldBe(new[] { typeof(TestAfterBehavior<,>) });
+        registry.FinallyMiddlewareTypes.ShouldBe(new[] { typeof(TestFinallyBehavior<,>) });
     }
 
     [Fact(DisplayName = "Builder generic methods register middleware")]
@@ -32,9 +34,9 @@ public sealed class RequestMiddlewareRegistryBuilderTests
             .AddFinally<TestFinallyBehavior<TestCommand, Result>>()
             .Build();
 
-        registry.BeforeMiddlewareTypes.Should().Equal(typeof(TestBeforeBehavior<TestCommand, Result>));
-        registry.AfterMiddlewareTypes.Should().Equal(typeof(TestAfterBehavior<TestCommand, Result>));
-        registry.FinallyMiddlewareTypes.Should().Equal(typeof(TestFinallyBehavior<TestCommand, Result>));
+        registry.BeforeMiddlewareTypes.ShouldBe(new[] { typeof(TestBeforeBehavior<TestCommand, Result>) });
+        registry.AfterMiddlewareTypes.ShouldBe(new[] { typeof(TestAfterBehavior<TestCommand, Result>) });
+        registry.FinallyMiddlewareTypes.ShouldBe(new[] { typeof(TestFinallyBehavior<TestCommand, Result>) });
     }
 
     [Fact(DisplayName = "Builder registers params middleware arrays")]
@@ -54,16 +56,16 @@ public sealed class RequestMiddlewareRegistryBuilderTests
                 typeof(SecondFinallyBehavior<,>))
             .Build();
 
-        registry.BeforeMiddlewareTypes.Should().HaveCount(2);
-        registry.AfterMiddlewareTypes.Should().HaveCount(2);
-        registry.FinallyMiddlewareTypes.Should().HaveCount(2);
+        registry.BeforeMiddlewareTypes.Count.ShouldBe(2);
+        registry.AfterMiddlewareTypes.Count.ShouldBe(2);
+        registry.FinallyMiddlewareTypes.Count.ShouldBe(2);
     }
 
     [Fact(DisplayName = "Empty registry contains no middleware")]
     public void EmptyRegistryShouldContainNoMiddleware()
     {
-        RequestMiddlewareRegistry.Empty.BeforeMiddlewareTypes.Should().BeEmpty();
-        RequestMiddlewareRegistry.Empty.AfterMiddlewareTypes.Should().BeEmpty();
-        RequestMiddlewareRegistry.Empty.FinallyMiddlewareTypes.Should().BeEmpty();
+        RequestMiddlewareRegistry.Empty.BeforeMiddlewareTypes.ShouldBeEmpty();
+        RequestMiddlewareRegistry.Empty.AfterMiddlewareTypes.ShouldBeEmpty();
+        RequestMiddlewareRegistry.Empty.FinallyMiddlewareTypes.ShouldBeEmpty();
     }
 }

@@ -4,10 +4,10 @@ public sealed class SecondBeforeBehavior<TRequest, TResult> : IBeforeRequestBeha
     where TRequest : IRequest<TResult>
     where TResult : Result
 {
-    public Task BeforeAsync(
+    public Task<Result> BeforeAsync(
         TRequest request,
         CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return Task.FromResult(Result.Success());
     }
 }

@@ -1,4 +1,4 @@
-﻿using JasperFx.CodeGeneration;
+using JasperFx.CodeGeneration;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 
@@ -6,7 +6,11 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 
 internal sealed class BeforeRequestMiddlewareFrame(
     Type requestType,
-    Type closedMiddlewareType) : RequestMiddlewareFrameBase(requestType, closedMiddlewareType)
+    Type resultType,
+    Type closedMiddlewareType) : RequestMiddlewareFrameBase(
+    requestType,
+    closedMiddlewareType,
+    requiresMessageContext: true)
 {
     internal static BeforeRequestMiddlewareFrame? TryCreate(
         Type requestType,
@@ -25,6 +29,7 @@ internal sealed class BeforeRequestMiddlewareFrame(
 
         return new BeforeRequestMiddlewareFrame(
             requestType,
+            resultType,
             closedMiddlewareType);
     }
 
@@ -33,12 +38,22 @@ internal sealed class BeforeRequestMiddlewareFrame(
         var middlewareVariableName = BuildMiddlewareVariableName();
         var constructorArguments = GetConstructorArguments();
         var middlewareTypeName = GetMiddlewareTypeName();
+        var beforeResultVariableName = $"__beforeResult_{uniqueSuffix}";
+        var failureResultCode = RequestMiddlewareCodeGeneration.BuildFailureResultCode(
+            resultType,
+            beforeResultVariableName);
 
         writer.WriteLine(string.Empty);
         writer.WriteComment($"Run {GetFriendlyMiddlewareTypeName()} before handler execution");
         writer.WriteLine($"var {middlewareVariableName} = new {middlewareTypeName}({constructorArguments});");
         writer.WriteLine(
-            $"await {middlewareVariableName}.{nameof(IBeforeRequestBehavior<,>.BeforeAsync)}({requestVariable.Usage}, {cancellationVariable.Usage}).ConfigureAwait(false);");
+            $"var {beforeResultVariableName} = await {middlewareVariableName}.{nameof(IBeforeRequestBehavior<,>.BeforeAsync)}({requestVariable.Usage}, {cancellationVariable.Usage}).ConfigureAwait(false);");
+
+        writer.Write($"BLOCK:if ({beforeResultVariableName}.{nameof(Result.IsFailure)})");
+        writer.WriteLine(
+            $"await {messageContextVariable.Usage}.EnqueueCascadingAsync({failureResultCode}).ConfigureAwait(false);");
+        writer.WriteLine("return;");
+        writer.FinishBlock();
 
         Next?.GenerateCode(method, writer);
     }

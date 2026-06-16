@@ -134,6 +134,27 @@ internal static class RequestMiddlewareCodeGeneration
         return $"{genericTypeName}<{genericArgumentsCode}>";
     }
 
+    internal static string BuildFailureResultCode(
+        Type resultType,
+        string sourceResultExpression)
+    {
+        if (resultType == typeof(Result))
+        {
+            return sourceResultExpression;
+        }
+
+        if (resultType.IsGenericType &&
+            resultType.GetGenericTypeDefinition() == typeof(Result<>))
+        {
+            var valueTypeName = GetCodeTypeName(resultType.GetGenericArguments()[0]);
+
+            return $"global::PANiXiDA.Core.ResultPattern.Result.Failure<{valueTypeName}>({sourceResultExpression}.Errors)";
+        }
+
+        throw new InvalidOperationException(
+            $"Result type '{resultType.FullName}' must be Result or Result<T>.");
+    }
+
     private static bool SupportsRequest(
         Type closedMiddlewareType,
         Type requestType,

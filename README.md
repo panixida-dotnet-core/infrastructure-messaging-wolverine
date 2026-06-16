@@ -20,7 +20,9 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - Explicit Kafka producer and consumer registration per event type.
 - Durable inbox and outbox policies for listeners, local queues, and external senders.
 - PostgreSQL message storage with EF Core transaction integration.
+- FluentValidation validator registration from Wolverine discovery assemblies.
 - Wolverine application assembly resolution from the entry assembly for pre-generated handler code.
+- Runtime compilation support for Wolverine `TypeLoadMode.Auto`.
 
 ## Quick Start
 
@@ -52,9 +54,11 @@ builder.Host.UseWolverineMediator<AppDbContext>(
 
 `AddWolverineMediator<TDbContext>()` registers PANiXiDA `IMediator`, `IEventBus`, and the EF Core outbox dispatcher.
 
-`UseWolverineMediator<TDbContext>()` configures Wolverine, PostgreSQL message storage, EF Core transactions, request middleware, durable local queues, durable inbox, and durable outbox.
+`UseWolverineMediator<TDbContext>()` configures Wolverine, PostgreSQL message storage, EF Core transactions, request middleware, FluentValidation validators from discovery assemblies, durable local queues, durable inbox, and durable outbox.
 
 The package sets Wolverine's application assembly to the process entry assembly. This keeps generated handler code in the publishable application assembly when using Wolverine code generation commands such as `dotnet run -- codegen write`.
+
+The package uses Wolverine `TypeLoadMode.Auto` and includes Wolverine runtime compilation support for handler code that has not been pre-generated.
 
 ## Kafka Topics
 
@@ -176,12 +180,15 @@ Kafka consumers use durable inbox and map incoming topic messages to the configu
 The default request behavior pipeline is:
 
 ```text
+before:  ValidationBehavior
 before:  BeginTransactionBehavior
 after:   PublishDomainEventsBehavior
 after:   CommitTransactionBehavior
 after:   FlushOutgoingMessagesBehavior
 finally: CleanupTransactionBehavior
 ```
+
+Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 
 Custom behaviors can be appended or inserted before or after any behavior in the same stage:
 
@@ -194,8 +201,8 @@ builder.Host.UseWolverineMediator<AppDbContext>(
     behaviors =>
     {
         behaviors.Before.InsertAfter(
-            typeof(ValidateRequestBehavior<,>),
-            typeof(BeginTransactionBehavior<,>));
+            typeof(AuthorizeRequestBehavior<,>),
+            typeof(ValidationBehavior<,>));
 
         behaviors.After.InsertBefore(
             typeof(AuditRequestResultBehavior<,>),

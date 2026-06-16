@@ -2,10 +2,10 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles
 
 public sealed class ClosedCommandBeforeBehavior : IBeforeRequestBehavior<TestCommand, Result>
 {
-    public Task BeforeAsync(
+    public Task<Result> BeforeAsync(
         TestCommand request,
         CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return Task.FromResult(Result.Success());
     }
 }

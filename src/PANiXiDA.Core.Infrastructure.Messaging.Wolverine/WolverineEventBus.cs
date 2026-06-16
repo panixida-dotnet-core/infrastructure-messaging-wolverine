@@ -2,9 +2,14 @@
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine;
 
-internal sealed class WolverineEventBus(
+/// <summary>
+/// Wolverine outbox-backed implementation of the PANiXiDA event bus abstraction.
+/// </summary>
+/// <param name="outboxDispatcher">The dispatcher used to publish events through the Wolverine outbox.</param>
+public sealed class WolverineEventBus(
     IOutboxDispatcher outboxDispatcher) : IEventBus
 {
+    /// <inheritdoc />
     public Task PublishAsync<TEvent>(
         TEvent @event,
         CancellationToken cancellationToken)

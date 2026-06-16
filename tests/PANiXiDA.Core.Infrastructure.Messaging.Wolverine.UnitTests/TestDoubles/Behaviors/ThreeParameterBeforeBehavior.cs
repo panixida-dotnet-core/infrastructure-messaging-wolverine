@@ -7,10 +7,10 @@ public sealed class ThreeParameterBeforeBehavior<TRequest, TResult, TExtra> : IB
     where TRequest : IRequest<TResult>
     where TResult : Result
 {
-    public Task BeforeAsync(
+    public Task<Result> BeforeAsync(
         TRequest request,
         CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return Task.FromResult(Result.Success());
     }
 }

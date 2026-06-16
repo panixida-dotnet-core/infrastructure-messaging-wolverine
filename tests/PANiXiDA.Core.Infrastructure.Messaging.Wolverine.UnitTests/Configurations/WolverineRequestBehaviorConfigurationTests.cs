@@ -13,12 +13,18 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var registry = configuration.Build();
 
-        registry.BeforeMiddlewareTypes.Should().Equal(typeof(BeginTransactionBehavior<,>));
-        registry.AfterMiddlewareTypes.Should().Equal(
+        registry.BeforeMiddlewareTypes.ShouldBe(new[]
+        {
+            typeof(ValidationBehavior<,>),
+            typeof(BeginTransactionBehavior<,>)
+        });
+        registry.AfterMiddlewareTypes.ShouldBe(new[]
+        {
             typeof(PublishDomainEventsBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
-            typeof(FlushOutgoingMessagesBehavior<,>));
-        registry.FinallyMiddlewareTypes.Should().Equal(typeof(CleanupTransactionBehavior<,>));
+            typeof(FlushOutgoingMessagesBehavior<,>)
+        });
+        registry.FinallyMiddlewareTypes.ShouldBe(new[] { typeof(CleanupTransactionBehavior<,>) });
     }
 
     [Fact(DisplayName = "Stage configuration appends and inserts behavior relative to anchors")]
@@ -38,17 +44,24 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var registry = configuration.Build();
 
-        registry.BeforeMiddlewareTypes.Should().Equal(
+        registry.BeforeMiddlewareTypes.ShouldBe(new[]
+        {
+            typeof(ValidationBehavior<,>),
             typeof(BeginTransactionBehavior<,>),
-            typeof(TestBeforeBehavior<,>));
-        registry.AfterMiddlewareTypes.Should().Equal(
+            typeof(TestBeforeBehavior<,>)
+        });
+        registry.AfterMiddlewareTypes.ShouldBe(new[]
+        {
             typeof(PublishDomainEventsBehavior<,>),
             typeof(TestAfterBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
-            typeof(FlushOutgoingMessagesBehavior<,>));
-        registry.FinallyMiddlewareTypes.Should().Equal(
+            typeof(FlushOutgoingMessagesBehavior<,>)
+        });
+        registry.FinallyMiddlewareTypes.ShouldBe(new[]
+        {
             typeof(CleanupTransactionBehavior<,>),
-            typeof(TestFinallyBehavior<,>));
+            typeof(TestFinallyBehavior<,>)
+        });
     }
 
     [Fact(DisplayName = "Stage configuration rejects missing anchor behavior")]
@@ -60,9 +73,10 @@ public sealed class WolverineRequestBehaviorConfigurationTests
             typeof(TestBeforeBehavior<,>),
             typeof(SecondBeforeBehavior<,>));
 
-        act.Should()
-            .Throw<InvalidOperationException>()
-            .WithMessage("Before behavior '*' was not registered.");
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Before behavior '");
+        exception.Message.ShouldEndWith("' was not registered.");
     }
 
     [Fact(DisplayName = "Generic stage methods delegate to type-based methods")]
@@ -80,9 +94,13 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var registry = configuration.Build();
 
-        registry.BeforeMiddlewareTypes.Should().ContainInOrder(
+        registry.BeforeMiddlewareTypes.ShouldBe(new[]
+        {
+            typeof(ValidationBehavior<,>),
+            typeof(BeginTransactionBehavior<,>),
             typeof(SecondBeforeBehavior<TestCommand, Result>),
             typeof(ClosedCommandBeforeBehavior),
-            typeof(TestBeforeBehavior<TestCommand, Result>));
+            typeof(TestBeforeBehavior<TestCommand, Result>)
+        });
     }
 }
