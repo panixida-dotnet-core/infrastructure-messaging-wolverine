@@ -175,6 +175,16 @@ public sealed class RequestMiddlewareCodeGenerationTests
             "System.Collections.Generic.Dictionary<System.String, System.Collections.Generic.List<System.Int32>>");
     }
 
+    [Fact(DisplayName = "BuildFailureResultCode returns failed result expression")]
+    public void BuildFailureResultCodeShouldReturnFailedResultExpression()
+    {
+        var code = RequestMiddlewareCodeGeneration.BuildFailureResultCode(
+            typeof(Result),
+            "beforeResult");
+
+        code.ShouldBe("beforeResult");
+    }
+
     [Fact(DisplayName = "BuildFailureResultCode converts failed result to generic result")]
     public void BuildFailureResultCodeShouldConvertFailedResultToGenericResult()
     {

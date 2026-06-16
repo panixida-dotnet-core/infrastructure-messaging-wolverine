@@ -143,16 +143,9 @@ internal static class RequestMiddlewareCodeGeneration
             return sourceResultExpression;
         }
 
-        if (resultType.IsGenericType &&
-            resultType.GetGenericTypeDefinition() == typeof(Result<>))
-        {
-            var valueTypeName = GetCodeTypeName(resultType.GetGenericArguments()[0]);
+        var valueTypeName = GetCodeTypeName(resultType.GetGenericArguments().Single());
 
-            return $"global::PANiXiDA.Core.ResultPattern.Result.Failure<{valueTypeName}>({sourceResultExpression}.Errors)";
-        }
-
-        throw new InvalidOperationException(
-            $"Result type '{resultType.FullName}' must be Result or Result<T>.");
+        return $"global::PANiXiDA.Core.ResultPattern.Result.Failure<{valueTypeName}>({sourceResultExpression}.Errors)";
     }
 
     private static bool SupportsRequest(
