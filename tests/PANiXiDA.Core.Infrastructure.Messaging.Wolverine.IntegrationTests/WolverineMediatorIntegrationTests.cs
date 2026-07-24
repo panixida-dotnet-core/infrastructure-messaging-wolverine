@@ -64,6 +64,38 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             "unitOfWork.commit");
     }
 
+    [Fact(DisplayName = "Modular mediator routes transactions and outbox through the module DbContext")]
+    public async Task ModularMediatorShouldRouteTransactionsAndOutboxThroughModuleDbContext()
+    {
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: true);
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var id = Guid.NewGuid();
+        var options = app.Host.Services.GetRequiredService<WolverineOptions>();
+
+        options.MultipleHandlerBehavior.ShouldBe(MultipleHandlerBehavior.Separated);
+        options.Durability.MessageIdentity.ShouldBe(MessageIdentity.IdAndDestination);
+
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, cancellationToken) => mediator.SendAsync(
+                new CreateIntegrationRecordAndPublishEventCommand(id, "modular"),
+                cancellationToken),
+            cancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+        (await app.CountRecordsAsync(id)).ShouldBe(1);
+
+        await WolverineIntegrationApp.WaitUntilAsync(
+            async () => await app.CountHandledEventsAsync(id) == 1,
+            TimeSpan.FromSeconds(10));
+
+        ShouldContainInOrder(
+            app.Journal.Entries,
+            "unitOfWork.begin",
+            "handler.command",
+            "unitOfWork.commit");
+    }
+
     [Fact(DisplayName = "Mediator returns validation failure before command handler")]
     public async Task MediatorShouldReturnValidationFailureBeforeCommandHandler()
     {
@@ -182,7 +214,8 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
     [Fact(DisplayName = "Outbox and handler changes roll back in one transaction when command throws")]
     public async Task OutboxAndHandlerChangesShouldRollbackInSingleTransactionWhenCommandThrows()
     {
-        await using var app = await fixture.CreateApplicationAsync();
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: true);
         var cancellationToken = TestContext.Current.CancellationToken;
         var id = Guid.NewGuid();
 

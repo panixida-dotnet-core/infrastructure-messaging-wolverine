@@ -39,7 +39,8 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
     public async Task<WolverineIntegrationApp> CreateApplicationAsync(
         IConfiguration? configuration = null,
         Action<WolverineKafkaConfiguration>? configureKafka = null,
-        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors = null)
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors = null,
+        bool useModuleRouting = false)
     {
         container ??= new PostgreSqlBuilder()
             .WithImage("postgres:16-alpine")
@@ -69,11 +70,32 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
                     options => options.UseNpgsql(connectionString));
 
                 services.AddScoped<IUnitOfWork, IntegrationUnitOfWork>();
+                services.AddKeyedScoped<IUnitOfWork, IntegrationUnitOfWork>(
+                    typeof(IntegrationDbContext));
                 services.AddScoped<IAggregateTracker, TestAggregateTracker>();
-                services.AddWolverineMediator<IntegrationDbContext>();
+
+                if (!useModuleRouting)
+                {
+                    services.AddWolverineMediator<IntegrationDbContext>();
+                }
             });
 
-        if (configureKafka is null && configureRequestBehaviors is null)
+        if (useModuleRouting)
+        {
+            if (configureKafka is not null)
+            {
+                throw new InvalidOperationException(
+                    "The modular integration fixture does not configure Kafka.");
+            }
+
+            hostBuilder.UseWolverineMediator(
+                connectionString,
+                "wolverine",
+                modules => modules.AddModule<IntegrationDbContext>(
+                    typeof(PostgreSqlContainerFixture).Assembly),
+                configureRequestBehaviors);
+        }
+        else if (configureKafka is null && configureRequestBehaviors is null)
         {
             hostBuilder.UseWolverineMediator<IntegrationDbContext>(
                 connectionString,

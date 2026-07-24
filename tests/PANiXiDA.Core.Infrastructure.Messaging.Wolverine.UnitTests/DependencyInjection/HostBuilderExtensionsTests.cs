@@ -40,4 +40,26 @@ public sealed class HostBuilderExtensionsTests
         exception.Message.ShouldBe(
             "The Wolverine message store connection string must not be empty. (Parameter 'messageStoreConnectionString')");
     }
+
+    [Fact(DisplayName = "Modular UseWolverineMediator validates message store schema")]
+    public async Task ModularUseWolverineMediatorShouldValidateMessageStoreSchema()
+    {
+        var hostBuilder = Host.CreateDefaultBuilder();
+
+        hostBuilder.UseWolverineMediator(
+            "Host=localhost;Database=tests",
+            " ",
+            modules => modules.AddModule<TestDbContext>(
+                typeof(HostBuilderExtensionsTests).Assembly));
+
+        var act = async () =>
+        {
+            using var host = await hostBuilder.StartAsync(TestContext.Current.CancellationToken);
+        };
+
+        var exception = await Should.ThrowAsync<ArgumentException>(act);
+
+        exception.Message.ShouldBe(
+            "The Wolverine message store schema name must not be empty. (Parameter 'messageStoreSchemaName')");
+    }
 }

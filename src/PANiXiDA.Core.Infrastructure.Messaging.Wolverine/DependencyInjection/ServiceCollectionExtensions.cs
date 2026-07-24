@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
@@ -24,6 +26,37 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IMediator, WolverineMediator>();
         services.TryAddScoped<IEventBus, WolverineEventBus>();
         services.TryAddScoped<IOutboxDispatcher, EfCoreOutboxDispatcher<TDbContext>>();
+
+        return services;
+    }
+
+    internal static IServiceCollection AddWolverineMediator(
+        this IServiceCollection services,
+        WolverineModuleRegistry moduleRegistry)
+    {
+        services.TryAddScoped<IMediator, WolverineMediator>();
+        services.TryAddScoped<IEventBus, WolverineEventBus>();
+
+        services.TryAddScoped(serviceProvider =>
+            new WolverineModuleExecutionContext(
+                serviceProvider,
+                moduleRegistry));
+
+        foreach (var registration in moduleRegistry.Registrations)
+        {
+            services.TryAddKeyedScoped(
+                typeof(IOutboxDispatcher),
+                registration.DbContextType,
+                typeof(EfCoreOutboxDispatcher<>).MakeGenericType(registration.DbContextType));
+        }
+
+        services.TryAddScoped<WolverineModuleUnitOfWork>();
+        services.TryAddScoped<WolverineModuleOutboxDispatcher>();
+
+        services.AddScoped<IUnitOfWork>(serviceProvider =>
+            serviceProvider.GetRequiredService<WolverineModuleUnitOfWork>());
+        services.AddScoped<IOutboxDispatcher>(serviceProvider =>
+            serviceProvider.GetRequiredService<WolverineModuleOutboxDispatcher>());
 
         return services;
     }
