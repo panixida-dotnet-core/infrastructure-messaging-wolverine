@@ -91,6 +91,8 @@ The first assembly passed to `AddModule<TDbContext>()` contains the module's req
 
 The module persistence registration must expose keyed `IUnitOfWork` services under the corresponding DbContext types. `PANiXiDA.Core.Infrastructure.Persistence.Ef` does this automatically for write DbContexts. During a mediator request, the package activates the owning module and routes the existing non-generic `IUnitOfWork` and `IEventBus` abstractions to that module's transaction and EF Core outbox.
 
+Application repositories remain responsible for persisting each business operation before the handler completes. `IUnitOfWork.CommitTransactionAsync()` only completes the active transaction and is not expected to save pending ORM changes.
+
 For ordinary Wolverine messages, including events, module selection is not based on the message assembly. Wolverine detects the transaction from the concrete handler's DbContext dependency. This allows handlers for one shared event contract to commit or roll back independently in different module schemas. A transactional handler must depend on exactly one write DbContext.
 
 `IEventBus` uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published by a native handler therefore share its selected DbContext transaction.

@@ -9,7 +9,7 @@ public sealed class ReturnFailureHandler(
     IntegrationDbContext dbContext,
     IntegrationTestJournal journal) : ICommandHandler<ReturnFailureCommand, Result>
 {
-    public Task<Result> HandleAsync(
+    public async Task<Result> HandleAsync(
         ReturnFailureCommand command,
         CancellationToken cancellationToken)
     {
@@ -21,6 +21,8 @@ public sealed class ReturnFailureHandler(
             Name = command.Name,
         });
 
-        return Task.FromResult(Result.Failure(Error.Failure("Planned failure.")));
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Result.Failure(Error.Failure("Planned failure."));
     }
 }

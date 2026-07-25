@@ -23,6 +23,8 @@ public sealed class CreateIntegrationRecordAndPublishEventHandler(
             Name = command.Name,
         });
 
+        await dbContext.SaveChangesAsync(cancellationToken);
+
         await eventBus.PublishAsync(
             new IntegrationDomainEvent(command.Id, command.Name),
             cancellationToken);

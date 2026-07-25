@@ -33,7 +33,6 @@ public sealed class IntegrationUnitOfWork<TDbContext>(
             return;
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
         journal.Add("unitOfWork.commit");
         journal.Add($"unitOfWork.commit:{typeof(TDbContext).Name}");
 

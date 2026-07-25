@@ -19,6 +19,8 @@ public sealed class CreateSecondModuleRecordHandler(
             Name = command.Name
         });
 
+        await dbContext.SaveChangesAsync(cancellationToken);
+
         await eventBus.PublishAsync(
             new SharedModuleEvent(
                 command.Id,
