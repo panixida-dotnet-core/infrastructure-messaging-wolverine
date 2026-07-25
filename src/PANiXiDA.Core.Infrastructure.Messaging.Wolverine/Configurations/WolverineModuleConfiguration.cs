@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
+
 using System.Reflection;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;

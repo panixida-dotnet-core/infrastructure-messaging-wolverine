@@ -1,6 +1,6 @@
 using System.Reflection;
 
-namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
+namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
 
 internal sealed class WolverineModuleRegistry(
     IReadOnlyList<WolverineModuleRegistration> registrations,

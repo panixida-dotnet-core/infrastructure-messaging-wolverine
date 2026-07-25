@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 
-using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
