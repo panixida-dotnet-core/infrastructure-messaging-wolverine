@@ -12,34 +12,33 @@ public sealed class WolverineModuleConfiguration
     private readonly List<WolverineModuleRegistration> registrations = [];
 
     /// <summary>
-    /// Registers a module DbContext and the assemblies that contain its requests and handlers.
+    /// Registers a module DbContext, its request assembly, and optional additional handler assemblies.
     /// </summary>
     /// <typeparam name="TDbContext">The module write DbContext type.</typeparam>
-    /// <param name="moduleAssemblies">The assemblies owned by the module.</param>
+    /// <param name="requestAssembly">The assembly that contains requests owned by the module.</param>
+    /// <param name="handlerAssemblies">Additional assemblies where Wolverine should discover module handlers.</param>
     /// <returns>The same configuration instance for fluent configuration.</returns>
     public WolverineModuleConfiguration AddModule<TDbContext>(
-        params Assembly[] moduleAssemblies)
+        Assembly requestAssembly,
+        params Assembly[] handlerAssemblies)
         where TDbContext : DbContext
     {
-        ArgumentNullException.ThrowIfNull(moduleAssemblies);
+        ArgumentNullException.ThrowIfNull(requestAssembly);
+        ArgumentNullException.ThrowIfNull(handlerAssemblies);
 
-        if (moduleAssemblies.Length == 0)
+        if (handlerAssemblies.Any(assembly => assembly is null))
         {
             throw new ArgumentException(
-                "At least one module assembly must be specified.",
-                nameof(moduleAssemblies));
-        }
-
-        if (moduleAssemblies.Any(assembly => assembly is null))
-        {
-            throw new ArgumentException(
-                "Module assemblies must not contain null values.",
-                nameof(moduleAssemblies));
+                "Handler assemblies must not contain null values.",
+                nameof(handlerAssemblies));
         }
 
         registrations.Add(new WolverineModuleRegistration(
             typeof(TDbContext),
-            [.. moduleAssemblies.Distinct()]));
+            requestAssembly,
+            [.. handlerAssemblies
+                .Prepend(requestAssembly)
+                .Distinct()]));
 
         return this;
     }
@@ -62,26 +61,26 @@ public sealed class WolverineModuleConfiguration
                 $"DbContext '{duplicateDbContext.Key.FullName}' is registered for more than one Wolverine module.");
         }
 
-        var assemblyOwners = new Dictionary<Assembly, Type>();
+        var requestAssemblyOwners = new Dictionary<Assembly, Type>();
 
         foreach (var registration in registrations)
         {
-            foreach (var assembly in registration.ModuleAssemblies)
+            if (requestAssemblyOwners.TryGetValue(
+                    registration.RequestAssembly,
+                    out var existingOwner) &&
+                existingOwner != registration.DbContextType)
             {
-                if (assemblyOwners.TryGetValue(assembly, out var existingOwner) &&
-                    existingOwner != registration.DbContextType)
-                {
-                    throw new InvalidOperationException(
-                        $"Assembly '{assembly.FullName}' is assigned to both " +
-                        $"'{existingOwner.FullName}' and '{registration.DbContextType.FullName}'.");
-                }
-
-                assemblyOwners[assembly] = registration.DbContextType;
+                throw new InvalidOperationException(
+                    $"Request assembly '{registration.RequestAssembly.FullName}' is assigned to both " +
+                    $"'{existingOwner.FullName}' and '{registration.DbContextType.FullName}'.");
             }
+
+            requestAssemblyOwners[registration.RequestAssembly] =
+                registration.DbContextType;
         }
 
         return new WolverineModuleRegistry(
             [.. registrations],
-            assemblyOwners);
+            requestAssemblyOwners);
     }
 }

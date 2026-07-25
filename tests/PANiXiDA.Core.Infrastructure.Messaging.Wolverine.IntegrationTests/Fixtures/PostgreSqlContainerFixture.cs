@@ -1,6 +1,8 @@
 using JasperFx.Resources;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,6 +13,8 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Database
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Diagnostics;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Support;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Transactions;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Database;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Messaging.Commands;
 
 using Testcontainers.PostgreSql;
 
@@ -58,7 +62,7 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
         var connectionString = container.GetConnectionString();
         var journal = new IntegrationTestJournal();
 
-        await ResetDatabaseAsync(connectionString);
+        await ResetDatabaseAsync(connectionString, useModuleRouting);
 
         var hostBuilder = Host
             .CreateDefaultBuilder()
@@ -69,12 +73,25 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
                 services.AddDbContextWithWolverineIntegration<IntegrationDbContext>(
                     options => options.UseNpgsql(connectionString));
 
-                services.AddScoped<IUnitOfWork, IntegrationUnitOfWork>();
-                services.AddKeyedScoped<IUnitOfWork, IntegrationUnitOfWork>(
+                services.AddScoped<
+                    IUnitOfWork,
+                    IntegrationUnitOfWork<IntegrationDbContext>>();
+                services.AddKeyedScoped<
+                    IUnitOfWork,
+                    IntegrationUnitOfWork<IntegrationDbContext>>(
                     typeof(IntegrationDbContext));
                 services.AddScoped<IAggregateTracker, TestAggregateTracker>();
 
-                if (!useModuleRouting)
+                if (useModuleRouting)
+                {
+                    services.AddDbContextWithWolverineIntegration<SecondModuleDbContext>(
+                        options => options.UseNpgsql(connectionString));
+                    services.AddKeyedScoped<
+                        IUnitOfWork,
+                        IntegrationUnitOfWork<SecondModuleDbContext>>(
+                        typeof(SecondModuleDbContext));
+                }
+                else
                 {
                     services.AddWolverineMediator<IntegrationDbContext>();
                 }
@@ -82,18 +99,31 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
 
         if (useModuleRouting)
         {
-            if (configureKafka is not null)
-            {
-                throw new InvalidOperationException(
-                    "The modular integration fixture does not configure Kafka.");
-            }
+            Action<WolverineModuleConfiguration> configureModules = modules =>
+                modules
+                    .AddModule<IntegrationDbContext>(
+                        typeof(PostgreSqlContainerFixture).Assembly)
+                    .AddModule<SecondModuleDbContext>(
+                        typeof(CreateSecondModuleRecordCommand).Assembly);
 
-            hostBuilder.UseWolverineMediator(
-                connectionString,
-                "wolverine",
-                modules => modules.AddModule<IntegrationDbContext>(
-                    typeof(PostgreSqlContainerFixture).Assembly),
-                configureRequestBehaviors);
+            if (configureKafka is null)
+            {
+                hostBuilder.UseWolverineMediator(
+                    connectionString,
+                    "wolverine",
+                    configureModules,
+                    configureRequestBehaviors);
+            }
+            else
+            {
+                hostBuilder.UseWolverineMediator(
+                    connectionString,
+                    "wolverine",
+                    configuration ?? new ConfigurationManager(),
+                    configureModules,
+                    configureKafka,
+                    configureRequestBehaviors);
+            }
         }
         else if (configureKafka is null && configureRequestBehaviors is null)
         {
@@ -136,7 +166,9 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
             connectionString);
     }
 
-    private static async Task ResetDatabaseAsync(string connectionString)
+    private static async Task ResetDatabaseAsync(
+        string connectionString,
+        bool includeSecondModule)
     {
         var options = new DbContextOptionsBuilder<IntegrationDbContext>()
             .UseNpgsql(connectionString)
@@ -145,5 +177,22 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
         await using var dbContext = new IntegrationDbContext(options);
         await dbContext.Database.EnsureDeletedAsync();
         await dbContext.Database.EnsureCreatedAsync();
+
+        if (!includeSecondModule)
+        {
+            return;
+        }
+
+        var secondModuleOptions =
+            new DbContextOptionsBuilder<SecondModuleDbContext>()
+                .UseNpgsql(connectionString)
+                .Options;
+
+        await using var secondModuleDbContext =
+            new SecondModuleDbContext(secondModuleOptions);
+        var databaseCreator = secondModuleDbContext
+            .GetService<IRelationalDatabaseCreator>();
+
+        await databaseCreator.CreateTablesAsync();
     }
 }

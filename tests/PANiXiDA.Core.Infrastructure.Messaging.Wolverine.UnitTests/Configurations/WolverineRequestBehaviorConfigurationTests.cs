@@ -48,7 +48,8 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         });
         registry.FinallyMiddlewareTypes.ShouldBe(new[]
         {
-            typeof(CleanupWolverineModuleBehavior<,>)
+            typeof(CleanupTransactionBehavior<,>),
+            typeof(DeactivateWolverineModuleBehavior<,>)
         });
     }
 

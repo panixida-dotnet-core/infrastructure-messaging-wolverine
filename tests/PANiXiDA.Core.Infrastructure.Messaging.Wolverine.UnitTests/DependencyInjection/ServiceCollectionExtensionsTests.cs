@@ -83,15 +83,55 @@ public sealed class ServiceCollectionExtensionsTests
         var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
 
         await unitOfWork.BeginTransactionAsync(TestContext.Current.CancellationToken);
+        unitOfWork.HasActiveTransaction.ShouldBeTrue();
+        await unitOfWork.CommitTransactionAsync(TestContext.Current.CancellationToken);
+        await unitOfWork.BeginTransactionAsync(TestContext.Current.CancellationToken);
+        await unitOfWork.RollbackTransactionAsync(TestContext.Current.CancellationToken);
+        await unitOfWork.BeginTransactionAsync(TestContext.Current.CancellationToken);
+        await unitOfWork.DisposeTransactionAsync();
+        await unitOfWork.ExecuteInTransactionAsync(
+            _ => Task.CompletedTask,
+            TestContext.Current.CancellationToken);
         await eventBus.PublishAsync(
             new TestDomainEvent(Guid.NewGuid()),
             TestContext.Current.CancellationToken);
         await outboxDispatcher.FlushAsync(TestContext.Current.CancellationToken);
 
-        moduleUnitOfWork.BeginTransactionCallCount.ShouldBe(1);
+        moduleUnitOfWork.BeginTransactionCallCount.ShouldBe(4);
+        moduleUnitOfWork.CommitTransactionCallCount.ShouldBe(2);
+        moduleUnitOfWork.RollbackTransactionCallCount.ShouldBe(1);
+        moduleUnitOfWork.DisposeTransactionCallCount.ShouldBe(1);
         moduleOutboxDispatcher.PublishCallCount.ShouldBe(1);
         moduleOutboxDispatcher.FlushCallCount.ShouldBe(1);
 
         moduleContext.Exit(typeof(TestCommand));
+    }
+
+    [Fact(DisplayName = "Modular event bus uses the active Wolverine message context outside mediator requests")]
+    public async Task ModularEventBusShouldUseActiveWolverineMessageContextOutsideMediatorRequests()
+    {
+        var services = new ServiceCollection();
+        var moduleConfiguration = new WolverineModuleConfiguration()
+            .AddModule<TestDbContext>(typeof(TestCommand).Assembly);
+        var messageContext = MessageContextProxy.Create(out var proxy);
+
+        services.AddWolverineMediator(moduleConfiguration.Build());
+        services.AddScoped(_ => messageContext);
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
+        var outboxDispatcher = scope.ServiceProvider
+            .GetRequiredService<IOutboxDispatcher>();
+        var domainEvent = new TestDomainEvent(Guid.NewGuid());
+
+        await eventBus.PublishAsync(
+            domainEvent,
+            TestContext.Current.CancellationToken);
+        await outboxDispatcher.FlushAsync(
+            TestContext.Current.CancellationToken);
+
+        proxy.PublishCallCount.ShouldBe(1);
+        proxy.LastPublishedMessage.ShouldBeSameAs(domainEvent);
     }
 }

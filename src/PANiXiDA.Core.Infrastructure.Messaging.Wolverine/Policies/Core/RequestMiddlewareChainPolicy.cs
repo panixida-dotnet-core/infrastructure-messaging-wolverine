@@ -17,7 +17,7 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
         for (var i = 0; i < chains.Count; i++)
         {
             if (chains[i] is not HandlerChain chain ||
-                !IsRequestMessageType(chain.MessageType))
+                !IsResultRequest(chain.MessageType))
             {
                 continue;
             }
@@ -41,17 +41,14 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
 
     private void AddFinallyMiddleware(HandlerChain chain, Variable resultVariable)
     {
-        for (var i = registry.FinallyMiddlewareTypes.Count - 1; i >= 0; i--)
-        {
-            var frame = FinallyRequestMiddlewareFrame.TryCreate(
-                chain.MessageType,
-                resultVariable,
-                registry.FinallyMiddlewareTypes[i]);
+        var frame = FinallyRequestMiddlewareFrame.TryCreate(
+            chain.MessageType,
+            resultVariable,
+            registry.FinallyMiddlewareTypes);
 
-            if (frame is not null)
-            {
-                chain.Middleware.Add(frame);
-            }
+        if (frame is not null)
+        {
+            chain.Middleware.Add(frame);
         }
     }
 
@@ -87,7 +84,7 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
         }
     }
 
-    private static bool IsRequestMessageType(Type messageType)
+    internal static bool IsResultRequest(Type messageType)
     {
         return messageType
             .GetInterfaces()

@@ -67,7 +67,8 @@ public sealed class WolverineRequestBehaviorConfiguration
         configuration.After.Add(typeof(CommitTransactionBehavior<,>));
         configuration.After.Add(typeof(FlushOutgoingMessagesBehavior<,>));
 
-        configuration.Finally.Add(typeof(CleanupWolverineModuleBehavior<,>));
+        configuration.Finally.Add(typeof(CleanupTransactionBehavior<,>));
+        configuration.Finally.Add(typeof(DeactivateWolverineModuleBehavior<,>));
 
         return configuration;
     }

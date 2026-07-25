@@ -11,6 +11,9 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messagin
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Support;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Views;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Database;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Messaging.Commands;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Messaging.Events;
 
 using Testcontainers.Kafka;
 
@@ -68,6 +71,8 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
     public async Task ModularMediatorShouldRouteTransactionsAndOutboxThroughModuleDbContext()
     {
         await using var app = await fixture.CreateApplicationAsync(
+            configuration: new ConfigurationManager(),
+            configureKafka: _ => { },
             useModuleRouting: true);
         var cancellationToken = TestContext.Current.CancellationToken;
         var id = Guid.NewGuid();
@@ -75,6 +80,8 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
 
         options.MultipleHandlerBehavior.ShouldBe(MultipleHandlerBehavior.Separated);
         options.Durability.MessageIdentity.ShouldBe(MessageIdentity.IdAndDestination);
+        options.ServiceLocationPolicy.ShouldBe(
+            JasperFx.CodeGeneration.Model.ServiceLocationPolicy.AlwaysAllowed);
 
         var result = await app.ExecuteWithMediatorAsync(
             (mediator, cancellationToken) => mediator.SendAsync(
@@ -94,6 +101,75 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             "unitOfWork.begin",
             "handler.command",
             "unitOfWork.commit");
+    }
+
+    [Fact(DisplayName = "Modular mediator isolates module transactions and fans out shared events")]
+    public async Task ModularMediatorShouldIsolateTransactionsAndFanOutSharedEvents()
+    {
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: true);
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var id = Guid.NewGuid();
+
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, cancellationToken) => mediator.SendAsync(
+                new CreateSecondModuleRecordCommand(id, "second-module"),
+                cancellationToken),
+            cancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+        (await app.CountSecondModuleRecordsAsync(id)).ShouldBe(1);
+
+        await WolverineIntegrationApp.WaitUntilAsync(
+            async () =>
+                await app.CountHandledEventsAsync(id) == 1 &&
+                await app.CountSecondModuleEventsAsync(
+                    id,
+                    nameof(SharedModuleEvent)) == 1 &&
+                await app.CountSecondModuleEventsAsync(
+                    id,
+                    nameof(SharedModuleFollowUpEvent)) == 1,
+            TimeSpan.FromSeconds(20));
+
+        ShouldContainInOrder(
+            app.Journal.Entries,
+            $"unitOfWork.begin:{nameof(SecondModuleDbContext)}",
+            $"unitOfWork.commit:{nameof(SecondModuleDbContext)}");
+    }
+
+    [Fact(DisplayName = "Separated event handlers commit and roll back module transactions independently")]
+    public async Task SeparatedEventHandlersShouldCommitAndRollbackModuleTransactionsIndependently()
+    {
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: true);
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var id = Guid.NewGuid();
+
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, cancellationToken) => mediator.SendAsync(
+                new CreateSecondModuleRecordCommand(
+                    id,
+                    "partial-failure",
+                    FailSecondModuleEventHandler: true),
+                cancellationToken),
+            cancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+
+        await WolverineIntegrationApp.WaitUntilAsync(
+            async () =>
+                await app.CountHandledEventsAsync(id) == 1 &&
+                await app.CountSecondModuleEventsAsync(
+                    id,
+                    nameof(SharedModuleFollowUpEvent)) == 1 &&
+                await app.CountRowsAsync(
+                    "wolverine.wolverine_dead_letters") == 1,
+            TimeSpan.FromSeconds(20));
+
+        (await app.CountSecondModuleRecordsAsync(id)).ShouldBe(1);
+        (await app.CountSecondModuleEventsAsync(
+            id,
+            nameof(SharedModuleEvent))).ShouldBe(0);
     }
 
     [Fact(DisplayName = "Mediator returns validation failure before command handler")]

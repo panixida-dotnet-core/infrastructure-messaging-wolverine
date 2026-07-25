@@ -8,7 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
-using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Behaviors;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 
 using System.Reflection;
@@ -128,7 +128,7 @@ public static class HostBuilderExtensions
         var moduleConfiguration = new WolverineModuleConfiguration();
         configureModules(moduleConfiguration);
         var moduleRegistry = moduleConfiguration.Build();
-        var discoveryAssemblies = moduleRegistry.ModuleAssemblies.ToArray();
+        var discoveryAssemblies = moduleRegistry.DiscoveryAssemblies.ToArray();
 
         return RegisterFluentValidationValidators(
             hostBuilder,
@@ -330,13 +330,11 @@ public static class HostBuilderExtensions
             configureRequestBehaviors,
             useModuleRouting: true);
 
-        options.Policies.AddMiddleware<WolverineModuleMessageMiddleware>(chain =>
-            moduleRegistry.Owns(chain.MessageType) &&
-            !IsResultRequest(chain.MessageType));
+        options.Policies.Add(new WolverineModuleTransactionPolicy());
 
         configureWolverine?.Invoke(options);
 
-        foreach (var assembly in moduleRegistry.ModuleAssemblies)
+        foreach (var assembly in moduleRegistry.DiscoveryAssemblies)
         {
             options.Discovery.IncludeAssembly(assembly);
         }
@@ -409,13 +407,4 @@ public static class HostBuilderExtensions
         }
     }
 
-    private static bool IsResultRequest(Type messageType)
-    {
-        return messageType
-            .GetInterfaces()
-            .Any(item =>
-                item.IsGenericType &&
-                item.GetGenericTypeDefinition() == typeof(IRequest<>) &&
-                typeof(Result).IsAssignableFrom(item.GenericTypeArguments[0]));
-    }
 }

@@ -4,4 +4,5 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 
 internal sealed record WolverineModuleRegistration(
     Type DbContextType,
-    IReadOnlyList<Assembly> ModuleAssemblies);
+    Assembly RequestAssembly,
+    IReadOnlyList<Assembly> DiscoveryAssemblies);

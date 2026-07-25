@@ -1,12 +1,14 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Database;
+
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Diagnostics;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Transactions;
 
-public sealed class IntegrationUnitOfWork(
-    IntegrationDbContext dbContext,
+public sealed class IntegrationUnitOfWork<TDbContext>(
+    TDbContext dbContext,
     IntegrationTestJournal journal) : IUnitOfWork
+    where TDbContext : DbContext
 {
     private IDbContextTransaction? transaction;
 
@@ -14,7 +16,13 @@ public sealed class IntegrationUnitOfWork(
 
     public async Task BeginTransactionAsync(CancellationToken cancellationToken)
     {
+        if (transaction is not null)
+        {
+            return;
+        }
+
         journal.Add("unitOfWork.begin");
+        journal.Add($"unitOfWork.begin:{typeof(TDbContext).Name}");
         transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
     }
 
@@ -27,6 +35,7 @@ public sealed class IntegrationUnitOfWork(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         journal.Add("unitOfWork.commit");
+        journal.Add($"unitOfWork.commit:{typeof(TDbContext).Name}");
 
         await transaction.CommitAsync(cancellationToken);
         await transaction.DisposeAsync();
@@ -36,6 +45,7 @@ public sealed class IntegrationUnitOfWork(
     public async Task RollbackTransactionAsync(CancellationToken cancellationToken)
     {
         journal.Add("unitOfWork.rollback");
+        journal.Add($"unitOfWork.rollback:{typeof(TDbContext).Name}");
 
         if (transaction is null)
         {

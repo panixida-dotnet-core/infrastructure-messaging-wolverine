@@ -47,11 +47,30 @@ internal sealed class WolverineModuleExecutionContext(
 
     internal IOutboxDispatcher GetOutboxDispatcher()
     {
-        var dbContextType = GetActiveModule().DbContextType;
+        if (TryGetOutboxDispatcher(out var outboxDispatcher))
+        {
+            return outboxDispatcher;
+        }
 
-        return serviceProvider.GetKeyedService<IOutboxDispatcher>(dbContextType)
+        throw new InvalidOperationException(
+            "No Wolverine module is active in the current request scope.");
+    }
+
+    internal bool TryGetOutboxDispatcher(
+        out IOutboxDispatcher outboxDispatcher)
+    {
+        if (!activeModules.TryPeek(out var activeModule))
+        {
+            outboxDispatcher = null!;
+            return false;
+        }
+
+        outboxDispatcher = serviceProvider.GetKeyedService<IOutboxDispatcher>(
+            activeModule.DbContextType)
             ?? throw new InvalidOperationException(
-                $"No Wolverine outbox dispatcher is registered for DbContext '{dbContextType.FullName}'.");
+                $"No Wolverine outbox dispatcher is registered for DbContext '{activeModule.DbContextType.FullName}'.");
+
+        return true;
     }
 
     private ActiveModule GetActiveModule()

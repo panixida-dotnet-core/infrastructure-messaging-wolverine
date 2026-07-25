@@ -6,6 +6,7 @@ using Npgsql;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Database;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Diagnostics;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Database;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Fixtures;
 
@@ -48,6 +49,28 @@ public sealed class WolverineIntegrationApp(
         var dbContext = scope.ServiceProvider.GetRequiredService<IntegrationDbContext>();
 
         return await dbContext.HandledEvents.CountAsync(x => x.EventId == eventId);
+    }
+
+    public async Task<int> CountSecondModuleRecordsAsync(Guid id)
+    {
+        using var scope = host.Services.CreateScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<SecondModuleDbContext>();
+
+        return await dbContext.Records.CountAsync(item => item.Id == id);
+    }
+
+    public async Task<int> CountSecondModuleEventsAsync(
+        Guid eventId,
+        string eventType)
+    {
+        using var scope = host.Services.CreateScope();
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<SecondModuleDbContext>();
+
+        return await dbContext.HandledEvents.CountAsync(item =>
+            item.EventId == eventId &&
+            item.EventType == eventType);
     }
 
     public async Task<long> CountRowsAsync(string tableName)
