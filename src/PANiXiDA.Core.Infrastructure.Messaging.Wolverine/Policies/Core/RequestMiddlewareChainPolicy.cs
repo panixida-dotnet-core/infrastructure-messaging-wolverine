@@ -17,7 +17,7 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
         for (var i = 0; i < chains.Count; i++)
         {
             if (chains[i] is not HandlerChain chain ||
-                !IsResultRequest(chain.MessageType))
+                !IsRequestMessageType(chain.MessageType))
             {
                 continue;
             }
@@ -84,7 +84,7 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
         }
     }
 
-    internal static bool IsResultRequest(Type messageType)
+    internal static bool IsRequestMessageType(Type messageType)
     {
         return messageType
             .GetInterfaces()

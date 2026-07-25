@@ -19,7 +19,7 @@ internal sealed class WolverineModuleTransactionPolicy : IHandlerPolicy
     {
         foreach (var chain in chains)
         {
-            if (RequestMiddlewareChainPolicy.IsResultRequest(chain.MessageType) ||
+            if (RequestMiddlewareChainPolicy.IsRequestMessageType(chain.MessageType) ||
                 chain.HasAttribute<TransactionalAttribute>() ||
                 chain.HasAttribute<NonTransactionalAttribute>())
             {
