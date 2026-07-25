@@ -116,38 +116,6 @@ public static class HostBuilderExtensions
             configureRequestBehaviors);
     }
 
-    private static IHostBuilder UseModularWolverineMediator(
-        IHostBuilder hostBuilder,
-        string messageStoreConnectionString,
-        string messageStoreSchemaName,
-        Action<WolverineModuleConfiguration> configureModules,
-        Action<WolverineOptions>? configureWolverine,
-        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors)
-    {
-        ArgumentNullException.ThrowIfNull(configureModules);
-
-        var moduleConfiguration = new WolverineModuleConfiguration();
-        configureModules(moduleConfiguration);
-        var moduleRegistry = moduleConfiguration.Build();
-        var discoveryAssemblies = moduleRegistry.DiscoveryAssemblies.ToArray();
-
-        return RegisterFluentValidationValidators(
-            hostBuilder,
-            discoveryAssemblies)
-            .ConfigureServices(services =>
-                services.AddWolverineMediator(moduleRegistry))
-            .UseWolverine(options =>
-            {
-                ConfigureModularWolverineMediator(
-                    options,
-                    messageStoreConnectionString,
-                    messageStoreSchemaName,
-                    moduleRegistry,
-                    configureWolverine,
-                    configureRequestBehaviors);
-            });
-    }
-
     /// <summary>
     /// Configures Wolverine with PostgreSQL message persistence and configurable mediator request behaviors.
     /// </summary>
@@ -245,6 +213,38 @@ public static class HostBuilderExtensions
                 configureRequestBehaviors,
                 discoveryAssemblies);
         });
+    }
+
+    private static IHostBuilder UseModularWolverineMediator(
+        IHostBuilder hostBuilder,
+        string messageStoreConnectionString,
+        string messageStoreSchemaName,
+        Action<WolverineModuleConfiguration> configureModules,
+        Action<WolverineOptions>? configureWolverine,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors)
+    {
+        ArgumentNullException.ThrowIfNull(configureModules);
+
+        var moduleConfiguration = new WolverineModuleConfiguration();
+        configureModules(moduleConfiguration);
+        var moduleRegistry = moduleConfiguration.Build();
+        var discoveryAssemblies = moduleRegistry.DiscoveryAssemblies.ToArray();
+
+        return RegisterFluentValidationValidators(
+            hostBuilder,
+            discoveryAssemblies)
+            .ConfigureServices(services =>
+                services.AddWolverineMediator(moduleRegistry))
+            .UseWolverine(options =>
+            {
+                ConfigureModularWolverineMediator(
+                    options,
+                    messageStoreConnectionString,
+                    messageStoreSchemaName,
+                    moduleRegistry,
+                    configureWolverine,
+                    configureRequestBehaviors);
+            });
     }
 
     private static IHostBuilder RegisterFluentValidationValidators(
@@ -372,9 +372,10 @@ public static class HostBuilderExtensions
             messageStoreConnectionString,
             messageStoreSchemaName);
 
-        foreach (var registration in moduleRegistry.Registrations)
+        foreach (var dbContextType in moduleRegistry.Registrations
+                     .Select(registration => registration.DbContextType))
         {
-            storage.Enroll(registration.DbContextType);
+            storage.Enroll(dbContextType);
         }
 
         options.UseEntityFrameworkCoreTransactions();
