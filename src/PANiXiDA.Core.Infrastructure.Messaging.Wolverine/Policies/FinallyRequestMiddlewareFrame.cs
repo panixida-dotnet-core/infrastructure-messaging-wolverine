@@ -1,31 +1,23 @@
 using JasperFx.CodeGeneration;
-using JasperFx.CodeGeneration.Frames;
 using JasperFx.CodeGeneration.Model;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 
-using System.Reflection;
-
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 
-internal sealed class FinallyRequestMiddlewareFrame : AsyncFrame
+internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
 {
-    private readonly Type requestType;
     private readonly Variable resultVariable;
-    private readonly FinallyMiddleware[] middlewares;
     private readonly string uniqueSuffix = Guid.NewGuid().ToString("N")[..8];
-
-    private Variable requestVariable = null!;
-    private Variable cancellationVariable = null!;
 
     private FinallyRequestMiddlewareFrame(
         Type requestType,
         Variable resultVariable,
-        FinallyMiddleware[] middlewares)
+        RequestMiddlewareDescriptor[] descriptors) : base(
+        requestType,
+        descriptors)
     {
-        this.requestType = requestType;
         this.resultVariable = resultVariable;
-        this.middlewares = middlewares;
     }
 
     internal static FinallyRequestMiddlewareFrame? TryCreate(
@@ -33,15 +25,13 @@ internal sealed class FinallyRequestMiddlewareFrame : AsyncFrame
         Variable resultVariable,
         IReadOnlyList<Type> middlewareTypes)
     {
-        var middlewares = middlewareTypes
-            .Select(middlewareType => TryCreateMiddleware(
-                requestType,
-                resultVariable.VariableType,
-                middlewareType))
-            .OfType<FinallyMiddleware>()
-            .ToArray();
+        var descriptors = RequestMiddlewareDescriptor.Resolve(
+            requestType,
+            resultVariable.VariableType,
+            typeof(IFinallyRequestBehavior<,>),
+            middlewareTypes);
 
-        if (middlewares.Length == 0)
+        if (descriptors.Length == 0)
         {
             return null;
         }
@@ -49,31 +39,7 @@ internal sealed class FinallyRequestMiddlewareFrame : AsyncFrame
         return new FinallyRequestMiddlewareFrame(
             requestType,
             resultVariable,
-            middlewares);
-    }
-
-    public override IEnumerable<Variable> FindVariables(
-        IMethodVariables chain)
-    {
-        requestVariable = chain.FindVariable(requestType);
-        yield return requestVariable;
-
-        cancellationVariable = chain.FindVariable(
-            typeof(CancellationToken));
-        yield return cancellationVariable;
-
-        foreach (var middleware in middlewares)
-        {
-            middleware.ConstructorVariables =
-                RequestMiddlewareCodeGeneration.ResolveConstructorVariables(
-                    chain,
-                    middleware.Constructor);
-
-            foreach (var constructorVariable in middleware.ConstructorVariables)
-            {
-                yield return constructorVariable;
-            }
-        }
+            descriptors);
     }
 
     public override void GenerateCode(
@@ -118,9 +84,9 @@ internal sealed class FinallyRequestMiddlewareFrame : AsyncFrame
         string exceptionLocalName,
         int index)
     {
-        var middleware = middlewares[index];
+        var middleware = middlewareDescriptors[index];
 
-        if (index < middlewares.Length - 1)
+        if (index < middlewareDescriptors.Count - 1)
         {
             writer.Write("BLOCK:try");
         }
@@ -131,7 +97,7 @@ internal sealed class FinallyRequestMiddlewareFrame : AsyncFrame
             resultLocalName,
             exceptionLocalName);
 
-        if (index >= middlewares.Length - 1)
+        if (index >= middlewareDescriptors.Count - 1)
         {
             return;
         }
@@ -148,60 +114,17 @@ internal sealed class FinallyRequestMiddlewareFrame : AsyncFrame
 
     private void WriteInvocation(
         ISourceWriter writer,
-        FinallyMiddleware middleware,
+        RequestMiddlewareDescriptor middleware,
         string resultLocalName,
         string exceptionLocalName)
     {
-        var middlewareVariableName =
-            RequestMiddlewareCodeGeneration.BuildVariableName(
-                middleware.Type,
-                middleware.UniqueSuffix);
-        var middlewareTypeName =
-            RequestMiddlewareCodeGeneration.GetCodeTypeName(
-                middleware.Type);
-        var constructorArguments = string.Join(
-            ", ",
-            middleware.ConstructorVariables.Select(variable =>
-                variable.Usage));
+        var middlewareVariableName = middleware.BuildVariableName();
+        var middlewareTypeName = middleware.GetTypeName();
+        var constructorArguments = middleware.GetConstructorArguments();
 
         writer.WriteLine(
             $"var {middlewareVariableName} = new {middlewareTypeName}({constructorArguments});");
         writer.WriteLine(
             $"await {middlewareVariableName}.{nameof(IFinallyRequestBehavior<,>.FinallyAsync)}({requestVariable.Usage}, {resultLocalName}, {exceptionLocalName}, {cancellationVariable.Usage}).ConfigureAwait(false);");
-    }
-
-    private static FinallyMiddleware? TryCreateMiddleware(
-        Type requestType,
-        Type resultType,
-        Type middlewareType)
-    {
-        if (!RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-                middlewareType,
-                requestType,
-                resultType,
-                typeof(IFinallyRequestBehavior<,>),
-                out var closedMiddlewareType))
-        {
-            return null;
-        }
-
-        return new FinallyMiddleware(
-            closedMiddlewareType,
-            RequestMiddlewareCodeGeneration.ResolveConstructor(
-                closedMiddlewareType));
-    }
-
-    private sealed class FinallyMiddleware(
-        Type type,
-        ConstructorInfo constructor)
-    {
-        internal Type Type { get; } = type;
-
-        internal ConstructorInfo Constructor { get; } = constructor;
-
-        internal string UniqueSuffix { get; } =
-            Guid.NewGuid().ToString("N")[..8];
-
-        internal Variable[] ConstructorVariables { get; set; } = [];
     }
 }

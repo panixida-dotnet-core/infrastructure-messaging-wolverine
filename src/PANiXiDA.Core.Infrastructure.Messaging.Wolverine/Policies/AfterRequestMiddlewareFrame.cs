@@ -8,21 +8,24 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 internal sealed class AfterRequestMiddlewareFrame(
     Type requestType,
     Variable resultVariable,
-    Type closedMiddlewareType) : RequestMiddlewareFrameBase(requestType, closedMiddlewareType)
+    RequestMiddlewareDescriptor[] descriptors) : RequestMiddlewareFrameBase(
+    requestType,
+    descriptors)
 {
     internal static AfterRequestMiddlewareFrame? TryCreate(
         Type requestType,
         Variable resultVariable,
-        Type middlewareType)
+        IReadOnlyList<Type> middlewareTypes)
     {
         var resultType = resultVariable.VariableType;
 
-        if (!RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-                middlewareType,
-                requestType,
-                resultType,
-                typeof(IAfterRequestBehavior<,>),
-                out var closedMiddlewareType))
+        var descriptors = RequestMiddlewareDescriptor.Resolve(
+            requestType,
+            resultType,
+            typeof(IAfterRequestBehavior<,>),
+            middlewareTypes);
+
+        if (descriptors.Length == 0)
         {
             return null;
         }
@@ -30,20 +33,32 @@ internal sealed class AfterRequestMiddlewareFrame(
         return new AfterRequestMiddlewareFrame(
             requestType,
             resultVariable,
-            closedMiddlewareType);
+            descriptors);
     }
 
     public override void GenerateCode(GeneratedMethod method, ISourceWriter writer)
     {
         Next?.GenerateCode(method, writer);
 
-        var middlewareVariableName = BuildMiddlewareVariableName();
-        var constructorArguments = GetConstructorArguments();
-        var middlewareTypeName = GetMiddlewareTypeName();
+        foreach (var middleware in middlewareDescriptors)
+        {
+            WriteMiddleware(writer, middleware);
+        }
+    }
+
+    private void WriteMiddleware(
+        ISourceWriter writer,
+        RequestMiddlewareDescriptor middleware)
+    {
+        var middlewareVariableName = middleware.BuildVariableName();
+        var constructorArguments = middleware.GetConstructorArguments();
+        var middlewareTypeName = middleware.GetTypeName();
 
         writer.WriteLine(string.Empty);
-        writer.WriteComment($"Run {GetFriendlyMiddlewareTypeName()} after handler execution");
-        writer.WriteLine($"var {middlewareVariableName} = new {middlewareTypeName}({constructorArguments});");
+        writer.WriteComment(
+            $"Run {middleware.GetFriendlyTypeName()} after handler execution");
+        writer.WriteLine(
+            $"var {middlewareVariableName} = new {middlewareTypeName}({constructorArguments});");
         writer.WriteLine(
             $"await {middlewareVariableName}.{nameof(IAfterRequestBehavior<,>.AfterAsync)}({requestVariable.Usage}, {resultVariable.Usage}, {cancellationVariable.Usage}).ConfigureAwait(false);");
     }
