@@ -48,9 +48,12 @@ internal sealed class BeforeRequestMiddlewareFrame(
         ISourceWriter writer,
         RequestMiddlewareDescriptor middleware)
     {
-        var middlewareVariableName = middleware.BuildVariableName();
-        var constructorArguments = middleware.GetConstructorArguments();
-        var middlewareTypeName = middleware.GetTypeName();
+        var middlewareVariableName =
+            RequestMiddlewareCodeGeneration.BuildVariableName(
+                middleware.Type,
+                middleware.UniqueSuffix);
+        var middlewareTypeName =
+            RequestMiddlewareCodeGeneration.GetCodeTypeName(middleware.Type);
         var beforeResultVariableName =
             $"__beforeResult_{middleware.UniqueSuffix}";
         var failureResultCode =
@@ -60,9 +63,9 @@ internal sealed class BeforeRequestMiddlewareFrame(
 
         writer.WriteLine(string.Empty);
         writer.WriteComment(
-            $"Run {middleware.GetFriendlyTypeName()} before handler execution");
+            $"Run {RequestMiddlewareCodeGeneration.GetFriendlyTypeName(middleware.Type)} before handler execution");
         writer.WriteLine(
-            $"var {middlewareVariableName} = new {middlewareTypeName}({constructorArguments});");
+            $"var {middlewareVariableName} = new {middlewareTypeName}({middleware.ConstructorArguments});");
         writer.WriteLine(
             $"var {beforeResultVariableName} = await {middlewareVariableName}.{nameof(IBeforeRequestBehavior<,>.BeforeAsync)}({requestVariable.Usage}, {cancellationVariable.Usage}).ConfigureAwait(false);");
 

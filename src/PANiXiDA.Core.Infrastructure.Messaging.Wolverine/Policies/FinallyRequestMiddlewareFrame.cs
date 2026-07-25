@@ -118,12 +118,15 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
         string resultLocalName,
         string exceptionLocalName)
     {
-        var middlewareVariableName = middleware.BuildVariableName();
-        var middlewareTypeName = middleware.GetTypeName();
-        var constructorArguments = middleware.GetConstructorArguments();
+        var middlewareVariableName =
+            RequestMiddlewareCodeGeneration.BuildVariableName(
+                middleware.Type,
+                middleware.UniqueSuffix);
+        var middlewareTypeName =
+            RequestMiddlewareCodeGeneration.GetCodeTypeName(middleware.Type);
 
         writer.WriteLine(
-            $"var {middlewareVariableName} = new {middlewareTypeName}({constructorArguments});");
+            $"var {middlewareVariableName} = new {middlewareTypeName}({middleware.ConstructorArguments});");
         writer.WriteLine(
             $"await {middlewareVariableName}.{nameof(IFinallyRequestBehavior<,>.FinallyAsync)}({requestVariable.Usage}, {resultLocalName}, {exceptionLocalName}, {cancellationVariable.Usage}).ConfigureAwait(false);");
     }

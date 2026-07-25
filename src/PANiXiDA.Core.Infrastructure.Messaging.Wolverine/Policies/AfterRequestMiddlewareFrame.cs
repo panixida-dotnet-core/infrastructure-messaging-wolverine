@@ -50,15 +50,18 @@ internal sealed class AfterRequestMiddlewareFrame(
         ISourceWriter writer,
         RequestMiddlewareDescriptor middleware)
     {
-        var middlewareVariableName = middleware.BuildVariableName();
-        var constructorArguments = middleware.GetConstructorArguments();
-        var middlewareTypeName = middleware.GetTypeName();
+        var middlewareVariableName =
+            RequestMiddlewareCodeGeneration.BuildVariableName(
+                middleware.Type,
+                middleware.UniqueSuffix);
+        var middlewareTypeName =
+            RequestMiddlewareCodeGeneration.GetCodeTypeName(middleware.Type);
 
         writer.WriteLine(string.Empty);
         writer.WriteComment(
-            $"Run {middleware.GetFriendlyTypeName()} after handler execution");
+            $"Run {RequestMiddlewareCodeGeneration.GetFriendlyTypeName(middleware.Type)} after handler execution");
         writer.WriteLine(
-            $"var {middlewareVariableName} = new {middlewareTypeName}({constructorArguments});");
+            $"var {middlewareVariableName} = new {middlewareTypeName}({middleware.ConstructorArguments});");
         writer.WriteLine(
             $"await {middlewareVariableName}.{nameof(IAfterRequestBehavior<,>.AfterAsync)}({requestVariable.Usage}, {resultVariable.Usage}, {cancellationVariable.Usage}).ConfigureAwait(false);");
     }

@@ -16,6 +16,16 @@ internal sealed class RequestMiddlewareDescriptor(Type type)
     internal string UniqueSuffix { get; } =
         Guid.NewGuid().ToString("N")[..8];
 
+    internal string ConstructorArguments
+    {
+        get
+        {
+            return string.Join(
+                ", ",
+                constructorVariables.Select(variable => variable.Usage));
+        }
+    }
+
     internal static RequestMiddlewareDescriptor[] Resolve(
         Type requestType,
         Type resultType,
@@ -41,30 +51,6 @@ internal sealed class RequestMiddlewareDescriptor(Type type)
                 constructor);
 
         return constructorVariables;
-    }
-
-    internal string BuildVariableName()
-    {
-        return RequestMiddlewareCodeGeneration.BuildVariableName(
-            Type,
-            UniqueSuffix);
-    }
-
-    internal string GetTypeName()
-    {
-        return RequestMiddlewareCodeGeneration.GetCodeTypeName(Type);
-    }
-
-    internal string GetConstructorArguments()
-    {
-        return string.Join(
-            ", ",
-            constructorVariables.Select(variable => variable.Usage));
-    }
-
-    internal string GetFriendlyTypeName()
-    {
-        return RequestMiddlewareCodeGeneration.GetFriendlyTypeName(Type);
     }
 
     private static RequestMiddlewareDescriptor? TryCreate(
