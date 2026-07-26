@@ -110,7 +110,6 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
             {
                 hostBuilder.UseWolverineMediator(
                     connectionString,
-                    "wolverine",
                     configureModules,
                     configureRequestBehaviors);
             }
@@ -118,7 +117,6 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
             {
                 hostBuilder.UseWolverineMediator(
                     connectionString,
-                    "wolverine",
                     configuration ?? new ConfigurationManager(),
                     configureModules,
                     configureKafka,

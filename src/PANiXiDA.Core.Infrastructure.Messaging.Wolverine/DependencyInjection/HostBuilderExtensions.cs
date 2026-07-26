@@ -58,21 +58,18 @@ public static class HostBuilderExtensions
     /// </summary>
     /// <param name="hostBuilder">The application host builder.</param>
     /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
-    /// <param name="messageStoreSchemaName">The shared PostgreSQL schema used for Wolverine message storage.</param>
     /// <param name="configureModules">The callback that registers module DbContexts and assemblies.</param>
     /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
     /// <returns>The same host builder instance for fluent configuration.</returns>
     public static IHostBuilder UseWolverineMediator(
         this IHostBuilder hostBuilder,
         string messageStoreConnectionString,
-        string messageStoreSchemaName,
         Action<WolverineModuleConfiguration> configureModules,
         Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors = null)
     {
         return UseModularWolverineMediator(
             hostBuilder,
             messageStoreConnectionString,
-            messageStoreSchemaName,
             configureModules,
             configureWolverine: null,
             configureRequestBehaviors);
@@ -83,7 +80,6 @@ public static class HostBuilderExtensions
     /// </summary>
     /// <param name="hostBuilder">The application host builder.</param>
     /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
-    /// <param name="messageStoreSchemaName">The shared PostgreSQL schema used for Wolverine message storage.</param>
     /// <param name="configuration">The application configuration used to resolve typed Kafka options.</param>
     /// <param name="configureModules">The callback that registers module DbContexts and assemblies.</param>
     /// <param name="configureKafka">An optional callback for registering typed Kafka brokers, producers, and consumers.</param>
@@ -92,7 +88,6 @@ public static class HostBuilderExtensions
     public static IHostBuilder UseWolverineMediator(
         this IHostBuilder hostBuilder,
         string messageStoreConnectionString,
-        string messageStoreSchemaName,
         IConfiguration configuration,
         Action<WolverineModuleConfiguration> configureModules,
         Action<WolverineKafkaConfiguration>? configureKafka,
@@ -103,7 +98,6 @@ public static class HostBuilderExtensions
         return UseModularWolverineMediator(
             hostBuilder,
             messageStoreConnectionString,
-            messageStoreSchemaName,
             configureModules,
             options =>
             {
@@ -218,7 +212,6 @@ public static class HostBuilderExtensions
     private static IHostBuilder UseModularWolverineMediator(
         IHostBuilder hostBuilder,
         string messageStoreConnectionString,
-        string messageStoreSchemaName,
         Action<WolverineModuleConfiguration> configureModules,
         Action<WolverineOptions>? configureWolverine,
         Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors)
@@ -240,7 +233,6 @@ public static class HostBuilderExtensions
                 ConfigureModularWolverineMediator(
                     options,
                     messageStoreConnectionString,
-                    messageStoreSchemaName,
                     moduleRegistry,
                     configureWolverine,
                     configureRequestBehaviors);
@@ -300,19 +292,11 @@ public static class HostBuilderExtensions
     private static void ConfigureModularWolverineMediator(
         WolverineOptions options,
         string messageStoreConnectionString,
-        string messageStoreSchemaName,
         WolverineModuleRegistry moduleRegistry,
         Action<WolverineOptions>? configureWolverine,
         Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors)
     {
         ValidateMessageStoreConnectionString(messageStoreConnectionString);
-
-        if (string.IsNullOrWhiteSpace(messageStoreSchemaName))
-        {
-            throw new ArgumentException(
-                "The Wolverine message store schema name must not be empty.",
-                nameof(messageStoreSchemaName));
-        }
 
         options.ApplicationAssembly = ResolveApplicationAssembly();
         options.CodeGeneration.TypeLoadMode = TypeLoadMode.Auto;
@@ -323,7 +307,6 @@ public static class HostBuilderExtensions
         ConfigureInboxOutbox(
             options,
             messageStoreConnectionString,
-            messageStoreSchemaName,
             moduleRegistry);
 
         ConfigureRequestMiddlewares(
@@ -365,12 +348,10 @@ public static class HostBuilderExtensions
     private static void ConfigureInboxOutbox(
         WolverineOptions options,
         string messageStoreConnectionString,
-        string messageStoreSchemaName,
         WolverineModuleRegistry moduleRegistry)
     {
         var storage = options.PersistMessagesWithPostgresql(
-            messageStoreConnectionString,
-            messageStoreSchemaName);
+            messageStoreConnectionString);
 
         foreach (var dbContextType in moduleRegistry.Registrations
                      .Select(registration => registration.DbContextType))

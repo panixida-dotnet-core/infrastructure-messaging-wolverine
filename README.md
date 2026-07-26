@@ -71,7 +71,6 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
 
 builder.Host.UseWolverineMediator(
     builder.Configuration.GetConnectionString("PostgreSqlConnectionString")!,
-    messageStoreSchemaName: "wolverine",
     modules =>
     {
         modules.AddModule<IdentityWriteDbContext>(
@@ -83,7 +82,7 @@ builder.Host.UseWolverineMediator(
     });
 ```
 
-This overload registers one `IMediator`, one `IEventBus`, and one Wolverine runtime. Both DbContexts are enrolled in the same PostgreSQL message store and therefore use the same durable inbox/outbox tables in the specified schema.
+This overload registers one `IMediator`, one `IEventBus`, and one Wolverine runtime. Both DbContexts are enrolled in the same PostgreSQL message store and therefore use the same durable inbox/outbox tables in the `wolverine` schema.
 
 Handlers for the same event type are separated into independent local queues and transactions. Durable message identity includes the destination so fan-out handlers have independent inbox records, retries, and failure handling.
 
