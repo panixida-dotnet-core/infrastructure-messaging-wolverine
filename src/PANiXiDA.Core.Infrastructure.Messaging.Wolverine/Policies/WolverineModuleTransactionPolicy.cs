@@ -33,9 +33,16 @@ internal sealed class WolverineModuleTransactionPolicy : IHandlerPolicy
                 .Where(provider => provider.CanApply(chain, container))
                 .ToArray();
 
-            if (providers.Length != 1)
+            if (providers.Length == 0)
             {
                 continue;
+            }
+
+            if (providers.Length > 1)
+            {
+                throw new InvalidOperationException(
+                    $"Handler chain for message '{chain.MessageType.FullName}' matches more than one persistence provider. " +
+                    $"Use a single transactional persistence provider or opt out with {nameof(NonTransactionalAttribute)}.");
             }
 
             providers[0].ApplyTransactionSupport(chain, container);
