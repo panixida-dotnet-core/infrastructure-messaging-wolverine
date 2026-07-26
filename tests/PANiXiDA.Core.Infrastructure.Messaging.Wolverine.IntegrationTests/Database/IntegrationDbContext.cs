@@ -12,6 +12,8 @@ public sealed class IntegrationDbContext(DbContextOptions<IntegrationDbContext> 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasDefaultSchema("first_module");
+
         modelBuilder.Entity<IntegrationRecord>(entity =>
         {
             entity.ToTable("integration_records");

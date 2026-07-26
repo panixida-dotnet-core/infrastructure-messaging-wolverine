@@ -7,22 +7,23 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 internal sealed class BeforeRequestMiddlewareFrame(
     Type requestType,
     Type resultType,
-    Type closedMiddlewareType) : RequestMiddlewareFrameBase(
+    RequestMiddlewareDescriptor[] descriptors) : RequestMiddlewareFrameBase(
     requestType,
-    closedMiddlewareType,
+    descriptors,
     requiresMessageContext: true)
 {
     internal static BeforeRequestMiddlewareFrame? TryCreate(
         Type requestType,
         Type resultType,
-        Type middlewareType)
+        IReadOnlyList<Type> middlewareTypes)
     {
-        if (!RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-                middlewareType,
-                requestType,
-                resultType,
-                typeof(IBeforeRequestBehavior<,>),
-                out var closedMiddlewareType))
+        var descriptors = RequestMiddlewareDescriptor.Resolve(
+            requestType,
+            resultType,
+            typeof(IBeforeRequestBehavior<,>),
+            middlewareTypes);
+
+        if (descriptors.Length == 0)
         {
             return null;
         }
@@ -30,31 +31,49 @@ internal sealed class BeforeRequestMiddlewareFrame(
         return new BeforeRequestMiddlewareFrame(
             requestType,
             resultType,
-            closedMiddlewareType);
+            descriptors);
     }
 
     public override void GenerateCode(GeneratedMethod method, ISourceWriter writer)
     {
-        var middlewareVariableName = BuildMiddlewareVariableName();
-        var constructorArguments = GetConstructorArguments();
-        var middlewareTypeName = GetMiddlewareTypeName();
-        var beforeResultVariableName = $"__beforeResult_{uniqueSuffix}";
-        var failureResultCode = RequestMiddlewareCodeGeneration.BuildFailureResultCode(
-            resultType,
-            beforeResultVariableName);
+        foreach (var middleware in middlewareDescriptors)
+        {
+            WriteMiddleware(writer, middleware);
+        }
+
+        Next?.GenerateCode(method, writer);
+    }
+
+    private void WriteMiddleware(
+        ISourceWriter writer,
+        RequestMiddlewareDescriptor middleware)
+    {
+        var middlewareVariableName =
+            RequestMiddlewareCodeGeneration.BuildVariableName(
+                middleware.Type,
+                middleware.UniqueSuffix);
+        var middlewareTypeName =
+            RequestMiddlewareCodeGeneration.GetCodeTypeName(middleware.Type);
+        var beforeResultVariableName =
+            $"__beforeResult_{middleware.UniqueSuffix}";
+        var failureResultCode =
+            RequestMiddlewareCodeGeneration.BuildFailureResultCode(
+                resultType,
+                beforeResultVariableName);
 
         writer.WriteLine(string.Empty);
-        writer.WriteComment($"Run {GetFriendlyMiddlewareTypeName()} before handler execution");
-        writer.WriteLine($"var {middlewareVariableName} = new {middlewareTypeName}({constructorArguments});");
+        writer.WriteComment(
+            $"Run {RequestMiddlewareCodeGeneration.GetFriendlyTypeName(middleware.Type)} before handler execution");
+        writer.WriteLine(
+            $"var {middlewareVariableName} = new {middlewareTypeName}({middleware.ConstructorArguments});");
         writer.WriteLine(
             $"var {beforeResultVariableName} = await {middlewareVariableName}.{nameof(IBeforeRequestBehavior<,>.BeforeAsync)}({requestVariable.Usage}, {cancellationVariable.Usage}).ConfigureAwait(false);");
 
-        writer.Write($"BLOCK:if ({beforeResultVariableName}.{nameof(Result.IsFailure)})");
+        writer.Write(
+            $"BLOCK:if ({beforeResultVariableName}.{nameof(Result.IsFailure)})");
         writer.WriteLine(
             $"await {messageContextVariable.Usage}.EnqueueCascadingAsync({failureResultCode}).ConfigureAwait(false);");
         writer.WriteLine("return;");
         writer.FinishBlock();
-
-        Next?.GenerateCode(method, writer);
     }
 }

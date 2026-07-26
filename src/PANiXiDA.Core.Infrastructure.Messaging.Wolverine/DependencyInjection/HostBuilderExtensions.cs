@@ -1,4 +1,5 @@
 using JasperFx.CodeGeneration;
+using JasperFx.CodeGeneration.Model;
 
 using FluentValidation;
 
@@ -7,6 +8,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 
 using System.Reflection;
@@ -48,6 +51,63 @@ public static class HostBuilderExtensions
                 configureRequestBehaviors: null,
                 discoveryAssemblies);
         });
+    }
+
+    /// <summary>
+    /// Configures one Wolverine runtime and PostgreSQL message store for multiple EF Core modules.
+    /// </summary>
+    /// <param name="hostBuilder">The application host builder.</param>
+    /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
+    /// <param name="configureModules">The callback that registers module DbContexts and assemblies.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <returns>The same host builder instance for fluent configuration.</returns>
+    public static IHostBuilder UseWolverineMediator(
+        this IHostBuilder hostBuilder,
+        string messageStoreConnectionString,
+        Action<WolverineModuleConfiguration> configureModules,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors = null)
+    {
+        return UseModularWolverineMediator(
+            hostBuilder,
+            messageStoreConnectionString,
+            configureModules,
+            configureWolverine: null,
+            configureRequestBehaviors);
+    }
+
+    /// <summary>
+    /// Configures one Wolverine runtime, PostgreSQL message store, and Kafka topology for multiple EF Core modules.
+    /// </summary>
+    /// <param name="hostBuilder">The application host builder.</param>
+    /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
+    /// <param name="configuration">The application configuration used to resolve typed Kafka options.</param>
+    /// <param name="configureModules">The callback that registers module DbContexts and assemblies.</param>
+    /// <param name="configureKafka">An optional callback for registering typed Kafka brokers, producers, and consumers.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <returns>The same host builder instance for fluent configuration.</returns>
+    public static IHostBuilder UseWolverineMediator(
+        this IHostBuilder hostBuilder,
+        string messageStoreConnectionString,
+        IConfiguration configuration,
+        Action<WolverineModuleConfiguration> configureModules,
+        Action<WolverineKafkaConfiguration>? configureKafka,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors = null)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        return UseModularWolverineMediator(
+            hostBuilder,
+            messageStoreConnectionString,
+            configureModules,
+            options =>
+            {
+                var kafkaTopologyBuilder = new WolverineKafkaConfiguration(
+                    options,
+                    configuration);
+
+                configureKafka?.Invoke(kafkaTopologyBuilder);
+            },
+            configureRequestBehaviors);
     }
 
     /// <summary>
@@ -149,6 +209,36 @@ public static class HostBuilderExtensions
         });
     }
 
+    private static IHostBuilder UseModularWolverineMediator(
+        IHostBuilder hostBuilder,
+        string messageStoreConnectionString,
+        Action<WolverineModuleConfiguration> configureModules,
+        Action<WolverineOptions>? configureWolverine,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors)
+    {
+        ArgumentNullException.ThrowIfNull(configureModules);
+
+        var moduleConfiguration = new WolverineModuleConfiguration();
+        configureModules(moduleConfiguration);
+        var moduleRegistry = moduleConfiguration.Build();
+        var discoveryAssemblies = moduleRegistry.DiscoveryAssemblies.ToArray();
+
+        return RegisterFluentValidationValidators(
+            hostBuilder,
+            discoveryAssemblies)
+            .ConfigureServices(services =>
+                services.AddWolverineMediator(moduleRegistry))
+            .UseWolverine(options =>
+            {
+                ConfigureModularWolverineMediator(
+                    options,
+                    messageStoreConnectionString,
+                    moduleRegistry,
+                    configureWolverine,
+                    configureRequestBehaviors);
+            });
+    }
+
     private static IHostBuilder RegisterFluentValidationValidators(
         IHostBuilder hostBuilder,
         Assembly[] discoveryAssemblies)
@@ -199,6 +289,41 @@ public static class HostBuilderExtensions
         }
     }
 
+    private static void ConfigureModularWolverineMediator(
+        WolverineOptions options,
+        string messageStoreConnectionString,
+        WolverineModuleRegistry moduleRegistry,
+        Action<WolverineOptions>? configureWolverine,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors)
+    {
+        ValidateMessageStoreConnectionString(messageStoreConnectionString);
+
+        options.ApplicationAssembly = ResolveApplicationAssembly();
+        options.CodeGeneration.TypeLoadMode = TypeLoadMode.Auto;
+        options.ServiceLocationPolicy = ServiceLocationPolicy.AlwaysAllowed;
+        options.MultipleHandlerBehavior = MultipleHandlerBehavior.Separated;
+        options.Durability.MessageIdentity = MessageIdentity.IdAndDestination;
+
+        ConfigureInboxOutbox(
+            options,
+            messageStoreConnectionString,
+            moduleRegistry);
+
+        ConfigureRequestMiddlewares(
+            options,
+            configureRequestBehaviors,
+            useModuleRouting: true);
+
+        options.Policies.Add(new WolverineModuleTransactionPolicy());
+
+        configureWolverine?.Invoke(options);
+
+        foreach (var assembly in moduleRegistry.DiscoveryAssemblies)
+        {
+            options.Discovery.IncludeAssembly(assembly);
+        }
+    }
+
     private static Assembly ResolveApplicationAssembly()
     {
         return Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
@@ -220,13 +345,49 @@ public static class HostBuilderExtensions
         options.Policies.UseDurableOutboxOnAllSendingEndpoints();
     }
 
+    private static void ConfigureInboxOutbox(
+        WolverineOptions options,
+        string messageStoreConnectionString,
+        WolverineModuleRegistry moduleRegistry)
+    {
+        var storage = options.PersistMessagesWithPostgresql(
+            messageStoreConnectionString);
+
+        foreach (var dbContextType in moduleRegistry.Registrations
+                     .Select(registration => registration.DbContextType))
+        {
+            storage.Enroll(dbContextType);
+        }
+
+        options.UseEntityFrameworkCoreTransactions();
+
+        options.Policies.UseDurableLocalQueues();
+        options.Policies.UseDurableInboxOnAllListeners();
+        options.Policies.UseDurableOutboxOnAllSendingEndpoints();
+    }
+
     private static void ConfigureRequestMiddlewares(
         WolverineOptions options,
-        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors)
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors,
+        bool useModuleRouting = false)
     {
-        var configuration = WolverineRequestBehaviorConfiguration.CreateDefault();
+        var configuration = useModuleRouting
+            ? WolverineRequestBehaviorConfiguration.CreateModularDefault()
+            : WolverineRequestBehaviorConfiguration.CreateDefault();
         configureRequestBehaviors?.Invoke(configuration);
 
         options.Policies.Add(new RequestMiddlewareChainPolicy(configuration.Build()));
     }
+
+    private static void ValidateMessageStoreConnectionString(
+        string messageStoreConnectionString)
+    {
+        if (string.IsNullOrWhiteSpace(messageStoreConnectionString))
+        {
+            throw new ArgumentException(
+                "The Wolverine message store connection string must not be empty.",
+                nameof(messageStoreConnectionString));
+        }
+    }
+
 }

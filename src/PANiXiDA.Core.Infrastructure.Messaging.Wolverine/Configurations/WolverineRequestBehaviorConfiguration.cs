@@ -55,6 +55,24 @@ public sealed class WolverineRequestBehaviorConfiguration
         return configuration;
     }
 
+    internal static WolverineRequestBehaviorConfiguration CreateModularDefault()
+    {
+        var configuration = new WolverineRequestBehaviorConfiguration();
+
+        configuration.Before.Add(typeof(ActivateWolverineModuleBehavior<,>));
+        configuration.Before.Add(typeof(ValidationBehavior<,>));
+        configuration.Before.Add(typeof(BeginTransactionBehavior<,>));
+
+        configuration.After.Add(typeof(PublishDomainEventsBehavior<,>));
+        configuration.After.Add(typeof(CommitTransactionBehavior<,>));
+        configuration.After.Add(typeof(FlushOutgoingMessagesBehavior<,>));
+
+        configuration.Finally.Add(typeof(CleanupTransactionBehavior<,>));
+        configuration.Finally.Add(typeof(DeactivateWolverineModuleBehavior<,>));
+
+        return configuration;
+    }
+
     internal RequestMiddlewareRegistry Build()
     {
         return new RequestMiddlewareRegistry(

@@ -27,6 +27,32 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         registry.FinallyMiddlewareTypes.ShouldBe(new[] { typeof(CleanupTransactionBehavior<,>) });
     }
 
+    [Fact(DisplayName = "CreateModularDefault wraps the built-in pipeline with module activation")]
+    public void CreateModularDefaultShouldWrapBuiltInPipelineWithModuleActivation()
+    {
+        var configuration = WolverineRequestBehaviorConfiguration.CreateModularDefault();
+
+        var registry = configuration.Build();
+
+        registry.BeforeMiddlewareTypes.ShouldBe(new[]
+        {
+            typeof(ActivateWolverineModuleBehavior<,>),
+            typeof(ValidationBehavior<,>),
+            typeof(BeginTransactionBehavior<,>)
+        });
+        registry.AfterMiddlewareTypes.ShouldBe(new[]
+        {
+            typeof(PublishDomainEventsBehavior<,>),
+            typeof(CommitTransactionBehavior<,>),
+            typeof(FlushOutgoingMessagesBehavior<,>)
+        });
+        registry.FinallyMiddlewareTypes.ShouldBe(new[]
+        {
+            typeof(CleanupTransactionBehavior<,>),
+            typeof(DeactivateWolverineModuleBehavior<,>)
+        });
+    }
+
     [Fact(DisplayName = "Stage configuration appends and inserts behavior relative to anchors")]
     public void StageConfigurationShouldAppendAndInsertBehaviorRelativeToAnchors()
     {

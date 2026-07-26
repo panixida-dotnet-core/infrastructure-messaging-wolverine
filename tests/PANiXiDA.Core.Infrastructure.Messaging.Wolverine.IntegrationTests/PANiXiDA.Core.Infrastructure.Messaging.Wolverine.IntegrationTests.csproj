@@ -15,6 +15,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\PANiXiDA.Core.Infrastructure.Messaging.Wolverine\PANiXiDA.Core.Infrastructure.Messaging.Wolverine.csproj" />
+        <ProjectReference Include="..\PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule\PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.csproj" />
     </ItemGroup>
 
     <ItemGroup>

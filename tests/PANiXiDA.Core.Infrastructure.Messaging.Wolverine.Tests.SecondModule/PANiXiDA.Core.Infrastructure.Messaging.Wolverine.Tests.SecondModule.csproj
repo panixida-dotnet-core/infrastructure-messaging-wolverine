@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\PANiXiDA.Core.Infrastructure.Messaging.Wolverine\PANiXiDA.Core.Infrastructure.Messaging.Wolverine.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="PANiXiDA.Core.Application.Messaging.EventBus" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.EventBus.Handlers" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Contracts" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Handlers" />
+        <Using Include="PANiXiDA.Core.Domain.DomainEvents" />
+        <Using Include="PANiXiDA.Core.ResultPattern" />
+    </ItemGroup>
+</Project>

@@ -41,53 +41,44 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
 
     private void AddFinallyMiddleware(HandlerChain chain, Variable resultVariable)
     {
-        for (var i = registry.FinallyMiddlewareTypes.Count - 1; i >= 0; i--)
-        {
-            var frame = FinallyRequestMiddlewareFrame.TryCreate(
-                chain.MessageType,
-                resultVariable,
-                registry.FinallyMiddlewareTypes[i]);
+        var frame = FinallyRequestMiddlewareFrame.TryCreate(
+            chain.MessageType,
+            resultVariable,
+            registry.FinallyMiddlewareTypes);
 
-            if (frame is not null)
-            {
-                chain.Middleware.Add(frame);
-            }
+        if (frame is not null)
+        {
+            chain.Middleware.Add(frame);
         }
     }
 
     private void AddBeforeMiddleware(HandlerChain chain, Type resultType)
     {
-        for (var i = 0; i < registry.BeforeMiddlewareTypes.Count; i++)
-        {
-            var frame = BeforeRequestMiddlewareFrame.TryCreate(
-                chain.MessageType,
-                resultType,
-                registry.BeforeMiddlewareTypes[i]);
+        var frame = BeforeRequestMiddlewareFrame.TryCreate(
+            chain.MessageType,
+            resultType,
+            registry.BeforeMiddlewareTypes);
 
-            if (frame is not null)
-            {
-                chain.Middleware.Add(frame);
-            }
+        if (frame is not null)
+        {
+            chain.Middleware.Add(frame);
         }
     }
 
     private void AddAfterMiddleware(HandlerChain chain, Variable resultVariable)
     {
-        for (var i = registry.AfterMiddlewareTypes.Count - 1; i >= 0; i--)
-        {
-            var frame = AfterRequestMiddlewareFrame.TryCreate(
-                chain.MessageType,
-                resultVariable,
-                registry.AfterMiddlewareTypes[i]);
+        var frame = AfterRequestMiddlewareFrame.TryCreate(
+            chain.MessageType,
+            resultVariable,
+            registry.AfterMiddlewareTypes);
 
-            if (frame is not null)
-            {
-                chain.Middleware.Add(frame);
-            }
+        if (frame is not null)
+        {
+            chain.Middleware.Add(frame);
         }
     }
 
-    private static bool IsRequestMessageType(Type messageType)
+    internal static bool IsRequestMessageType(Type messageType)
     {
         return messageType
             .GetInterfaces()

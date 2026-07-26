@@ -20,6 +20,8 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - Explicit Kafka producer and consumer registration per event type.
 - Durable inbox and outbox policies for listeners, local queues, and external senders.
 - PostgreSQL message storage with EF Core transaction integration.
+- One shared Wolverine runtime and message-store schema across multiple module DbContexts.
+- Request-scoped routing to keyed module `IUnitOfWork` and EF Core outbox services.
 - FluentValidation validator registration from Wolverine discovery assemblies.
 - Wolverine application assembly resolution from the entry assembly for pre-generated handler code.
 - Runtime compilation support for Wolverine `TypeLoadMode.Auto`.
@@ -59,6 +61,42 @@ builder.Host.UseWolverineMediator<AppDbContext>(
 The package sets Wolverine's application assembly to the process entry assembly. This keeps generated handler code in the publishable application assembly when using Wolverine code generation commands such as `dotnet run -- codegen write`.
 
 The package uses Wolverine `TypeLoadMode.Auto` and includes Wolverine runtime compilation support for handler code that has not been pre-generated.
+
+### Modular Setup
+
+Use the non-generic overload when a host contains multiple modules with independent write DbContexts:
+
+```csharp
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
+
+builder.Host.UseWolverineMediator(
+    builder.Configuration.GetConnectionString("PostgreSqlConnectionString")!,
+    modules =>
+    {
+        modules.AddModule<IdentityWriteDbContext>(
+            typeof(CreateUserCommand).Assembly,
+            typeof(IdentityIntegrationEventHandler).Assembly);
+        modules.AddModule<OrdersWriteDbContext>(
+            typeof(CreateOrderCommand).Assembly,
+            typeof(OrdersIntegrationEventHandler).Assembly);
+    });
+```
+
+This overload registers one `IMediator`, one `IEventBus`, and one Wolverine runtime. Both DbContexts are enrolled in the same PostgreSQL message store and therefore use the same durable inbox/outbox tables in the `wolverine` schema.
+
+Handlers for the same event type are separated into independent local queues and transactions. Durable message identity includes the destination so fan-out handlers have independent inbox records, retries, and failure handling.
+
+The first assembly passed to `AddModule<TDbContext>()` contains the module's requests and is owned by exactly one DbContext. Additional assemblies are used only for handler and validator discovery. Assigning one request assembly to different DbContexts is rejected during configuration.
+
+The module persistence registration must expose keyed `IUnitOfWork` services under the corresponding DbContext types. `PANiXiDA.Core.Infrastructure.Persistence.Ef` does this automatically for write DbContexts. During a mediator request, the package activates the owning module and routes the existing non-generic `IUnitOfWork` and `IEventBus` abstractions to that module's transaction and EF Core outbox.
+
+Application repositories remain responsible for persisting each business operation before the handler completes. `IUnitOfWork.CommitTransactionAsync()` only completes the active transaction and is not expected to save pending ORM changes.
+
+For ordinary Wolverine messages, including events, module selection is not based on the message assembly. Wolverine detects the transaction from the concrete handler's DbContext dependency. This allows handlers for one shared event contract to commit or roll back independently in different module schemas. A transactional handler must depend on exactly one write DbContext.
+
+`IEventBus` uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published by a native handler therefore share its selected DbContext transaction.
+
+Do not synchronously invoke a command from another module while the first module transaction is active. Separate DbContexts use separate local database transactions, so such a call cannot be atomic. Publish an event through the outbox and let the receiving module handle it independently.
 
 ## Kafka Topics
 
@@ -167,6 +205,8 @@ protected override void OnModelCreating(ModelBuilder modelBuilder)
 }
 ```
 
+With the modular overload, the configured message-store schema is shared by all modules. Let Wolverine managed resources own that schema, or map it in exactly one dedicated messaging migration context. Do not map the shared envelope tables in every business module DbContext.
+
 ## Behavior
 
 Commands and queries are invoked in-process through Wolverine and PANiXiDA request contracts.
@@ -187,6 +227,8 @@ after:   CommitTransactionBehavior
 after:   FlushOutgoingMessagesBehavior
 finally: CleanupTransactionBehavior
 ```
+
+The modular overload activates module routing before validation, keeps the application `CleanupTransactionBehavior`, and releases module routing after cleanup. The application-facing pipeline continues to depend only on the PANiXiDA `IUnitOfWork` and `IEventBus` abstractions.
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 
