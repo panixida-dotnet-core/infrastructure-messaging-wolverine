@@ -46,8 +46,7 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
         Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors = null,
         bool useModuleRouting = false)
     {
-        container ??= new PostgreSqlBuilder()
-            .WithImage("postgres:16-alpine")
+        container ??= new PostgreSqlBuilder("postgres:16-alpine")
             .WithDatabase("wolverine_integration_tests")
             .WithUsername("postgres")
             .WithPassword("postgres")
