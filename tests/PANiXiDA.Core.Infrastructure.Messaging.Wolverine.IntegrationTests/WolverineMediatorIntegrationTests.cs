@@ -322,8 +322,7 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
     public async Task KafkaBrokerShouldReceiveEventAfterOutboxFlushAndHandleItOnce()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var kafka = new KafkaBuilder()
-            .WithImage("apache/kafka-native:4.0.0")
+        await using var kafka = new KafkaBuilder("apache/kafka-native:4.0.0")
             .WithVendor(KafkaVendor.ApacheSoftwareFoundation)
             .WithKRaft()
             .Build();

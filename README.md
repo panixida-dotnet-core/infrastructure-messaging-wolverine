@@ -286,6 +286,12 @@ dotnet build --configuration Release
 dotnet test --configuration Release
 ```
 
+### Continuous integration
+
+Every pull request and push to `main` runs formatting, tests, and mandatory
+SonarQube analysis. Publishing from `main` starts only after the SonarQube
+Quality Gate succeeds.
+
 ## License
 
 This project is licensed under the Apache-2.0 license.
