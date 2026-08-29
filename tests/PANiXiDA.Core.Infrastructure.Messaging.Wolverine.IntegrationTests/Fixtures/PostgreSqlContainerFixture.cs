@@ -98,7 +98,7 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
 
         if (useModuleRouting)
         {
-            void configureModules(WolverineModuleConfiguration modules)
+            static void configureModules(WolverineModuleConfiguration modules)
             {
                 modules
                     .AddModule<IntegrationDbContext>(
