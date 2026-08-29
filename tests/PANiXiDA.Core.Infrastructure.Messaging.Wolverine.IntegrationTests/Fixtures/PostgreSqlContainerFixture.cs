@@ -98,12 +98,14 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
 
         if (useModuleRouting)
         {
-            Action<WolverineModuleConfiguration> configureModules = modules =>
+            static void configureModules(WolverineModuleConfiguration modules)
+            {
                 modules
                     .AddModule<IntegrationDbContext>(
                         typeof(PostgreSqlContainerFixture).Assembly)
                     .AddModule<SecondModuleDbContext>(
                         typeof(CreateSecondModuleRecordCommand).Assembly);
+            }
 
             if (configureKafka is null)
             {

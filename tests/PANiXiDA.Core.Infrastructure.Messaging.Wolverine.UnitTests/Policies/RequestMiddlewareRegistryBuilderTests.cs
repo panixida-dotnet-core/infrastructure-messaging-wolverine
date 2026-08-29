@@ -15,13 +15,13 @@ public sealed class RequestMiddlewareRegistryBuilderTests
             builder.AddFinally(typeof(TestFinallyBehavior<,>));
         });
 
-        registry.BeforeMiddlewareTypes.ShouldBe(new[]
-        {
+        registry.BeforeMiddlewareTypes.ShouldBe(
+        [
             typeof(TestBeforeBehavior<,>),
             typeof(SecondBeforeBehavior<,>)
-        });
-        registry.AfterMiddlewareTypes.ShouldBe(new[] { typeof(TestAfterBehavior<,>) });
-        registry.FinallyMiddlewareTypes.ShouldBe(new[] { typeof(TestFinallyBehavior<,>) });
+        ]);
+        registry.AfterMiddlewareTypes.ShouldBe([typeof(TestAfterBehavior<,>)]);
+        registry.FinallyMiddlewareTypes.ShouldBe([typeof(TestFinallyBehavior<,>)]);
     }
 
     [Fact(DisplayName = "Builder generic methods register middleware")]
@@ -34,9 +34,9 @@ public sealed class RequestMiddlewareRegistryBuilderTests
             .AddFinally<TestFinallyBehavior<TestCommand, Result>>()
             .Build();
 
-        registry.BeforeMiddlewareTypes.ShouldBe(new[] { typeof(TestBeforeBehavior<TestCommand, Result>) });
-        registry.AfterMiddlewareTypes.ShouldBe(new[] { typeof(TestAfterBehavior<TestCommand, Result>) });
-        registry.FinallyMiddlewareTypes.ShouldBe(new[] { typeof(TestFinallyBehavior<TestCommand, Result>) });
+        registry.BeforeMiddlewareTypes.ShouldBe([typeof(TestBeforeBehavior<TestCommand, Result>)]);
+        registry.AfterMiddlewareTypes.ShouldBe([typeof(TestAfterBehavior<TestCommand, Result>)]);
+        registry.FinallyMiddlewareTypes.ShouldBe([typeof(TestFinallyBehavior<TestCommand, Result>)]);
     }
 
     [Fact(DisplayName = "Builder registers params middleware arrays")]

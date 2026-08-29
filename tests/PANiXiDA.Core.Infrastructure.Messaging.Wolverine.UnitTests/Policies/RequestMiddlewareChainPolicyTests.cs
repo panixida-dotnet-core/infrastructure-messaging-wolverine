@@ -35,12 +35,12 @@ public sealed class RequestMiddlewareChainPolicyTests
 
         chain.Middleware
             .Select(frame => frame.GetType())
-            .ShouldBe(new[]
-            {
+            .ShouldBe(
+            [
                 typeof(FinallyRequestMiddlewareFrame),
                 typeof(BeforeRequestMiddlewareFrame),
                 typeof(AfterRequestMiddlewareFrame)
-            });
+            ]);
     }
 
     [Fact(DisplayName = "Apply skips request handler chain without Result return variable")]
@@ -66,7 +66,7 @@ public sealed class RequestMiddlewareChainPolicyTests
 
         AddHandlerCall(chain, nameof(ResultHandler.HandleAgain));
 
-        var act = () => policy.Apply([chain], null!, null!);
+        void act() => policy.Apply([chain], null!, null!);
 
         var exception = Should.Throw<InvalidOperationException>(act);
 

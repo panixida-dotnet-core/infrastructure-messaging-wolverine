@@ -32,14 +32,13 @@ internal sealed class RequestMiddlewareDescriptor(Type type)
         Type behaviorInterfaceType,
         IReadOnlyList<Type> middlewareTypes)
     {
-        return middlewareTypes
+        return [.. middlewareTypes
             .Select(middlewareType => TryCreate(
                 requestType,
                 resultType,
                 behaviorInterfaceType,
                 middlewareType))
-            .OfType<RequestMiddlewareDescriptor>()
-            .ToArray();
+            .OfType<RequestMiddlewareDescriptor>()];
     }
 
     internal IEnumerable<Variable> ResolveVariables(

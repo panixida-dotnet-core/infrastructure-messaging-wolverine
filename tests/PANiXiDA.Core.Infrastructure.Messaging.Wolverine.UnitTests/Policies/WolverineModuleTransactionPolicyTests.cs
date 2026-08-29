@@ -56,7 +56,7 @@ public sealed class WolverineModuleTransactionPolicyTests
                 canApply: true,
                 out _));
 
-        var act = () => policy.Apply([chain], rules, null!);
+        void act() => policy.Apply([chain], rules, null!);
 
         var exception = Should.Throw<InvalidOperationException>(act);
 
