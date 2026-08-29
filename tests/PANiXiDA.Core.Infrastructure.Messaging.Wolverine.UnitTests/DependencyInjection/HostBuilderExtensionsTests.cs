@@ -30,10 +30,10 @@ public sealed class HostBuilderExtensionsTests
             },
             typeof(HostBuilderExtensionsTests).Assembly);
 
-        var act = async () =>
+        async Task act()
         {
             using var host = await hostBuilder.StartAsync(TestContext.Current.CancellationToken);
-        };
+        }
 
         var exception = await Should.ThrowAsync<ArgumentException>(act);
 
@@ -51,11 +51,11 @@ public sealed class HostBuilderExtensionsTests
             modules => modules.AddModule<TestDbContext>(
                 typeof(HostBuilderExtensionsTests).Assembly));
 
-        var act = async () =>
+        async Task act()
         {
             using var host = await hostBuilder.StartAsync(
                 TestContext.Current.CancellationToken);
-        };
+        }
 
         var exception = await Should.ThrowAsync<ArgumentException>(act);
 

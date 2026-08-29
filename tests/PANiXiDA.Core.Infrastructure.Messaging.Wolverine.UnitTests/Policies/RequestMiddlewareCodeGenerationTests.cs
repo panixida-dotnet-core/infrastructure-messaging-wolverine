@@ -69,7 +69,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
     [Fact(DisplayName = "TryResolveClosedMiddlewareType throws for open generic middleware with invalid parameter count")]
     public void TryResolveClosedMiddlewareTypeShouldThrowForOpenGenericMiddlewareWithInvalidParameterCount()
     {
-        var act = () =>
+        static void act()
         {
             RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
                 typeof(ThreeParameterBeforeBehavior<,,>),
@@ -77,7 +77,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
                 typeof(Result),
                 typeof(IBeforeRequestBehavior<,>),
                 out _);
-        };
+        }
 
         var exception = Should.Throw<InvalidOperationException>(act);
 
@@ -116,7 +116,10 @@ public sealed class RequestMiddlewareCodeGenerationTests
     [Fact(DisplayName = "ResolveConstructor rejects middleware without a single public constructor")]
     public void ResolveConstructorShouldRejectMiddlewareWithoutSinglePublicConstructor()
     {
-        var act = () => RequestMiddlewareCodeGeneration.ResolveConstructor(typeof(BehaviorWithoutPublicConstructor));
+        static void act()
+        {
+            RequestMiddlewareCodeGeneration.ResolveConstructor(typeof(BehaviorWithoutPublicConstructor));
+        }
 
         var exception = Should.Throw<InvalidOperationException>(act);
 

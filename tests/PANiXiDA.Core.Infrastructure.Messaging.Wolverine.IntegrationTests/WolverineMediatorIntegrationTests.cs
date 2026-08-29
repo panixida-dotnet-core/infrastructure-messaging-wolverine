@@ -295,14 +295,14 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         var cancellationToken = TestContext.Current.CancellationToken;
         var id = Guid.NewGuid();
 
-        var act = async () =>
+        async Task act()
         {
             await app.ExecuteWithMediatorAsync(
                 (mediator, cancellationToken) => mediator.SendAsync(
                     new CreateIntegrationRecordAndFailAfterPublishCommand(id, "rollback"),
                     cancellationToken),
                 cancellationToken);
-        };
+        }
 
         var exception = await Should.ThrowAsync<Exception>(act);
 

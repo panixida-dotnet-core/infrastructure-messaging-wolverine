@@ -7,7 +7,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects invalid expected interface type")]
     public void ValidateBehaviorRegistrationShouldRejectInvalidExpectedInterfaceType()
     {
-        var act = () => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+        static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(TestBeforeBehavior<,>),
             typeof(IDisposable),
             "Before");
@@ -21,7 +21,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects abstract middleware")]
     public void ValidateBehaviorRegistrationShouldRejectAbstractMiddleware()
     {
-        var act = () => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+        static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(AbstractBeforeBehavior<,>),
             typeof(IBeforeRequestBehavior<,>),
             "Before");
@@ -35,7 +35,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects interface middleware")]
     public void ValidateBehaviorRegistrationShouldRejectInterfaceMiddleware()
     {
-        var act = () => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+        static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(IBeforeBehaviorContract<,>),
             typeof(IBeforeRequestBehavior<,>),
             "Before");
@@ -53,7 +53,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
             typeof(string),
             typeof(List<>));
 
-        var act = () => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+        void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             middlewareType,
             typeof(IBeforeRequestBehavior<,>),
             "Before");
@@ -67,7 +67,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects open generic middleware with invalid parameter count")]
     public void ValidateBehaviorRegistrationShouldRejectOpenGenericMiddlewareWithInvalidParameterCount()
     {
-        var act = () => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+        static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(ThreeParameterBeforeBehavior<,,>),
             typeof(IBeforeRequestBehavior<,>),
             "Before");
@@ -81,7 +81,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects middleware without a single public constructor")]
     public void ValidateBehaviorRegistrationShouldRejectMiddlewareWithoutSinglePublicConstructor()
     {
-        var act = () => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+        static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(BehaviorWithMultiplePublicConstructors),
             typeof(IBeforeRequestBehavior<,>),
             "Before");
@@ -95,7 +95,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects middleware without expected contract")]
     public void ValidateBehaviorRegistrationShouldRejectMiddlewareWithoutExpectedContract()
     {
-        var act = () => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+        static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(PlainMiddleware),
             typeof(IBeforeRequestBehavior<,>),
             "Before");
@@ -110,7 +110,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects open generic middleware without expected contract")]
     public void ValidateBehaviorRegistrationShouldRejectOpenGenericMiddlewareWithoutExpectedContract()
     {
-        var act = () => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+        static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(PlainGenericMiddleware<,>),
             typeof(IBeforeRequestBehavior<,>),
             "Before");
@@ -125,7 +125,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     [Fact(DisplayName = "ValidateBehaviorRegistration accepts a valid open generic middleware")]
     public void ValidateBehaviorRegistrationShouldAcceptValidOpenGenericMiddleware()
     {
-        var act = () => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+        static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(TestBeforeBehavior<,>),
             typeof(IBeforeRequestBehavior<,>),
             "Before");

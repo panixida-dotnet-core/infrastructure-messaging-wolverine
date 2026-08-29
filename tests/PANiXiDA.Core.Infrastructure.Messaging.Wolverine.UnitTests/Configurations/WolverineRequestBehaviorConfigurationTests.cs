@@ -13,18 +13,18 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var registry = configuration.Build();
 
-        registry.BeforeMiddlewareTypes.ShouldBe(new[]
-        {
+        registry.BeforeMiddlewareTypes.ShouldBe(
+        [
             typeof(ValidationBehavior<,>),
             typeof(BeginTransactionBehavior<,>)
-        });
-        registry.AfterMiddlewareTypes.ShouldBe(new[]
-        {
+        ]);
+        registry.AfterMiddlewareTypes.ShouldBe(
+        [
             typeof(PublishDomainEventsBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
-        });
-        registry.FinallyMiddlewareTypes.ShouldBe(new[] { typeof(CleanupTransactionBehavior<,>) });
+        ]);
+        registry.FinallyMiddlewareTypes.ShouldBe([typeof(CleanupTransactionBehavior<,>)]);
     }
 
     [Fact(DisplayName = "CreateModularDefault wraps the built-in pipeline with module activation")]
@@ -34,23 +34,23 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var registry = configuration.Build();
 
-        registry.BeforeMiddlewareTypes.ShouldBe(new[]
-        {
+        registry.BeforeMiddlewareTypes.ShouldBe(
+        [
             typeof(ActivateWolverineModuleBehavior<,>),
             typeof(ValidationBehavior<,>),
             typeof(BeginTransactionBehavior<,>)
-        });
-        registry.AfterMiddlewareTypes.ShouldBe(new[]
-        {
+        ]);
+        registry.AfterMiddlewareTypes.ShouldBe(
+        [
             typeof(PublishDomainEventsBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
-        });
-        registry.FinallyMiddlewareTypes.ShouldBe(new[]
-        {
+        ]);
+        registry.FinallyMiddlewareTypes.ShouldBe(
+        [
             typeof(CleanupTransactionBehavior<,>),
             typeof(DeactivateWolverineModuleBehavior<,>)
-        });
+        ]);
     }
 
     [Fact(DisplayName = "Stage configuration appends and inserts behavior relative to anchors")]
@@ -70,24 +70,24 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var registry = configuration.Build();
 
-        registry.BeforeMiddlewareTypes.ShouldBe(new[]
-        {
+        registry.BeforeMiddlewareTypes.ShouldBe(
+        [
             typeof(ValidationBehavior<,>),
             typeof(BeginTransactionBehavior<,>),
             typeof(TestBeforeBehavior<,>)
-        });
-        registry.AfterMiddlewareTypes.ShouldBe(new[]
-        {
+        ]);
+        registry.AfterMiddlewareTypes.ShouldBe(
+        [
             typeof(PublishDomainEventsBehavior<,>),
             typeof(TestAfterBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
-        });
-        registry.FinallyMiddlewareTypes.ShouldBe(new[]
-        {
+        ]);
+        registry.FinallyMiddlewareTypes.ShouldBe(
+        [
             typeof(CleanupTransactionBehavior<,>),
             typeof(TestFinallyBehavior<,>)
-        });
+        ]);
     }
 
     [Fact(DisplayName = "Stage configuration rejects missing anchor behavior")]
@@ -95,9 +95,12 @@ public sealed class WolverineRequestBehaviorConfigurationTests
     {
         var configuration = WolverineRequestBehaviorConfiguration.CreateDefault();
 
-        var act = () => configuration.Before.InsertBefore(
-            typeof(TestBeforeBehavior<,>),
-            typeof(SecondBeforeBehavior<,>));
+        void act()
+        {
+            configuration.Before.InsertBefore(
+                typeof(TestBeforeBehavior<,>),
+                typeof(SecondBeforeBehavior<,>));
+        }
 
         var exception = Should.Throw<InvalidOperationException>(act);
 
@@ -120,13 +123,13 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var registry = configuration.Build();
 
-        registry.BeforeMiddlewareTypes.ShouldBe(new[]
-        {
+        registry.BeforeMiddlewareTypes.ShouldBe(
+        [
             typeof(ValidationBehavior<,>),
             typeof(BeginTransactionBehavior<,>),
             typeof(SecondBeforeBehavior<TestCommand, Result>),
             typeof(ClosedCommandBeforeBehavior),
             typeof(TestBeforeBehavior<TestCommand, Result>)
-        });
+        ]);
     }
 }

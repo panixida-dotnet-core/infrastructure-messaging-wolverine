@@ -3,8 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.DependencyInjection;
 
-using System.Reflection;
-
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurations;
 
 public sealed class WolverineModuleConfigurationTests
@@ -101,7 +99,7 @@ public sealed class WolverineModuleConfigurationTests
         var exception = Should.Throw<ArgumentException>(() =>
             configuration.AddModule<TestDbContext>(
                 requestAssembly,
-                new Assembly[] { null! }));
+                [null!]));
 
         exception.ParamName.ShouldBe("handlerAssemblies");
     }

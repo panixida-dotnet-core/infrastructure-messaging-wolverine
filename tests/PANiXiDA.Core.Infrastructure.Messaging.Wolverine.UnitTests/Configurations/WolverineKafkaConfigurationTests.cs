@@ -19,7 +19,10 @@ public sealed class WolverineKafkaConfigurationTests
         var options = new WolverineOptions();
         var kafka = new WolverineKafkaConfiguration(options, configuration);
 
-        var act = () => kafka.AddKafkaBroker<TestBrokerOption>();
+        void act()
+        {
+            kafka.AddKafkaBroker<TestBrokerOption>();
+        }
 
         Should.NotThrow(act);
     }
@@ -33,7 +36,10 @@ public sealed class WolverineKafkaConfigurationTests
         var options = new WolverineOptions();
         var kafka = new WolverineKafkaConfiguration(options, configuration);
 
-        var act = () => kafka.AddKafkaBroker<TestBrokerOption>();
+        void act()
+        {
+            kafka.AddKafkaBroker<TestBrokerOption>();
+        }
 
         Should.NotThrow(act);
     }
@@ -44,7 +50,10 @@ public sealed class WolverineKafkaConfigurationTests
         var options = new WolverineOptions();
         var kafka = new WolverineKafkaConfiguration(options, new ConfigurationManager());
 
-        var act = () => kafka.AddKafkaBroker<TestBrokerOption>();
+        void act()
+        {
+            kafka.AddKafkaBroker<TestBrokerOption>();
+        }
 
         var exception = Should.Throw<InvalidOperationException>(act);
 
@@ -59,7 +68,10 @@ public sealed class WolverineKafkaConfigurationTests
         var options = new WolverineOptions();
         var kafka = new WolverineKafkaConfiguration(options, configuration);
 
-        var act = () => kafka.AddKafkaBroker<TestBrokerOption>();
+        void act()
+        {
+            kafka.AddKafkaBroker<TestBrokerOption>();
+        }
 
         var exception = Should.Throw<ArgumentException>(act);
 
@@ -74,7 +86,10 @@ public sealed class WolverineKafkaConfigurationTests
         var options = new WolverineOptions();
         var kafka = new WolverineKafkaConfiguration(options, configuration);
 
-        var act = () => kafka.AddKafkaProducer<TestProducerOption, TestDomainEvent>();
+        void act()
+        {
+            kafka.AddKafkaProducer<TestProducerOption, TestDomainEvent>();
+        }
 
         Should.NotThrow(act);
     }
@@ -88,7 +103,10 @@ public sealed class WolverineKafkaConfigurationTests
         var options = new WolverineOptions();
         var kafka = new WolverineKafkaConfiguration(options, configuration);
 
-        var act = () => kafka.AddKafkaProducer<TestProducerOption, TestDomainEvent>();
+        void act()
+        {
+            kafka.AddKafkaProducer<TestProducerOption, TestDomainEvent>();
+        }
 
         Should.NotThrow(act);
     }
@@ -101,7 +119,10 @@ public sealed class WolverineKafkaConfigurationTests
         var options = new WolverineOptions();
         var kafka = new WolverineKafkaConfiguration(options, configuration);
 
-        var act = () => kafka.AddKafkaProducer<TestProducerOption, TestDomainEvent>();
+        void act()
+        {
+            kafka.AddKafkaProducer<TestProducerOption, TestDomainEvent>();
+        }
 
         var exception = Should.Throw<ArgumentException>(act);
 
@@ -118,7 +139,10 @@ public sealed class WolverineKafkaConfigurationTests
         var options = new WolverineOptions();
         var kafka = new WolverineKafkaConfiguration(options, configuration);
 
-        var act = () => kafka.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>();
+        void act()
+        {
+            kafka.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>();
+        }
 
         Should.NotThrow(act);
     }
@@ -132,7 +156,10 @@ public sealed class WolverineKafkaConfigurationTests
         var options = new WolverineOptions();
         var kafka = new WolverineKafkaConfiguration(options, configuration);
 
-        var act = () => kafka.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>();
+        void act()
+        {
+            kafka.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>();
+        }
 
         Should.NotThrow(act);
     }
