@@ -14,10 +14,9 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
         GenerationRules rules,
         IServiceContainer container)
     {
-        for (var i = 0; i < chains.Count; i++)
+        foreach (var chain in chains.OfType<HandlerChain>())
         {
-            if (chains[i] is not HandlerChain chain ||
-                !IsRequestMessageType(chain.MessageType))
+            if (!IsRequestMessageType(chain.MessageType))
             {
                 continue;
             }

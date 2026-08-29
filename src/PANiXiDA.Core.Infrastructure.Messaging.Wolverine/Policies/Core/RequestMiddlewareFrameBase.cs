@@ -1,5 +1,6 @@
 ﻿using JasperFx.CodeGeneration.Frames;
 using JasperFx.CodeGeneration.Model;
+using JasperFx.CodeGeneration;
 
 using Wolverine.Runtime;
 
@@ -37,5 +38,12 @@ internal abstract class RequestMiddlewareFrameBase(
                 yield return variable;
             }
         }
+    }
+
+    protected void GenerateNextFrame(
+        GeneratedMethod method,
+        ISourceWriter writer)
+    {
+        Next?.GenerateCode(method, writer);
     }
 }

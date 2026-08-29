@@ -41,7 +41,7 @@ internal sealed class BeforeRequestMiddlewareFrame(
             WriteMiddleware(writer, middleware);
         }
 
-        Next?.GenerateCode(method, writer);
+        GenerateNextFrame(method, writer);
     }
 
     private void WriteMiddleware(

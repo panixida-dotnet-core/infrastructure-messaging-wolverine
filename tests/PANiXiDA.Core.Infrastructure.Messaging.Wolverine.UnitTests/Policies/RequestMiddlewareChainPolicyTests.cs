@@ -58,6 +58,17 @@ public sealed class RequestMiddlewareChainPolicyTests
         chain.Middleware.ShouldBeEmpty();
     }
 
+    [Fact(DisplayName = "Apply skips non-request handler chains")]
+    public void ApplyShouldSkipNonRequestHandlerChains()
+    {
+        var policy = new RequestMiddlewareChainPolicy(RequestMiddlewareRegistry.Empty);
+        var chain = new HandlerChain(typeof(string), new HandlerGraph());
+
+        policy.Apply([chain], null!, null!);
+
+        chain.Middleware.ShouldBeEmpty();
+    }
+
     [Fact(DisplayName = "Apply throws when request handler chain has more than one Result return variable")]
     public void ApplyShouldThrowWhenRequestHandlerChainHasMoreThanOneResultReturnVariable()
     {

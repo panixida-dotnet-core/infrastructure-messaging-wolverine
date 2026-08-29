@@ -18,6 +18,20 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
         exception.Message.ShouldEndWith("' must be an open generic interface.");
     }
 
+    [Fact(DisplayName = "ValidateBehaviorRegistration rejects a non-interface expected type")]
+    public void ValidateBehaviorRegistrationShouldRejectNonInterfaceExpectedType()
+    {
+        static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+            typeof(TestBeforeBehavior<,>),
+            typeof(string),
+            "Before");
+
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("Expected behavior interface '");
+        exception.Message.ShouldEndWith("' must be an open generic interface.");
+    }
+
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects abstract middleware")]
     public void ValidateBehaviorRegistrationShouldRejectAbstractMiddleware()
     {
@@ -127,6 +141,17 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(TestBeforeBehavior<,>),
+            typeof(IBeforeRequestBehavior<,>),
+            "Before");
+
+        Should.NotThrow(act);
+    }
+
+    [Fact(DisplayName = "ValidateBehaviorRegistration accepts a valid closed middleware")]
+    public void ValidateBehaviorRegistrationShouldAcceptValidClosedMiddleware()
+    {
+        static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
+            typeof(TestBeforeBehavior<TestCommand, Result>),
             typeof(IBeforeRequestBehavior<,>),
             "Before");
 

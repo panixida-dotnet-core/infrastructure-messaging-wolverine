@@ -1,11 +1,31 @@
+using JasperFx.CodeGeneration;
+using JasperFx.CodeGeneration.Frames;
 using JasperFx.CodeGeneration.Model;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class RequestMiddlewareFrameTests
 {
+    [Fact(DisplayName = "Request middleware frame generates an optional next frame")]
+    public void RequestMiddlewareFrameShouldGenerateOptionalNextFrame()
+    {
+        var method = GeneratedMethod.ForNoArg("Handle");
+        var frame = new TestRequestMiddlewareFrame();
+
+        using var writerWithoutNext = new SourceWriter();
+        frame.GenerateCode(method, writerWithoutNext);
+
+        frame.Next = new CommentFrame("next frame");
+        using var writerWithNext = new SourceWriter();
+        frame.GenerateCode(method, writerWithNext);
+
+        writerWithoutNext.Code().ShouldBeEmpty();
+        writerWithNext.Code().ShouldContain("next frame");
+    }
+
     [Fact(DisplayName = "Before frame skips middleware for another request type")]
     public void BeforeFrameShouldSkipMiddlewareForAnotherRequestType()
     {
@@ -28,5 +48,16 @@ public sealed class RequestMiddlewareFrameTests
             [typeof(ClosedCommandAfterBehavior)]);
 
         frame.ShouldBeNull();
+    }
+
+    private sealed class TestRequestMiddlewareFrame()
+        : RequestMiddlewareFrameBase(typeof(TestCommand), [])
+    {
+        public override void GenerateCode(
+            GeneratedMethod method,
+            ISourceWriter writer)
+        {
+            GenerateNextFrame(method, writer);
+        }
     }
 }

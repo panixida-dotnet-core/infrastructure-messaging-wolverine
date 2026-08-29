@@ -60,7 +60,7 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
             $"global::System.Exception? {exceptionLocalName} = null;");
 
         writer.Write("BLOCK:try");
-        Next?.GenerateCode(method, writer);
+        GenerateNextFrame(method, writer);
         writer.WriteLine($"{resultLocalName} = {resultVariable.Usage};");
         writer.FinishBlock();
 

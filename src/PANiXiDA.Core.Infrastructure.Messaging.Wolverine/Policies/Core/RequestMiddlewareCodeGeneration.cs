@@ -120,7 +120,7 @@ internal static class RequestMiddlewareCodeGeneration
         }
 
         var genericDefinition = type.GetGenericTypeDefinition();
-        var genericTypeName = (genericDefinition.FullName ?? genericDefinition.Name).Replace("+", ".");
+        var genericTypeName = genericDefinition.FullName!.Replace("+", ".");
         var backtickIndex = genericTypeName.IndexOf('`');
 
         if (backtickIndex >= 0)

@@ -113,6 +113,20 @@ public sealed class RequestMiddlewareCodeGenerationTests
         closedMiddlewareType.ShouldBeNull();
     }
 
+    [Fact(DisplayName = "TryResolveClosedMiddlewareType ignores non-generic middleware interfaces")]
+    public void TryResolveClosedMiddlewareTypeShouldIgnoreNonGenericMiddlewareInterfaces()
+    {
+        var resolved = RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
+            typeof(PlainGenericMiddleware<,>),
+            typeof(TestCommand),
+            typeof(Result),
+            typeof(IBeforeRequestBehavior<,>),
+            out var closedMiddlewareType);
+
+        resolved.ShouldBeFalse();
+        closedMiddlewareType.ShouldBeNull();
+    }
+
     [Fact(DisplayName = "ResolveConstructor rejects middleware without a single public constructor")]
     public void ResolveConstructorShouldRejectMiddlewareWithoutSinglePublicConstructor()
     {
@@ -167,6 +181,16 @@ public sealed class RequestMiddlewareCodeGenerationTests
         var typeName = RequestMiddlewareCodeGeneration.GetCodeTypeName(typeof(string));
 
         typeName.ShouldBe("System.String");
+    }
+
+    [Fact(DisplayName = "GetCodeTypeName returns a generic parameter name")]
+    public void GetCodeTypeNameShouldReturnGenericParameterName()
+    {
+        var genericParameter = typeof(TestBeforeBehavior<,>).GetGenericArguments()[0];
+
+        var typeName = RequestMiddlewareCodeGeneration.GetCodeTypeName(genericParameter);
+
+        typeName.ShouldBe("TRequest");
     }
 
     [Fact(DisplayName = "GetCodeTypeName returns generated code name for generic type")]
