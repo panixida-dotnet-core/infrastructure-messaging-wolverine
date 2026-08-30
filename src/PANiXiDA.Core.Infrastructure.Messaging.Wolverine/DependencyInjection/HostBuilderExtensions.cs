@@ -324,11 +324,14 @@ public static class HostBuilderExtensions
         }
     }
 
-    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(
-        Justification = "The fallback is reachable only when .NET is loaded by an unmanaged host.")]
     private static Assembly ResolveApplicationAssembly()
     {
-        return Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
+        return ResolveApplicationAssembly(Assembly.GetEntryAssembly());
+    }
+
+    internal static Assembly ResolveApplicationAssembly(Assembly? entryAssembly)
+    {
+        return entryAssembly ?? Assembly.GetExecutingAssembly();
     }
 
     private static void ConfigureInboxOutbox<TDbContext>(

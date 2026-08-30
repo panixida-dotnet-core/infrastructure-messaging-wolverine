@@ -11,6 +11,18 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.DependencyI
 
 public sealed class HostBuilderExtensionsTests
 {
+    [Fact(DisplayName = "ResolveApplicationAssembly uses the entry assembly or executing assembly fallback")]
+    public void ResolveApplicationAssemblyShouldUseEntryAssemblyOrExecutingAssemblyFallback()
+    {
+        var entryAssembly = typeof(HostBuilderExtensionsTests).Assembly;
+
+        var resolvedEntryAssembly = HostBuilderExtensions.ResolveApplicationAssembly(entryAssembly);
+        var resolvedFallbackAssembly = HostBuilderExtensions.ResolveApplicationAssembly(entryAssembly: null);
+
+        resolvedEntryAssembly.ShouldBe(entryAssembly);
+        resolvedFallbackAssembly.ShouldBe(typeof(HostBuilderExtensions).Assembly);
+    }
+
     [Fact(DisplayName = "Kafka configuration callbacks are optional for modular and generic registration")]
     public void KafkaConfigurationCallbacksShouldBeOptionalForModularAndGenericRegistration()
     {
