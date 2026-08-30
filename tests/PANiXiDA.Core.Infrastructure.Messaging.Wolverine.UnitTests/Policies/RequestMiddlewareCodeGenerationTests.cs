@@ -202,6 +202,16 @@ public sealed class RequestMiddlewareCodeGenerationTests
             "System.Collections.Generic.Dictionary<System.String, System.Collections.Generic.List<System.Int32>>");
     }
 
+    [Fact(DisplayName = "GetCodeTypeName falls back to the generic definition name")]
+    public void GetCodeTypeNameShouldFallBackToGenericDefinitionName()
+    {
+        var type = new GenericTypeWithUnnamedDefinition();
+
+        var typeName = RequestMiddlewareCodeGeneration.GetCodeTypeName(type);
+
+        typeName.ShouldBe("List<System.String>");
+    }
+
     [Fact(DisplayName = "BuildFailureResultCode returns failed result expression")]
     public void BuildFailureResultCodeShouldReturnFailedResultExpression()
     {
@@ -221,5 +231,38 @@ public sealed class RequestMiddlewareCodeGenerationTests
 
         code.ShouldBe(
             "global::PANiXiDA.Core.ResultPattern.Result.Failure<PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Messages.TestQueryView>(beforeResult.Errors)");
+    }
+
+    private sealed class GenericTypeWithUnnamedDefinition()
+        : TypeDelegator(typeof(List<string>))
+    {
+        public override bool IsGenericType
+        {
+            get
+            {
+                return true;
+            }
+        }
+
+        public override Type GetGenericTypeDefinition()
+        {
+            return new UnnamedTypeDefinition(typeof(List<>));
+        }
+
+        public override Type[] GetGenericArguments()
+        {
+            return [typeof(string)];
+        }
+    }
+
+    private sealed class UnnamedTypeDefinition(Type type) : TypeDelegator(type)
+    {
+        public override string? FullName
+        {
+            get
+            {
+                return null;
+            }
+        }
     }
 }

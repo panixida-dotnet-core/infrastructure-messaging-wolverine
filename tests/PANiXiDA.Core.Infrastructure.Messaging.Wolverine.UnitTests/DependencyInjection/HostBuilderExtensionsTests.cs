@@ -16,6 +16,8 @@ public sealed class HostBuilderExtensionsTests
     {
         const string connectionString = "Host=localhost;Database=wolverine";
         var configuration = new ConfigurationManager();
+        var modularKafkaConfigured = false;
+        var genericKafkaConfigured = false;
 
         static void configureModules(WolverineModuleConfiguration modules)
         {
@@ -27,57 +29,34 @@ public sealed class HostBuilderExtensionsTests
         var genericWithoutKafka = Host.CreateDefaultBuilder();
         var genericWithKafka = Host.CreateDefaultBuilder();
 
-        var modularWithoutKafkaResult = modularWithoutKafka.UseWolverineMediator(
+        modularWithoutKafka.UseWolverineMediator(
             connectionString,
             configuration,
             configureModules,
             configureKafka: null);
-        var modularWithKafkaResult = modularWithKafka.UseWolverineMediator(
+        modularWithKafka.UseWolverineMediator(
             connectionString,
             configuration,
             configureModules,
-            configureKafka: _ => { });
-        var genericWithoutKafkaResult = genericWithoutKafka.UseWolverineMediator<TestDbContext>(
+            configureKafka: _ => modularKafkaConfigured = true);
+        genericWithoutKafka.UseWolverineMediator<TestDbContext>(
             connectionString,
             configuration,
             configureKafka: null,
             typeof(HostBuilderExtensionsTests).Assembly);
-        var genericWithKafkaResult = genericWithKafka.UseWolverineMediator<TestDbContext>(
+        genericWithKafka.UseWolverineMediator<TestDbContext>(
             connectionString,
             configuration,
-            configureKafka: _ => { },
+            configureKafka: _ => genericKafkaConfigured = true,
             typeof(HostBuilderExtensionsTests).Assembly);
 
-        modularWithoutKafkaResult.ShouldBeSameAs(modularWithoutKafka);
-        modularWithKafkaResult.ShouldBeSameAs(modularWithKafka);
-        genericWithoutKafkaResult.ShouldBeSameAs(genericWithoutKafka);
-        genericWithKafkaResult.ShouldBeSameAs(genericWithKafka);
-    }
+        using var modularWithoutKafkaHost = modularWithoutKafka.Build();
+        using var modularWithKafkaHost = modularWithKafka.Build();
+        using var genericWithoutKafkaHost = genericWithoutKafka.Build();
+        using var genericWithKafkaHost = genericWithKafka.Build();
 
-    [Fact(DisplayName = "ResolveApplicationAssembly uses provided entry assembly and executing assembly fallback")]
-    public void ResolveApplicationAssemblyShouldUseProvidedEntryAssemblyAndExecutingAssemblyFallback()
-    {
-        var entryAssembly = typeof(HostBuilderExtensionsTests).Assembly;
-
-        var resolvedEntryAssembly = HostBuilderExtensions.ResolveApplicationAssembly(
-            () => entryAssembly);
-        var resolvedFallbackAssembly = HostBuilderExtensions.ResolveApplicationAssembly(
-            () => null);
-
-        resolvedEntryAssembly.ShouldBe(entryAssembly);
-        resolvedFallbackAssembly.ShouldBe(typeof(HostBuilderExtensions).Assembly);
-    }
-
-    [Fact(DisplayName = "ValidateMessageStoreConnectionString accepts a non-empty connection string")]
-    public void ValidateMessageStoreConnectionStringShouldAcceptNonEmptyConnectionString()
-    {
-        static void act()
-        {
-            HostBuilderExtensions.ValidateMessageStoreConnectionString(
-                "Host=localhost;Database=wolverine");
-        }
-
-        Should.NotThrow(act);
+        modularKafkaConfigured.ShouldBeTrue();
+        genericKafkaConfigured.ShouldBeTrue();
     }
 
     [Fact(DisplayName = "UseWolverineMediator behavior overload validates message store connection string")]

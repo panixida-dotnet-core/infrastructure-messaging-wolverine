@@ -38,7 +38,7 @@ internal sealed class AfterRequestMiddlewareFrame(
 
     public override void GenerateCode(GeneratedMethod method, ISourceWriter writer)
     {
-        GenerateNextFrame(method, writer);
+        Next?.GenerateCode(method, writer);
 
         foreach (var middleware in middlewareDescriptors)
         {

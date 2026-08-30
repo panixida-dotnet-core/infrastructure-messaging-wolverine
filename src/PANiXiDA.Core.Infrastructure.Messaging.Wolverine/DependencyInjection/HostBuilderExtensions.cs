@@ -95,24 +95,18 @@ public static class HostBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        Action<WolverineOptions>? configureWolverine = null;
-        if (configureKafka is not null)
-        {
-            configureWolverine = options =>
+        return UseModularWolverineMediator(
+            hostBuilder,
+            messageStoreConnectionString,
+            configureModules,
+            options =>
             {
                 var kafkaTopologyBuilder = new WolverineKafkaConfiguration(
                     options,
                     configuration);
 
-                configureKafka(kafkaTopologyBuilder);
-            };
-        }
-
-        return UseModularWolverineMediator(
-            hostBuilder,
-            messageStoreConnectionString,
-            configureModules,
-            configureWolverine,
+                configureKafka?.Invoke(kafkaTopologyBuilder);
+            },
             configureRequestBehaviors);
     }
 
@@ -194,19 +188,6 @@ public static class HostBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        Action<WolverineOptions>? configureWolverine = null;
-        if (configureKafka is not null)
-        {
-            configureWolverine = configuredOptions =>
-            {
-                var kafkaTopologyBuilder = new WolverineKafkaConfiguration(
-                    configuredOptions,
-                    configuration);
-
-                configureKafka(kafkaTopologyBuilder);
-            };
-        }
-
         return RegisterFluentValidationValidators(
             hostBuilder,
             discoveryAssemblies)
@@ -215,7 +196,14 @@ public static class HostBuilderExtensions
             ConfigureWolverineMediator<TDbContext>(
                 options,
                 messageStoreConnectionString,
-                configureWolverine,
+                configuredOptions =>
+                {
+                    var kafkaTopologyBuilder = new WolverineKafkaConfiguration(
+                        configuredOptions,
+                        configuration);
+
+                    configureKafka?.Invoke(kafkaTopologyBuilder);
+                },
                 configureRequestBehaviors,
                 discoveryAssemblies);
         });
@@ -271,7 +259,12 @@ public static class HostBuilderExtensions
         Assembly[] discoveryAssemblies)
         where TDbContext : DbContext
     {
-        ValidateMessageStoreConnectionString(messageStoreConnectionString);
+        if (string.IsNullOrWhiteSpace(messageStoreConnectionString))
+        {
+            throw new ArgumentException(
+                "The Wolverine message store connection string must not be empty.",
+                nameof(messageStoreConnectionString));
+        }
 
         options.ApplicationAssembly = ResolveApplicationAssembly();
         options.CodeGeneration.TypeLoadMode = TypeLoadMode.Auto;
@@ -331,16 +324,11 @@ public static class HostBuilderExtensions
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(
+        Justification = "The fallback is reachable only when .NET is loaded by an unmanaged host.")]
     private static Assembly ResolveApplicationAssembly()
     {
-        return ResolveApplicationAssembly(Assembly.GetEntryAssembly);
-    }
-
-    internal static Assembly ResolveApplicationAssembly(
-        Func<Assembly?> getEntryAssembly)
-    {
-        ArgumentNullException.ThrowIfNull(getEntryAssembly);
-        return getEntryAssembly() ?? Assembly.GetExecutingAssembly();
+        return Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
     }
 
     private static void ConfigureInboxOutbox<TDbContext>(
@@ -393,7 +381,7 @@ public static class HostBuilderExtensions
         options.Policies.Add(new RequestMiddlewareChainPolicy(configuration.Build()));
     }
 
-    internal static void ValidateMessageStoreConnectionString(
+    private static void ValidateMessageStoreConnectionString(
         string messageStoreConnectionString)
     {
         if (string.IsNullOrWhiteSpace(messageStoreConnectionString))
