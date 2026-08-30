@@ -113,6 +113,20 @@ public sealed class RequestMiddlewareCodeGenerationTests
         closedMiddlewareType.ShouldBeNull();
     }
 
+    [Fact(DisplayName = "TryResolveClosedMiddlewareType ignores non-generic middleware interfaces")]
+    public void TryResolveClosedMiddlewareTypeShouldIgnoreNonGenericMiddlewareInterfaces()
+    {
+        var resolved = RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
+            typeof(PlainGenericMiddleware<,>),
+            typeof(TestCommand),
+            typeof(Result),
+            typeof(IBeforeRequestBehavior<,>),
+            out var closedMiddlewareType);
+
+        resolved.ShouldBeFalse();
+        closedMiddlewareType.ShouldBeNull();
+    }
+
     [Fact(DisplayName = "ResolveConstructor rejects middleware without a single public constructor")]
     public void ResolveConstructorShouldRejectMiddlewareWithoutSinglePublicConstructor()
     {
@@ -169,6 +183,16 @@ public sealed class RequestMiddlewareCodeGenerationTests
         typeName.ShouldBe("System.String");
     }
 
+    [Fact(DisplayName = "GetCodeTypeName returns a generic parameter name")]
+    public void GetCodeTypeNameShouldReturnGenericParameterName()
+    {
+        var genericParameter = typeof(TestBeforeBehavior<,>).GetGenericArguments()[0];
+
+        var typeName = RequestMiddlewareCodeGeneration.GetCodeTypeName(genericParameter);
+
+        typeName.ShouldBe("TRequest");
+    }
+
     [Fact(DisplayName = "GetCodeTypeName returns generated code name for generic type")]
     public void GetCodeTypeNameShouldReturnGenericTypeNameForGeneratedCode()
     {
@@ -176,6 +200,16 @@ public sealed class RequestMiddlewareCodeGenerationTests
 
         typeName.ShouldBe(
             "System.Collections.Generic.Dictionary<System.String, System.Collections.Generic.List<System.Int32>>");
+    }
+
+    [Fact(DisplayName = "GetCodeTypeName falls back to the generic definition name")]
+    public void GetCodeTypeNameShouldFallBackToGenericDefinitionName()
+    {
+        var type = new GenericTypeWithUnnamedDefinition();
+
+        var typeName = RequestMiddlewareCodeGeneration.GetCodeTypeName(type);
+
+        typeName.ShouldBe("List<System.String>");
     }
 
     [Fact(DisplayName = "BuildFailureResultCode returns failed result expression")]
@@ -197,5 +231,38 @@ public sealed class RequestMiddlewareCodeGenerationTests
 
         code.ShouldBe(
             "global::PANiXiDA.Core.ResultPattern.Result.Failure<PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Messages.TestQueryView>(beforeResult.Errors)");
+    }
+
+    private sealed class GenericTypeWithUnnamedDefinition()
+        : TypeDelegator(typeof(List<string>))
+    {
+        public override bool IsGenericType
+        {
+            get
+            {
+                return true;
+            }
+        }
+
+        public override Type GetGenericTypeDefinition()
+        {
+            return new UnnamedTypeDefinition(typeof(List<>));
+        }
+
+        public override Type[] GetGenericArguments()
+        {
+            return [typeof(string)];
+        }
+    }
+
+    private sealed class UnnamedTypeDefinition(Type type) : TypeDelegator(type)
+    {
+        public override string? FullName
+        {
+            get
+            {
+                return null;
+            }
+        }
     }
 }

@@ -326,7 +326,12 @@ public static class HostBuilderExtensions
 
     private static Assembly ResolveApplicationAssembly()
     {
-        return Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
+        return ResolveApplicationAssembly(Assembly.GetEntryAssembly());
+    }
+
+    internal static Assembly ResolveApplicationAssembly(Assembly? entryAssembly)
+    {
+        return entryAssembly ?? Assembly.GetExecutingAssembly();
     }
 
     private static void ConfigureInboxOutbox<TDbContext>(

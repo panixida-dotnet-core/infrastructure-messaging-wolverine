@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 using PANiXiDA.Core.Application.Messaging.Mediator.Behaviors;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.DependencyInjection;
 
@@ -9,6 +11,66 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.DependencyI
 
 public sealed class HostBuilderExtensionsTests
 {
+    [Fact(DisplayName = "ResolveApplicationAssembly uses the entry assembly or executing assembly fallback")]
+    public void ResolveApplicationAssemblyShouldUseEntryAssemblyOrExecutingAssemblyFallback()
+    {
+        var entryAssembly = typeof(HostBuilderExtensionsTests).Assembly;
+
+        var resolvedEntryAssembly = HostBuilderExtensions.ResolveApplicationAssembly(entryAssembly);
+        var resolvedFallbackAssembly = HostBuilderExtensions.ResolveApplicationAssembly(entryAssembly: null);
+
+        resolvedEntryAssembly.ShouldBe(entryAssembly);
+        resolvedFallbackAssembly.ShouldBe(typeof(HostBuilderExtensions).Assembly);
+    }
+
+    [Fact(DisplayName = "Kafka configuration callbacks are optional for modular and generic registration")]
+    public void KafkaConfigurationCallbacksShouldBeOptionalForModularAndGenericRegistration()
+    {
+        const string connectionString = "Host=localhost;Database=wolverine";
+        var configuration = new ConfigurationManager();
+        var modularKafkaConfigured = false;
+        var genericKafkaConfigured = false;
+
+        static void configureModules(WolverineModuleConfiguration modules)
+        {
+            modules.AddModule<TestDbContext>(typeof(HostBuilderExtensionsTests).Assembly);
+        }
+
+        var modularWithoutKafka = Host.CreateDefaultBuilder();
+        var modularWithKafka = Host.CreateDefaultBuilder();
+        var genericWithoutKafka = Host.CreateDefaultBuilder();
+        var genericWithKafka = Host.CreateDefaultBuilder();
+
+        modularWithoutKafka.UseWolverineMediator(
+            connectionString,
+            configuration,
+            configureModules,
+            configureKafka: null);
+        modularWithKafka.UseWolverineMediator(
+            connectionString,
+            configuration,
+            configureModules,
+            configureKafka: _ => modularKafkaConfigured = true);
+        genericWithoutKafka.UseWolverineMediator<TestDbContext>(
+            connectionString,
+            configuration,
+            configureKafka: null,
+            typeof(HostBuilderExtensionsTests).Assembly);
+        genericWithKafka.UseWolverineMediator<TestDbContext>(
+            connectionString,
+            configuration,
+            configureKafka: _ => genericKafkaConfigured = true,
+            typeof(HostBuilderExtensionsTests).Assembly);
+
+        using var modularWithoutKafkaHost = modularWithoutKafka.Build();
+        using var modularWithKafkaHost = modularWithKafka.Build();
+        using var genericWithoutKafkaHost = genericWithoutKafka.Build();
+        using var genericWithKafkaHost = genericWithKafka.Build();
+
+        modularKafkaConfigured.ShouldBeTrue();
+        genericKafkaConfigured.ShouldBeTrue();
+    }
+
     [Fact(DisplayName = "UseWolverineMediator behavior overload validates message store connection string")]
     public async Task UseWolverineMediatorBehaviorOverloadShouldValidateMessageStoreConnectionString()
     {

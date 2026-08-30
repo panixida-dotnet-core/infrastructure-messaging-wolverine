@@ -7,6 +7,7 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles;
 
 using Wolverine.Runtime.Handlers;
+using Wolverine.Configuration;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
@@ -58,6 +59,31 @@ public sealed class RequestMiddlewareChainPolicyTests
         chain.Middleware.ShouldBeEmpty();
     }
 
+    [Fact(DisplayName = "Apply skips non-request handler chains")]
+    public void ApplyShouldSkipNonRequestHandlerChains()
+    {
+        var policy = new RequestMiddlewareChainPolicy(RequestMiddlewareRegistry.Empty);
+        var chain = new HandlerChain(typeof(string), new HandlerGraph());
+
+        policy.Apply([chain], null!, null!);
+
+        chain.Middleware.ShouldBeEmpty();
+    }
+
+    [Fact(DisplayName = "Apply skips chains that are not handler chains")]
+    public void ApplyShouldSkipNonHandlerChains()
+    {
+        var policy = new RequestMiddlewareChainPolicy(RequestMiddlewareRegistry.Empty);
+        var chain = DispatchProxy.Create<IChain, NonHandlerChainProxy>();
+
+        void act()
+        {
+            policy.Apply([chain], null!, null!);
+        }
+
+        Should.NotThrow(act);
+    }
+
     [Fact(DisplayName = "Apply throws when request handler chain has more than one Result return variable")]
     public void ApplyShouldThrowWhenRequestHandlerChainHasMoreThanOneResultReturnVariable()
     {
@@ -102,5 +128,15 @@ public sealed class RequestMiddlewareChainPolicyTests
 
         return (HandlerChain)constructor!.Invoke(
             [new MethodCall(typeof(ResultHandler), methodName), new HandlerGraph()]);
+    }
+
+    private class NonHandlerChainProxy : DispatchProxy
+    {
+        protected override object? Invoke(
+            MethodInfo? targetMethod,
+            object?[]? args)
+        {
+            throw new InvalidOperationException("The policy must not access non-handler chains.");
+        }
     }
 }

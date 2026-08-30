@@ -60,6 +60,25 @@ public sealed class WolverineKafkaConfigurationTests
         exception.Message.ShouldBe("Configuration section 'TestBrokerOption' was not found.");
     }
 
+    [Fact(DisplayName = "AddKafkaBroker rejects an option section that cannot be bound")]
+    public void AddKafkaBrokerShouldRejectOptionSectionThatCannotBeBound()
+    {
+        var configuration = CreateConfiguration(
+            ("TestBrokerOption", string.Empty));
+        var options = new WolverineOptions();
+        var kafka = new WolverineKafkaConfiguration(options, configuration);
+
+        void act()
+        {
+            kafka.AddKafkaBroker<TestBrokerOption>();
+        }
+
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldBe(
+            "Configuration section 'TestBrokerOption' could not be bound to 'PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Configurations.TestBrokerOption'.");
+    }
+
     [Fact(DisplayName = "AddKafkaBroker rejects blank bootstrap servers")]
     public void AddKafkaBrokerShouldRejectBlankBootstrapServers()
     {
