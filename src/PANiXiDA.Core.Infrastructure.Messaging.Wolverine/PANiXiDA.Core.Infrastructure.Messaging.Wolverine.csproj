@@ -14,6 +14,9 @@
 
     <ItemGroup>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
@@ -43,5 +46,10 @@
         <Using Include="PANiXiDA.Core.Application.Persistence" />
         <Using Include="PANiXiDA.Core.Domain.DomainEvents" />
         <Using Include="PANiXiDA.Core.ResultPattern" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="../PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators/bin/$(Configuration)/netstandard2.0/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.dll"
+              Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
     </ItemGroup>
 </Project>

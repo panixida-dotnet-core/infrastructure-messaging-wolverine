@@ -234,6 +234,10 @@ The modular overload activates module routing before validation, keeps the appli
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 
+The package includes a source generator that prepares request behavior bindings and constructor metadata during compilation. Keep analyzer assets enabled on the package reference. The host project must reference the assemblies containing its requests and behaviors, and those types must be accessible to generated code. Missing generated bindings fail explicitly rather than skipping a behavior or falling back to reflection.
+
+Behavior registration uses the generated metadata without constructing generic types or inspecting constructors at runtime. Wolverine still generates the handler bodies and uses `TypeLoadMode.Auto`: pre-generated handlers are used when available, with runtime compilation available otherwise. No additional `codegen write` step is needed for local builds. The behavior metadata path is tested with Native AOT; the complete Wolverine, EF Core, and Kafka integration is not advertised as Native AOT compatible.
+
 Custom behaviors can be appended or inserted before or after any behavior in the same stage:
 
 ```csharp
@@ -288,9 +292,16 @@ dotnet build --configuration Release
 dotnet test --configuration Release
 ```
 
+The Native AOT smoke check requires the platform's native build tools:
+
+```bash
+dotnet publish tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke -c Release -r linux-x64
+./tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke/bin/Release/net10.0/linux-x64/publish/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke
+```
+
 ### Continuous integration
 
-Every pull request and push to `main` runs formatting, tests, and mandatory
+Every pull request and push to `main` runs formatting, tests, the Native AOT smoke check, and mandatory
 SonarQube analysis. Publishing from `main` starts only after the SonarQube
 Quality Gate succeeds.
 

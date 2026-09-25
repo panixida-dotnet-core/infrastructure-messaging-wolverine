@@ -12,6 +12,7 @@
   },
   "pathFilters": [
     ":/src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine/",
+    ":/src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators/",
     ":/Directory.Build.props",
     ":/Directory.Build.targets",
     ":/Directory.Packages.props",
