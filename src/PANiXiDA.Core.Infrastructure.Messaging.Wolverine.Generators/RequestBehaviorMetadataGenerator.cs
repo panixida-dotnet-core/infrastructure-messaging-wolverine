@@ -284,7 +284,7 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         }
 
         return type is INamedTypeSymbol { IsGenericType: true } named
-            ? named.ConstructedFrom.Construct(named.TypeArguments.Select(argument => Substitute(argument, definition, arguments)).ToArray())
+            ? named.ConstructedFrom.Construct([.. named.TypeArguments.Select(argument => Substitute(argument, definition, arguments))])
             : type;
     }
 
