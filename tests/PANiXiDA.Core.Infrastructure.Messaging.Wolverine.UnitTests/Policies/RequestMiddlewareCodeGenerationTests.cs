@@ -6,6 +6,15 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class RequestMiddlewareCodeGenerationTests
 {
+    [Fact(DisplayName = "Missing generated constructor metadata fails explicitly")]
+    public void ResolveConstructorShouldRejectMissingGeneratedMetadata()
+    {
+        var exception = Should.Throw<InvalidOperationException>(() =>
+            RequestMiddlewareCodeGeneration.ResolveConstructor(typeof(UnregisteredRequest)));
+
+        exception.Message.ShouldStartWith("No generated request behavior metadata exists");
+    }
+
     [Fact(DisplayName = "Missing generated bindings fail explicitly instead of skipping request middleware")]
     public void TryResolveClosedMiddlewareTypeShouldRejectMissingGeneratedBinding()
     {

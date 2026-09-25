@@ -143,8 +143,7 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         foreach (var pair in pairs.OrderBy(pair => TypeName(pair.Request), StringComparer.Ordinal).ThenBy(pair => TypeName(pair.Result), StringComparer.Ordinal))
         {
             token.ThrowIfCancellationRequested();
-            if (!CanReference(compilation, pair.Request) || !CanReference(compilation, pair.Result) ||
-                HasTypeParameter(pair.Request) || HasTypeParameter(pair.Result))
+            if (!CanReference(compilation, pair.Request) || !CanReference(compilation, pair.Result))
             {
                 continue;
             }
@@ -207,12 +206,12 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         }
 
         var definition = behavior.OriginalDefinition;
-        if (definition.Arity != 2 || definition.ContainingType is { IsGenericType: true })
+        if (definition.Arity != 2)
         {
             return null;
         }
 
-        ITypeSymbol[] arguments = [request, result];
+        INamedTypeSymbol[] arguments = [request, result];
         for (var i = 0; i < 2; i++)
         {
             var parameter = definition.TypeParameters[i];
@@ -221,8 +220,8 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
                 (parameter.HasValueTypeConstraint && !argument.IsValueType) ||
                 (parameter.HasUnmanagedTypeConstraint && !argument.IsUnmanagedType) ||
                 (parameter.HasConstructorConstraint && !argument.IsValueType &&
-                    (argument is not INamedTypeSymbol named || named.IsAbstract ||
-                        !named.InstanceConstructors.Any(constructor => constructor.Parameters.Length == 0 && constructor.DeclaredAccessibility == Accessibility.Public))))
+                    (argument.IsAbstract ||
+                        !argument.InstanceConstructors.Any(constructor => constructor.Parameters.Length == 0 && constructor.DeclaredAccessibility == Accessibility.Public))))
             {
                 return null;
             }
