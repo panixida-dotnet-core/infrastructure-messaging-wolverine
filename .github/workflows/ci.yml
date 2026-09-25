@@ -22,8 +22,22 @@ jobs:
           registry-user: ${{ secrets.REGISTRY_USER }}
           registry-token: ${{ secrets.REGISTRY_TOKEN }}
 
+    aot:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                fetch-depth: 0
+            - uses: actions/setup-dotnet@v4
+              with:
+                dotnet-version: '10.0.x'
+            - name: Publish Native AOT behavior smoke check
+              run: dotnet publish tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke -c Release -r linux-x64
+            - name: Run Native AOT behavior smoke check
+              run: ./tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke/bin/Release/net10.0/linux-x64/publish/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke
+
     sonar:
-        needs: tests
+        needs: [tests, aot]
         uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/dotnet-sonar.yml@main
         with:
           project-key: ${{ vars.SONAR_PROJECT_KEY }}

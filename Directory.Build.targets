@@ -1,4 +1,11 @@
 <Project>
+    <ItemGroup Condition="'$(MSBuildProjectName)' != 'PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators'">
+        <ProjectReference Include="$(MSBuildThisFileDirectory)src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"
+                          GlobalPropertiesToRemove="PublishAot;RuntimeIdentifier;SelfContained;PublishTrimmed;IsAotCompatible;EnableAotAnalyzer;EnableTrimAnalyzer">
+            <ReferenceOutputAssembly Condition="'$(MSBuildProjectName)' == 'PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests'">true</ReferenceOutputAssembly>
+        </ProjectReference>
+    </ItemGroup>
     <PropertyGroup Condition="'$(IsPackable)' == 'true'">
         <Authors>PANiXiDA</Authors>
         <Company>PANiXiDA</Company>

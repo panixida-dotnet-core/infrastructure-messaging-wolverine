@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <IsPackable>false</IsPackable>
+        <SonarQubeTestProject>true</SonarQubeTestProject>
+        <IsAotCompatible>true</IsAotCompatible>
+        <PublishAot>true</PublishAot>
+        <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.csproj" />
+    </ItemGroup>
+</Project>
