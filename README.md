@@ -34,8 +34,6 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - PostgreSQL for Wolverine message storage
 - Kafka only when external event topics are registered
 
-The package depends on PANiXiDA.Core.Application 4.0.3, PANiXiDA.Core.Domain 3.0.1, and WolverineFx 6.40.0. All WolverineFx integration packages use the same version.
-
 ### Installation
 
 ```xml
