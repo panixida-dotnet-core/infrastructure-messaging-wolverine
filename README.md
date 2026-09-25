@@ -36,9 +36,11 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 
 ### Installation
 
+Use the latest 4.x version:
+
 ```xml
 <ItemGroup>
-  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="..." />
+  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="4.*" />
 </ItemGroup>
 ```
 
