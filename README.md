@@ -34,6 +34,8 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - PostgreSQL for Wolverine message storage
 - Kafka only when external event topics are registered
 
+Full Native AOT support is not currently provided.
+
 ### Installation
 
 Use the latest 4.x version:
@@ -234,25 +236,10 @@ The modular overload activates module routing before validation, keeps the appli
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 
-The package includes a source generator that prepares request behavior bindings and constructor metadata during compilation. Keep analyzer assets enabled on the package reference. The host project must reference the assemblies containing its requests and behaviors, and those types must be accessible to generated code. Missing generated bindings fail explicitly rather than skipping a behavior or falling back to reflection.
-
-Behavior registration uses the generated metadata without constructing generic types or inspecting constructors at runtime. Wolverine still generates the handler bodies and uses `TypeLoadMode.Auto`: pre-generated handlers are used when available, with runtime compilation available otherwise. No additional `codegen write` step is needed for local builds. The behavior metadata path is tested with Native AOT; the complete Wolverine, EF Core, and Kafka integration is not advertised as Native AOT compatible.
-
-The generator follows the same package layout as the Domain, HTTP, and EF generators: a separate `netstandard2.0` analyzer bundled under `analyzers/dotnet/cs`, semantic symbol matching, deterministic output, and a file-local module initializer. Metadata lookup initializes the declaring module before reading its registrations. The host generator also inspects referenced application modules at compile time to bind shared behaviors to requests declared in other assemblies; all required types must be visible to that compilation. Missing metadata fails explicitly without falling back to reflection.
-
-### Native AOT boundary
-
-The adapter's request execution uses direct behavior calls, module lookup, and keyed DI. Remaining type inspection (`GetGenericArguments`, assignability and type names) belongs to handler-chain construction and code generation. In `Auto` mode, Wolverine may perform this work on first use, so a normal build does not guarantee that all configuration work has finished before the first request.
-
-Running `dotnet run -- codegen write` in a Docker build emits C# handler adapters. The subsequent build or publish must compile these generated files into the application. With complete generated code, `Auto` can use those types without runtime compilation, but it retains the dynamic fallback. For a strict Native AOT path, publish with `PublishAot=true` and use `TypeLoadMode.Static` to forbid runtime compilation, in addition to checking the remaining application and dependency paths.
-
-Validator discovery comes from the adapter's direct call to `FluentValidation.DependencyInjectionExtensions.AddValidatorsFromAssemblies`, not Wolverine's `UseFluentValidation` integration. It runs at startup and does not scan assemblies for each request. This is retained for ordinary JIT applications; an AOT path would need explicit or generated validator registrations and a way to skip this scan. The package does not include a validator-registration generator.
-
-Kafka option binding is separate from message serialization: `WolverineKafkaConfiguration.GetRequiredOption<TOption>()` reads an `IConfiguration` section named after the option type and calls `section.Get<TOption>()`. This startup call to Microsoft's configuration binder still produces `IL2026` and `IL3050` in local AOT analysis. An AOT path would need binding with concrete types or explicitly supplied options.
-
-The adapter does not configure a message serializer or declare a JSON serialization context. Wolverine's default `SystemTextJsonSerializer` handles transport payloads and durable message bodies. The consuming application owns its message types and can configure serialization through `WolverineOptions.UseSystemTextJsonForSerialization` or `DefaultSerializer`. For a strict AOT path, Wolverine 6.40's serializer source recommends an `IMessageSerializer` backed by generated `JsonTypeInfo`/`JsonSerializerContext`; handler code generation does not supply that metadata.
-
-The EF Core outbox and PostgreSQL/Kafka transports require a separate end-to-end AOT consumer check. An isolated behavior check does not exercise host startup, EF models/queries, serialization, or durable message delivery and does not establish Native AOT compatibility for those dependencies.
+The bundled source generator prepares request behavior metadata during compilation.
+Keep analyzer assets enabled and reference the request and behavior assemblies from
+the host project. These types must be accessible to generated code. No additional
+attributes, partial declarations, or code-generation commands are required.
 
 Custom behaviors can be appended or inserted before or after any behavior in the same stage:
 
