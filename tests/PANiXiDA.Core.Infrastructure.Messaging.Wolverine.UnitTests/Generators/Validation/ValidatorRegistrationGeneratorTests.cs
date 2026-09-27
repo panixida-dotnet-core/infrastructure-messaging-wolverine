@@ -212,6 +212,33 @@ public sealed class ValidatorRegistrationGeneratorTests
         context.IsAlive.ShouldBeFalse();
     }
 
+    [Theory(DisplayName = "An unrelated host with an unresolvable reference does not prevent validator registration")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeneratorShouldIgnoreUnresolvableHostReferences(bool invalidFile)
+    {
+        var module = Compile(PeerValidatorSource);
+        var host = Compile("public static class Host;", references: [module.Reference]);
+        var context = new RejectingReferenceLoadContext(module.Assembly.GetName().Name!, invalidFile);
+        using var image = new MemoryStream(host.Image);
+        var hostAssembly = context.LoadFromStream(image);
+        RuntimeHelpers.RunModuleConstructor(hostAssembly.ManifestModule.ModuleHandle);
+        var services = new ServiceCollection();
+
+        try
+        {
+            ValidatorRegistry.AddValidators(services, [module.Assembly]);
+
+            context.Attempts.ShouldBeGreaterThan(0);
+            services.Count.ShouldBe(2);
+            services.ShouldAllBe(descriptor => descriptor.ImplementationType!.Assembly == module.Assembly);
+        }
+        finally
+        {
+            context.Unload();
+        }
+    }
+
     [Theory(DisplayName = "Inaccessible validators fail explicitly when their assembly is selected")]
     [InlineData("internal sealed class HiddenValidator : AbstractValidator<string>;", true)]
     [InlineData("public static class Container { private sealed class HiddenValidator : AbstractValidator<string>; }", false)]
@@ -491,6 +518,29 @@ public sealed class ValidatorRegistrationGeneratorTests
         {
             context.RegisterSourceOutput(context.CompilationProvider,
                 (output, _) => output.AddSource("PeerValidators.g.cs", source));
+        }
+    }
+
+    private sealed class RejectingReferenceLoadContext(
+        string rejectedName,
+        bool invalidFile) : AssemblyLoadContext("Rejecting", isCollectible: true)
+    {
+        public int Attempts { get; private set; }
+
+        protected override Assembly? Load(AssemblyName assemblyName)
+        {
+            if (assemblyName.Name != rejectedName)
+            {
+                return null;
+            }
+
+            Attempts++;
+            if (invalidFile)
+            {
+                throw new FileLoadException("Reference cannot be loaded.");
+            }
+
+            throw new FileNotFoundException("Reference was not found.");
         }
     }
 }
