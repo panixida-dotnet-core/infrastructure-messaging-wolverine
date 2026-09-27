@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -42,7 +43,9 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         });
     }
 
-    private static ImmutableArray<INamedTypeSymbol> GetReferencedTypes(GeneratorSyntaxContext context, CancellationToken token)
+    private static ImmutableArray<INamedTypeSymbol> GetReferencedTypes(
+        GeneratorSyntaxContext context,
+        CancellationToken token)
     {
         if (context.Node is TypeOfExpressionSyntax typeOf)
         {
@@ -58,15 +61,22 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         };
     }
 
-    private static string Generate(CSharpCompilation compilation, ImmutableArray<ImmutableArray<INamedTypeSymbol>> referencedTypes, CancellationToken token)
+    private static string Generate(
+        CSharpCompilation compilation,
+        ImmutableArray<ImmutableArray<INamedTypeSymbol>> referencedTypes,
+        CancellationToken token)
     {
         if (compilation.GetTypeByMetadataName(AdapterAssembly + ".Generation.RequestBehaviorMetadata") is null)
         {
             return string.Empty;
         }
 
-        var contracts = contractNames.Select(compilation.GetTypeByMetadataName).OfType<INamedTypeSymbol>().ToArray();
-        var requestContract = compilation.GetTypeByMetadataName("PANiXiDA.Core.Application.Messaging.Mediator.Contracts.IRequest`1");
+        var contracts = contractNames
+            .Select(compilation.GetTypeByMetadataName)
+            .OfType<INamedTypeSymbol>()
+            .ToArray();
+        var requestContract = compilation.GetTypeByMetadataName(
+            "PANiXiDA.Core.Application.Messaging.Mediator.Contracts.IRequest`1");
         var resultBase = compilation.GetTypeByMetadataName(ResultName);
         if (contracts.Length != 3 || requestContract is null || resultBase is null)
         {
@@ -77,12 +87,15 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
             .Where(assembly => assembly.Name == ApplicationAssembly || assembly.Name == AdapterAssembly ||
                 assembly.Modules.Any(module => module.ReferencedAssemblySymbols.Any(reference =>
                     reference.Name == ApplicationAssembly || reference.Name == AdapterAssembly)))
-            .Concat([compilation.Assembly]).ToArray();
+            .Concat([compilation.Assembly])
+            .ToArray();
         var types = DiscoverTypes(compilation, assemblies, token);
         var explicitlyReferenced = AddReferencedTypes(compilation, types, assemblies, referencedTypes);
-        var behaviors = types.Where(type => type.AllInterfaces.Any(contract => IsContract(contract, contracts)) ||
+        var behaviors = types
+            .Where(type => type.AllInterfaces.Any(contract => IsContract(contract, contracts)) ||
                 explicitlyReferenced.Contains(type))
-            .OrderBy(TypeName, StringComparer.Ordinal).ToArray();
+            .OrderBy(TypeName, StringComparer.Ordinal)
+            .ToArray();
         var pairs = FindRequestPairs(compilation, types, requestContract, resultBase);
         var registrations = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var behavior in behaviors)
@@ -99,7 +112,10 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         return RequestBehaviorMetadataSourceBuilder.Build(registrations);
     }
 
-    private static HashSet<INamedTypeSymbol> DiscoverTypes(CSharpCompilation compilation, IAssemblySymbol[] assemblies, CancellationToken token)
+    private static HashSet<INamedTypeSymbol> DiscoverTypes(
+        CSharpCompilation compilation,
+        IAssemblySymbol[] assemblies,
+        CancellationToken token)
     {
         var types = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         foreach (var assembly in assemblies)
@@ -117,17 +133,22 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         return types;
     }
 
-    private static HashSet<INamedTypeSymbol> AddReferencedTypes(CSharpCompilation compilation, HashSet<INamedTypeSymbol> types,
-        IAssemblySymbol[] assemblies, ImmutableArray<ImmutableArray<INamedTypeSymbol>> referencedTypes)
+    private static HashSet<INamedTypeSymbol> AddReferencedTypes(
+        CSharpCompilation compilation,
+        HashSet<INamedTypeSymbol> types,
+        IAssemblySymbol[] assemblies,
+        ImmutableArray<ImmutableArray<INamedTypeSymbol>> referencedTypes)
     {
         var explicitlyReferenced = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
         foreach (var referencedType in referencedTypes.SelectMany(item => item))
         {
             var type = referencedType.IsUnboundGenericType ? referencedType.OriginalDefinition : referencedType;
-            if (CanReference(compilation, type) && (!HasTypeParameter(type) || SymbolEqualityComparer.Default.Equals(type, type.OriginalDefinition)))
+            if (CanReference(compilation, type) &&
+                (!HasTypeParameter(type) || SymbolEqualityComparer.Default.Equals(type, type.OriginalDefinition)))
             {
                 types.Add(type);
-                if (assemblies.Any(assembly => SymbolEqualityComparer.Default.Equals(assembly, type.ContainingAssembly)))
+                if (assemblies.Any(assembly =>
+                        SymbolEqualityComparer.Default.Equals(assembly, type.ContainingAssembly)))
                 {
                     explicitlyReferenced.Add(type);
                 }
@@ -137,15 +158,20 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         return explicitlyReferenced;
     }
 
-    private static HashSet<(INamedTypeSymbol Request, INamedTypeSymbol Result)> FindRequestPairs(CSharpCompilation compilation,
-        HashSet<INamedTypeSymbol> types, INamedTypeSymbol requestContract, INamedTypeSymbol resultBase)
+    private static HashSet<(INamedTypeSymbol Request, INamedTypeSymbol Result)> FindRequestPairs(
+        CSharpCompilation compilation,
+        HashSet<INamedTypeSymbol> types,
+        INamedTypeSymbol requestContract,
+        INamedTypeSymbol resultBase)
     {
         var pairs = new HashSet<(INamedTypeSymbol Request, INamedTypeSymbol Result)>(new RequestPairComparer());
         foreach (var type in types.Where(type => !HasTypeParameter(type) && !type.IsUnboundGenericType))
         {
-            foreach (var contract in type.AllInterfaces.Where(item => SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, requestContract)))
+            foreach (var contract in type.AllInterfaces.Where(item =>
+                         SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, requestContract)))
             {
-                if (contract.TypeArguments[0] is INamedTypeSymbol result && IsAssignable(compilation, result, resultBase))
+                if (contract.TypeArguments[0] is INamedTypeSymbol result &&
+                    IsAssignable(compilation, result, resultBase))
                 {
                     pairs.Add((type, result));
                 }
@@ -157,13 +183,20 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         return pairs;
     }
 
-    private static void AddHandlerPairs(CSharpCompilation compilation, INamedTypeSymbol type, INamedTypeSymbol requestContract,
-        INamedTypeSymbol resultBase, HashSet<(INamedTypeSymbol Request, INamedTypeSymbol Result)> pairs)
+    private static void AddHandlerPairs(
+        CSharpCompilation compilation,
+        INamedTypeSymbol type,
+        INamedTypeSymbol requestContract,
+        INamedTypeSymbol resultBase,
+        HashSet<(INamedTypeSymbol Request, INamedTypeSymbol Result)> pairs)
     {
         foreach (var method in type.GetMembers().OfType<IMethodSymbol>().Where(method => !method.IsGenericMethod))
         {
-            foreach (var request in method.Parameters.Select(parameter => parameter.Type).OfType<INamedTypeSymbol>()
-                         .Where(parameter => parameter.AllInterfaces.Any(contract => SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, requestContract))))
+            foreach (var request in method.Parameters
+                         .Select(parameter => parameter.Type)
+                         .OfType<INamedTypeSymbol>()
+                         .Where(parameter => parameter.AllInterfaces.Any(contract =>
+                             SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, requestContract))))
             {
                 foreach (var result in ReturnResults(method.ReturnType, compilation, resultBase))
                 {
@@ -173,10 +206,17 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         }
     }
 
-    private static void AddBindings(CSharpCompilation compilation, SortedSet<string> registrations, INamedTypeSymbol[] behaviors,
-        INamedTypeSymbol[] contracts, HashSet<(INamedTypeSymbol Request, INamedTypeSymbol Result)> pairs, CancellationToken token)
+    private static void AddBindings(
+        CSharpCompilation compilation,
+        SortedSet<string> registrations,
+        INamedTypeSymbol[] behaviors,
+        INamedTypeSymbol[] contracts,
+        HashSet<(INamedTypeSymbol Request, INamedTypeSymbol Result)> pairs,
+        CancellationToken token)
     {
-        foreach (var pair in pairs.OrderBy(pair => TypeName(pair.Request), StringComparer.Ordinal).ThenBy(pair => TypeName(pair.Result), StringComparer.Ordinal))
+        foreach (var pair in pairs
+                     .OrderBy(pair => TypeName(pair.Request), StringComparer.Ordinal)
+                     .ThenBy(pair => TypeName(pair.Result), StringComparer.Ordinal))
         {
             token.ThrowIfCancellationRequested();
             if (!CanReference(compilation, pair.Request) || !CanReference(compilation, pair.Result))
@@ -191,11 +231,16 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         }
     }
 
-    private static void AddBinding(CSharpCompilation compilation, SortedSet<string> registrations, INamedTypeSymbol behavior,
-        (INamedTypeSymbol Request, INamedTypeSymbol Result) pair, INamedTypeSymbol[] contracts)
+    private static void AddBinding(
+        CSharpCompilation compilation,
+        SortedSet<string> registrations,
+        INamedTypeSymbol behavior,
+        (INamedTypeSymbol Request, INamedTypeSymbol Result) pair,
+        INamedTypeSymbol[] contracts)
     {
         var closed = Close(compilation, behavior, pair.Request, pair.Result);
-        foreach (var contract in contracts.Where(contract => behavior.AllInterfaces.Any(item => SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract))))
+        foreach (var contract in contracts.Where(contract => behavior.AllInterfaces.Any(item =>
+                     SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract))))
         {
             var supported = closed is not null && closed.AllInterfaces.Any(item =>
                 SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract) &&
@@ -207,22 +252,56 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
             }
 
             var closedArgument = supported ? $"typeof({TypeName(closed!)})" : "null";
-            registrations.Add($"RegisterBinding(typeof({TypeName(behavior)}), typeof({TypeName(pair.Request)}), typeof({TypeName(pair.Result)}), typeof({TypeName(contract)}), {closedArgument});");
+            var registration = new StringBuilder()
+                .Append("RegisterBinding(typeof(")
+                .Append(TypeName(behavior))
+                .Append("), typeof(")
+                .Append(TypeName(pair.Request))
+                .Append("), typeof(")
+                .Append(TypeName(pair.Result))
+                .Append("), typeof(")
+                .Append(TypeName(contract))
+                .Append("), ")
+                .Append(closedArgument)
+                .Append(");");
+            registrations.Add(registration.ToString());
         }
     }
 
-    private static void AddBehavior(SortedSet<string> registrations, INamedTypeSymbol type, INamedTypeSymbol[] contracts)
+    private static void AddBehavior(
+        SortedSet<string> registrations,
+        INamedTypeSymbol type,
+        INamedTypeSymbol[] contracts)
     {
-        var constructors = type.InstanceConstructors.Where(constructor => constructor.DeclaredAccessibility == Accessibility.Public).ToArray();
-        var supported = type.AllInterfaces.Where(contract => IsContract(contract, contracts))
-            .Select(contract => $"typeof({TypeName(contract.OriginalDefinition)})").Distinct().OrderBy(name => name, StringComparer.Ordinal);
+        var constructors = type.InstanceConstructors
+            .Where(constructor => constructor.DeclaredAccessibility == Accessibility.Public)
+            .ToArray();
+        var supported = type.AllInterfaces
+            .Where(contract => IsContract(contract, contracts))
+            .Select(contract => $"typeof({TypeName(contract.OriginalDefinition)})")
+            .Distinct()
+            .OrderBy(name => name, StringComparer.Ordinal);
         var parameters = constructors.Length == 1 && !HasTypeParameter(type) && !type.IsUnboundGenericType
             ? string.Join(", ", constructors[0].Parameters.Select(parameter => $"typeof({TypeName(parameter.Type)})"))
             : string.Empty;
-        registrations.Add($"RegisterBehavior(typeof({TypeName(type)}), {constructors.Length}, new global::System.Type[] {{ {string.Join(", ", supported)} }}, new global::System.Type[] {{ {parameters} }});");
+        var registration = new StringBuilder()
+            .Append("RegisterBehavior(typeof(")
+            .Append(TypeName(type))
+            .Append("), ")
+            .Append(constructors.Length)
+            .Append(", new global::System.Type[] { ")
+            .Append(string.Join(", ", supported))
+            .Append(" }, new global::System.Type[] { ")
+            .Append(parameters)
+            .Append(" });");
+        registrations.Add(registration.ToString());
     }
 
-    private static INamedTypeSymbol? Close(CSharpCompilation compilation, INamedTypeSymbol behavior, INamedTypeSymbol request, INamedTypeSymbol result)
+    private static INamedTypeSymbol? Close(
+        CSharpCompilation compilation,
+        INamedTypeSymbol behavior,
+        INamedTypeSymbol request,
+        INamedTypeSymbol result)
     {
         if (!behavior.IsGenericType)
         {
@@ -252,7 +331,11 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         return definition.Construct(arguments);
     }
 
-    private static bool SatisfiesConstraints(CSharpCompilation compilation, INamedTypeSymbol definition, INamedTypeSymbol[] arguments, int index)
+    private static bool SatisfiesConstraints(
+        CSharpCompilation compilation,
+        INamedTypeSymbol definition,
+        INamedTypeSymbol[] arguments,
+        int index)
     {
         var parameter = definition.TypeParameters[index];
         var argument = arguments[index];
@@ -261,27 +344,38 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
             (parameter.HasUnmanagedTypeConstraint && !argument.IsUnmanagedType) ||
             (parameter.HasConstructorConstraint && !argument.IsValueType &&
                 (argument.IsAbstract ||
-                    !argument.InstanceConstructors.Any(constructor => constructor.Parameters.Length == 0 && constructor.DeclaredAccessibility == Accessibility.Public))))
+                    !argument.InstanceConstructors.Any(constructor =>
+                        constructor.Parameters.Length == 0 &&
+                        constructor.DeclaredAccessibility == Accessibility.Public))))
         {
             return false;
         }
 
-        return parameter.ConstraintTypes.All(constraint => IsAssignable(compilation, argument, Substitute(constraint, definition, arguments)));
+        return parameter.ConstraintTypes.All(constraint =>
+            IsAssignable(compilation, argument, Substitute(constraint, definition, arguments)));
     }
 
-    private static ITypeSymbol Substitute(ITypeSymbol type, INamedTypeSymbol definition, ITypeSymbol[] arguments)
+    private static ITypeSymbol Substitute(
+        ITypeSymbol type,
+        INamedTypeSymbol definition,
+        ITypeSymbol[] arguments)
     {
-        if (type is ITypeParameterSymbol parameter && SymbolEqualityComparer.Default.Equals(parameter.ContainingSymbol, definition))
+        if (type is ITypeParameterSymbol parameter &&
+            SymbolEqualityComparer.Default.Equals(parameter.ContainingSymbol, definition))
         {
             return arguments[parameter.Ordinal];
         }
 
         return type is INamedTypeSymbol { IsGenericType: true } named
-            ? named.ConstructedFrom.Construct([.. named.TypeArguments.Select(argument => Substitute(argument, definition, arguments))])
+            ? named.ConstructedFrom.Construct(
+                [.. named.TypeArguments.Select(argument => Substitute(argument, definition, arguments))])
             : type;
     }
 
-    private static IEnumerable<INamedTypeSymbol> ReturnResults(ITypeSymbol type, CSharpCompilation compilation, INamedTypeSymbol resultBase)
+    private static IEnumerable<INamedTypeSymbol> ReturnResults(
+        ITypeSymbol type,
+        CSharpCompilation compilation,
+        INamedTypeSymbol resultBase)
     {
         if (type is not INamedTypeSymbol named)
         {
@@ -293,28 +387,40 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
             yield return named;
         }
         else if (named.IsTupleType ||
-            SymbolEqualityComparer.Default.Equals(named.OriginalDefinition, compilation.GetTypeByMetadataName("System.Threading.Tasks.Task`1")) ||
-            SymbolEqualityComparer.Default.Equals(named.OriginalDefinition, compilation.GetTypeByMetadataName("System.Threading.Tasks.ValueTask`1")))
+            SymbolEqualityComparer.Default.Equals(
+                named.OriginalDefinition,
+                compilation.GetTypeByMetadataName("System.Threading.Tasks.Task`1")) ||
+            SymbolEqualityComparer.Default.Equals(
+                named.OriginalDefinition,
+                compilation.GetTypeByMetadataName("System.Threading.Tasks.ValueTask`1")))
         {
-            foreach (var result in named.TypeArguments.SelectMany(argument => ReturnResults(argument, compilation, resultBase)))
+            foreach (var result in named.TypeArguments.SelectMany(argument =>
+                         ReturnResults(argument, compilation, resultBase)))
             {
                 yield return result;
             }
         }
     }
 
-    private static bool IsContract(INamedTypeSymbol type, INamedTypeSymbol[] contracts)
+    private static bool IsContract(
+        INamedTypeSymbol type,
+        INamedTypeSymbol[] contracts)
     {
         return contracts.Any(contract => SymbolEqualityComparer.Default.Equals(type.OriginalDefinition, contract));
     }
 
-    private static bool IsAssignable(CSharpCompilation compilation, ITypeSymbol source, ITypeSymbol destination)
+    private static bool IsAssignable(
+        CSharpCompilation compilation,
+        ITypeSymbol source,
+        ITypeSymbol destination)
     {
         var conversion = compilation.ClassifyConversion(source, destination);
         return conversion.IsIdentity || conversion.IsImplicit && (conversion.IsReference || conversion.IsBoxing);
     }
 
-    private static bool CanReference(Compilation compilation, INamedTypeSymbol type)
+    private static bool CanReference(
+        Compilation compilation,
+        INamedTypeSymbol type)
     {
         for (var current = type; current is not null; current = current.ContainingType)
         {
@@ -329,7 +435,8 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
 
     private static bool HasTypeParameter(ITypeSymbol type)
     {
-        return type is ITypeParameterSymbol || type is INamedTypeSymbol named && named.TypeArguments.Any(HasTypeParameter);
+        return type is ITypeParameterSymbol ||
+            type is INamedTypeSymbol named && named.TypeArguments.Any(HasTypeParameter);
     }
 
     private static string TypeName(ITypeSymbol type)
@@ -339,7 +446,9 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
             type = named.OriginalDefinition.ConstructUnboundGenericType();
         }
 
-        return type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat.WithMiscellaneousOptions(SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers));
+        return type.ToDisplayString(
+            SymbolDisplayFormat.FullyQualifiedFormat.WithMiscellaneousOptions(
+                SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers));
     }
 
     private static IEnumerable<INamedTypeSymbol> EnumerateTypes(INamespaceOrTypeSymbol parent)
@@ -366,14 +475,18 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
 
     private sealed class RequestPairComparer : IEqualityComparer<(INamedTypeSymbol Request, INamedTypeSymbol Result)>
     {
-        public bool Equals((INamedTypeSymbol Request, INamedTypeSymbol Result) x, (INamedTypeSymbol Request, INamedTypeSymbol Result) y)
+        public bool Equals(
+            (INamedTypeSymbol Request, INamedTypeSymbol Result) x,
+            (INamedTypeSymbol Request, INamedTypeSymbol Result) y)
         {
-            return SymbolEqualityComparer.Default.Equals(x.Request, y.Request) && SymbolEqualityComparer.Default.Equals(x.Result, y.Result);
+            return SymbolEqualityComparer.Default.Equals(x.Request, y.Request) &&
+                SymbolEqualityComparer.Default.Equals(x.Result, y.Result);
         }
 
         public int GetHashCode((INamedTypeSymbol Request, INamedTypeSymbol Result) value)
         {
-            return SymbolEqualityComparer.Default.GetHashCode(value.Request) * 397 ^ SymbolEqualityComparer.Default.GetHashCode(value.Result);
+            return SymbolEqualityComparer.Default.GetHashCode(value.Request) * 397 ^
+                SymbolEqualityComparer.Default.GetHashCode(value.Result);
         }
     }
 }

@@ -21,10 +21,15 @@ internal static class RequestBehaviorMetadataSourceBuilder
 
         foreach (var registration in registrations)
         {
-            source.Append("        global::PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation.RequestBehaviorMetadata.")
-                .Append(registration).Append('\n');
+            source
+                .Append("        global::PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation.")
+                .Append("RequestBehaviorMetadata.")
+                .Append(registration)
+                .Append('\n');
         }
 
-        return source.Append("    }\n}\n").ToString();
+        return source
+            .Append("    }\n}\n")
+            .ToString();
     }
 }
