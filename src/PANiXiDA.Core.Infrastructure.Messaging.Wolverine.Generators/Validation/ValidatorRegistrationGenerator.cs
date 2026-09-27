@@ -86,12 +86,12 @@ public sealed class ValidatorRegistrationGenerator : IIncrementalGenerator
         return compilation.IsSymbolAccessibleWithin(type, compilation.Assembly);
     }
 
-    private static bool HasTypeParameters(INamedTypeSymbol type)
+    internal static bool HasTypeParameters(INamedTypeSymbol type)
     {
         return type.Arity > 0 || type.ContainingType is not null && HasTypeParameters(type.ContainingType);
     }
 
-    private static IEnumerable<INamedTypeSymbol> EnumerateTypes(INamespaceOrTypeSymbol container)
+    internal static IEnumerable<INamedTypeSymbol> EnumerateTypes(INamespaceOrTypeSymbol container)
     {
         foreach (var member in container.GetMembers().OrderBy(member => member.MetadataName, StringComparer.Ordinal))
         {

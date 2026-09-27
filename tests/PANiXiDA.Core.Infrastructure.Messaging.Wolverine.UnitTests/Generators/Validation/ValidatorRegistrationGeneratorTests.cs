@@ -6,6 +6,7 @@ using FluentValidation;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Validation;
@@ -15,6 +16,8 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Generators.
 
 public sealed class ValidatorRegistrationGeneratorTests
 {
+    private const string PeerValidatorSource = "public sealed class PeerValidator : FluentValidation.AbstractValidator<string>;";
+
     private const string Source = """
         using FluentValidation;
         public sealed class Dependency;
@@ -151,6 +154,64 @@ public sealed class ValidatorRegistrationGeneratorTests
         services.ShouldContain(descriptor => descriptor.ServiceType == typeof(IValidator<int>));
     }
 
+    [Theory(DisplayName = "Validator registrations belong to the selected assembly load context")]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GeneratorShouldIsolateAssemblyLoadContexts(bool generateInDeclaringAssembly)
+    {
+        var module = Compile(PeerValidatorSource, generate: generateInDeclaringAssembly);
+        var host = Compile("public static class Host;", references: [module.Reference]);
+        var firstContext = new AssemblyLoadContext("First", isCollectible: true);
+        var secondContext = new AssemblyLoadContext("Second", isCollectible: true);
+        using var firstImage = new MemoryStream(module.Image);
+        using var secondImage = new MemoryStream(module.Image);
+        var firstAssembly = firstContext.LoadFromStream(firstImage);
+        var secondAssembly = secondContext.LoadFromStream(secondImage);
+        using var firstHostImage = new MemoryStream(host.Image);
+        using var secondHostImage = new MemoryStream(host.Image);
+        var firstHost = firstContext.LoadFromStream(firstHostImage);
+        var secondHost = secondContext.LoadFromStream(secondHostImage);
+        var first = new ServiceCollection();
+        var second = new ServiceCollection();
+
+        try
+        {
+            RuntimeHelpers.RunModuleConstructor(firstHost.ManifestModule.ModuleHandle);
+            RuntimeHelpers.RunModuleConstructor(secondHost.ManifestModule.ModuleHandle);
+            ValidatorRegistry.AddValidators(first, [firstAssembly]);
+            ValidatorRegistry.AddValidators(second, [secondAssembly]);
+
+            first.Count.ShouldBe(2);
+            second.Count.ShouldBe(2);
+            first.ShouldAllBe(descriptor => descriptor.ImplementationType!.Assembly == firstAssembly);
+            second.ShouldAllBe(descriptor => descriptor.ImplementationType!.Assembly == secondAssembly);
+        }
+        finally
+        {
+            firstContext.Unload();
+            secondContext.Unload();
+        }
+    }
+
+    [Theory(DisplayName = "Validator registrations do not prevent their assembly load context from unloading")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeneratorShouldAllowAssemblyLoadContextUnloading(bool referenced)
+    {
+        var module = Compile(PeerValidatorSource, generate: !referenced);
+        var host = referenced ? Compile("public static class Host;", references: [module.Reference]) : module;
+        var context = RegisterAndUnload(host.Image, referenced ? module.Assembly : null);
+
+        for (var attempt = 0; attempt < 10 && context.IsAlive; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+
+        context.IsAlive.ShouldBeFalse();
+    }
+
     [Theory(DisplayName = "Inaccessible validators fail explicitly when their assembly is selected")]
     [InlineData("internal sealed class HiddenValidator : AbstractValidator<string>;", true)]
     [InlineData("public static class Container { private sealed class HiddenValidator : AbstractValidator<string>; }", false)]
@@ -187,6 +248,79 @@ public sealed class ValidatorRegistrationGeneratorTests
 
         services.ShouldBeEmpty();
         exception.Message.ShouldContain("No generated validator metadata exists");
+    }
+
+    [Theory(DisplayName = "Only unregistered concrete validators emitted by peer generators produce a diagnostic")]
+    [InlineData("public static class Host;", PeerValidatorSource, true)]
+    [InlineData(PeerValidatorSource, "public static class Generated;", false)]
+    [InlineData("public partial class PeerValidator;", "public partial class PeerValidator : FluentValidation.AbstractValidator<string>;", true)]
+    [InlineData("public static class Host;", "public abstract class BaseValidator : FluentValidation.AbstractValidator<string>;", false)]
+    [InlineData("public static class Host;", "public class GenericValidator<T> : FluentValidation.AbstractValidator<T>;", false)]
+    public async Task GeneratorShouldRejectUnregisteredPeerValidators(
+        string source,
+        string peerSource,
+        bool missing)
+    {
+        var compilation = CreateCompilation(source, "Peer_" + Guid.NewGuid().ToString("N"));
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            new ValidatorRegistrationGenerator().AsSourceGenerator(),
+            new PeerValidatorGenerator(peerSource).AsSourceGenerator());
+
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out _, TestContext.Current.CancellationToken);
+
+        var diagnostics = await output.WithAnalyzers([new ValidatorRegistrationAnalyzer()])
+            .GetAnalyzerDiagnosticsAsync(TestContext.Current.CancellationToken);
+        diagnostics.Select(diagnostic => diagnostic.Id).ShouldBe(missing ? ["PANWOLVSG001"] : []);
+        diagnostics.ShouldAllBe(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact(DisplayName = "A host registers peer-generated validators from a compiled Application assembly")]
+    public async Task GeneratorShouldRegisterReferencedPeerValidators()
+    {
+        var compilation = CreateCompilation(
+            "public static class Application;",
+            "Application_" + Guid.NewGuid().ToString("N"),
+            includeAdapter: false);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new PeerValidatorGenerator(PeerValidatorSource));
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var applicationCompilation, out _, TestContext.Current.CancellationToken);
+        var application = Emit(applicationCompilation, string.Empty);
+        var hostCompilation = CreateCompilation(
+            "public static class Host;",
+            "Host_" + Guid.NewGuid().ToString("N"),
+            references: [application.Reference]);
+        var result = Generate(hostCompilation);
+        var diagnostics = await result.Compilation.WithAnalyzers([new ValidatorRegistrationAnalyzer()])
+            .GetAnalyzerDiagnosticsAsync(TestContext.Current.CancellationToken);
+        var host = Emit(result.Compilation, result.Source);
+        RuntimeHelpers.RunModuleConstructor(host.Assembly.ManifestModule.ModuleHandle);
+        var services = new ServiceCollection();
+
+        ValidatorRegistry.AddValidators(services, [application.Assembly]);
+
+        diagnostics.ShouldBeEmpty();
+        services.Count.ShouldBe(2);
+        services.ShouldAllBe(descriptor => descriptor.ImplementationType!.Assembly == application.Assembly);
+    }
+
+    [Theory(DisplayName = "The validator analyzer is inactive without generated registrations or the required contracts")]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task AnalyzerShouldIgnoreCompilationsWithoutRegistrations(
+        bool includeAdapter,
+        bool includeFluentValidation)
+    {
+        var compilation = CreateCompilation("public static class Host;", "WithoutRegistrations", includeAdapter);
+        if (!includeFluentValidation)
+        {
+            compilation = compilation.RemoveReferences(compilation.References.Single(reference =>
+                Path.GetFileName(reference.Display) == "FluentValidation.dll"));
+        }
+
+        var diagnostics = await compilation.WithAnalyzers([new ValidatorRegistrationAnalyzer()])
+            .GetAnalyzerDiagnosticsAsync(TestContext.Current.CancellationToken);
+
+        diagnostics.ShouldBeEmpty();
     }
 
     [Fact(DisplayName = "Validator generation uses semantic contract matching and a file-local implementation")]
@@ -265,10 +399,10 @@ public sealed class ValidatorRegistrationGeneratorTests
     {
         var module = Compile("public static class Module;", generate: false);
         var services = new ServiceCollection();
-        ValidatorRegistry.Register(module.Assembly.FullName!, "Validator", null);
-        ValidatorRegistry.Register(module.Assembly.FullName!, "Validator", collection =>
+        ValidatorRegistry.Register(module.Assembly, module.Assembly.FullName!, "Validator", null);
+        ValidatorRegistry.Register(module.Assembly, module.Assembly.FullName!, "Validator", collection =>
             collection.AddSingleton("registered"));
-        ValidatorRegistry.Register(module.Assembly.FullName!, "Validator", null);
+        ValidatorRegistry.Register(module.Assembly, module.Assembly.FullName!, "Validator", null);
 
         ValidatorRegistry.AddValidators(services, [module.Assembly]);
 
@@ -283,12 +417,35 @@ public sealed class ValidatorRegistrationGeneratorTests
     {
         var compilation = CreateCompilation(source, "Validators_" + Guid.NewGuid().ToString("N"), includeAdapter, references);
         var result = generate ? Generate(compilation) : (Compilation: (Compilation)compilation, Source: string.Empty);
+        return Emit(result.Compilation, result.Source);
+    }
+
+    private static Module Emit(
+        Compilation compilation,
+        string generated)
+    {
         using var stream = new MemoryStream();
-        var emitted = result.Compilation.Emit(stream, cancellationToken: TestContext.Current.CancellationToken);
+        var emitted = compilation.Emit(stream, cancellationToken: TestContext.Current.CancellationToken);
         emitted.Success.ShouldBeTrue(string.Join(Environment.NewLine, emitted.Diagnostics));
-        var reference = MetadataReference.CreateFromImage(stream.ToArray());
+        var image = stream.ToArray();
+        var reference = MetadataReference.CreateFromImage(image);
         stream.Position = 0;
-        return new Module(AssemblyLoadContext.Default.LoadFromStream(stream), reference, result.Source);
+        return new Module(AssemblyLoadContext.Default.LoadFromStream(stream), reference, generated, image);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference RegisterAndUnload(
+        byte[] image,
+        Assembly? discoveryAssembly)
+    {
+        var context = new AssemblyLoadContext("Unloadable", isCollectible: true);
+        using var stream = new MemoryStream(image);
+        var assembly = context.LoadFromStream(stream);
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        ValidatorRegistry.AddValidators(new ServiceCollection(), [discoveryAssembly ?? assembly]);
+        var reference = new WeakReference(context);
+        context.Unload();
+        return reference;
     }
 
     private static CSharpCompilation CreateCompilation(
@@ -322,5 +479,18 @@ public sealed class ValidatorRegistrationGeneratorTests
         return (output, string.Join("\n", driver.GetRunResult().Results.Single().GeneratedSources.Select(item => item.SourceText.ToString())));
     }
 
-    private sealed record Module(Assembly Assembly, MetadataReference Reference, string Generated);
+    private sealed record Module(
+        Assembly Assembly,
+        MetadataReference Reference,
+        string Generated,
+        byte[] Image);
+
+    private sealed class PeerValidatorGenerator(string source) : IIncrementalGenerator
+    {
+        public void Initialize(IncrementalGeneratorInitializationContext context)
+        {
+            context.RegisterSourceOutput(context.CompilationProvider,
+                (output, _) => output.AddSource("PeerValidators.g.cs", source));
+        }
+    }
 }

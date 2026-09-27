@@ -18,7 +18,9 @@ internal sealed class ValidatorRegistrationSourceBuilder
             [global::System.Runtime.CompilerServices.ModuleInitializer]
             internal static void Initialize()
             {
+                var assembly = typeof(GeneratedWolverineValidators).Assembly;
                 global::PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation.ValidatorRegistry.RegisterAssemblies(
+                    assembly,
 
         """);
 
@@ -40,6 +42,7 @@ internal sealed class ValidatorRegistrationSourceBuilder
         var typeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         source.Append("        global::PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation.")
             .Append("ValidatorRegistry.Register(\n")
+            .Append("            assembly,\n")
             .Append(' ', 12)
             .Append(Literal(type.ContainingAssembly.Identity.ToString()))
             .Append(",\n")
