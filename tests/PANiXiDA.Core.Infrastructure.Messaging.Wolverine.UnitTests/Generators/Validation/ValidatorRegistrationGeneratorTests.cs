@@ -305,7 +305,12 @@ public sealed class ValidatorRegistrationGeneratorTests
             paths.Select(path => MetadataReference.CreateFromFile(path)).Concat(references ?? []),
             new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
-                generalDiagnosticOption: ReportDiagnostic.Error));
+                generalDiagnosticOption: ReportDiagnostic.Error,
+                specificDiagnosticOptions: new Dictionary<string, ReportDiagnostic>
+                {
+                    ["CS1701"] = ReportDiagnostic.Suppress,
+                    ["CS1702"] = ReportDiagnostic.Suppress
+                }));
     }
 
     private static (Compilation Compilation, string Source) Generate(CSharpCompilation compilation)
