@@ -10,4 +10,10 @@
     <ItemGroup>
         <ProjectReference Include="../../src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.csproj" />
     </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"
+                          GlobalPropertiesToRemove="PublishAot;RuntimeIdentifier;SelfContained;PublishTrimmed;IsAotCompatible;EnableAotAnalyzer;EnableTrimAnalyzer" />
+    </ItemGroup>
 </Project>

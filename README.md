@@ -238,6 +238,16 @@ The package includes a source generator that prepares request behavior bindings 
 
 Behavior registration uses the generated metadata without constructing generic types or inspecting constructors at runtime. Wolverine still generates the handler bodies and uses `TypeLoadMode.Auto`: pre-generated handlers are used when available, with runtime compilation available otherwise. No additional `codegen write` step is needed for local builds. The behavior metadata path is tested with Native AOT; the complete Wolverine, EF Core, and Kafka integration is not advertised as Native AOT compatible.
 
+The generator follows the same package layout as the Domain, HTTP, and EF generators: a separate `netstandard2.0` analyzer bundled under `analyzers/dotnet/cs`, semantic symbol matching, deterministic output, and a file-local module initializer. Metadata lookup initializes the declaring module before reading its registrations. The host generator also inspects referenced application modules at compile time to bind shared behaviors to requests declared in other assemblies; all required types must be visible to that compilation. Missing metadata fails explicitly without falling back to reflection.
+
+### Native AOT boundary
+
+The adapter's request execution uses direct behavior calls, module lookup, and keyed DI. Remaining type inspection (`GetGenericArguments`, assignability and type names) belongs to handler-chain construction and code generation. In `Auto` mode, Wolverine may perform this work on first use, so a normal build does not guarantee that all configuration work has finished before the first request.
+
+Full Native AOT deployment requires consumer-side configuration as well as dependency support: pre-generate Wolverine handlers with `dotnet run -- codegen write`, configure `TypeLoadMode.Static` after the mediator registration, and supply generated JSON serialization metadata for transported messages. The adapter currently registers FluentValidation validators by scanning assemblies at startup and binds generic Kafka option types with `ConfigurationBinder.Get<TOption>()`; the latter still produces `IL2026` and `IL3050` in local AOT analysis. These are integration paths owned by this package, not problems that a Wolverine upgrade alone will remove. Startup-only reflection also needs trimming-safe metadata in an AOT application.
+
+The EF Core outbox and PostgreSQL/Kafka transports require a separate end-to-end AOT consumer check. A passing behavior smoke check does not exercise host startup, EF models/queries, serialization, or durable message delivery and does not establish Native AOT compatibility for those dependencies.
+
 Custom behaviors can be appended or inserted before or after any behavior in the same stage:
 
 ```csharp
@@ -292,7 +302,7 @@ dotnet build --configuration Release
 dotnet test --configuration Release
 ```
 
-The Native AOT smoke check requires the platform's native build tools:
+The Native AOT smoke check is run locally only and requires the platform's native build tools:
 
 ```bash
 dotnet publish tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke -c Release -r linux-x64
@@ -301,7 +311,7 @@ dotnet publish tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke -
 
 ### Continuous integration
 
-Every pull request and push to `main` runs formatting, tests, the Native AOT smoke check, and mandatory
+Every pull request and push to `main` runs formatting, tests, and mandatory
 SonarQube analysis. Publishing from `main` starts only after the SonarQube
 Quality Gate succeeds.
 

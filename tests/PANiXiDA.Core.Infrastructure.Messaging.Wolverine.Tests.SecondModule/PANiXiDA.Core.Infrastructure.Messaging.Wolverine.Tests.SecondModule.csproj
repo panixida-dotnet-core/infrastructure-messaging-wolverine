@@ -16,4 +16,10 @@
         <Using Include="PANiXiDA.Core.Domain.DomainEvents" />
         <Using Include="PANiXiDA.Core.ResultPattern" />
     </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"
+                          GlobalPropertiesToRemove="PublishAot;RuntimeIdentifier;SelfContained;PublishTrimmed;IsAotCompatible;EnableAotAnalyzer;EnableTrimAnalyzer" />
+    </ItemGroup>
 </Project>

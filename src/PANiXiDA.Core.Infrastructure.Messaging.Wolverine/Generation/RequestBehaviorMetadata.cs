@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 
@@ -38,6 +39,8 @@ public static class RequestBehaviorMetadata
 
     internal static Behavior GetBehavior(Type type)
     {
+        RuntimeHelpers.RunModuleConstructor(type.Assembly.ManifestModule.ModuleHandle);
+
         return behaviors.TryGetValue(type, out var behavior)
             ? behavior
             : throw new InvalidOperationException(
@@ -46,6 +49,9 @@ public static class RequestBehaviorMetadata
 
     internal static bool TryResolve(Type behavior, Type request, Type result, Type contract, out Type closedBehavior)
     {
+        RuntimeHelpers.RunModuleConstructor(request.Assembly.ManifestModule.ModuleHandle);
+        RuntimeHelpers.RunModuleConstructor(result.Assembly.ManifestModule.ModuleHandle);
+
         closedBehavior = null!;
         if (!GetBehavior(behavior).Contracts.Contains(contract) || !typeof(IRequest<Result>).IsAssignableFrom(request))
         {

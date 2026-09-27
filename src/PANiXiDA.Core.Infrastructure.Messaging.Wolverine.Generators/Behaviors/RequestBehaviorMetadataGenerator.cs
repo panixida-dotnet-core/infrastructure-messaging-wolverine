@@ -1,11 +1,10 @@
 using System.Collections.Immutable;
-using System.Text;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators;
+namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Behaviors;
 
 /// <summary>
 /// Generates the type and constructor metadata used by Wolverine request behavior policies.
@@ -97,13 +96,7 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
             return string.Empty;
         }
 
-        var source = new StringBuilder("#nullable enable\nnamespace PANiXiDA.Generated;\ninternal static class WolverineRequestBehaviors\n{\n    [global::System.Runtime.CompilerServices.ModuleInitializer]\n    internal static void Register()\n    {\n");
-        foreach (var registration in registrations)
-        {
-            source.Append("        global::").Append(AdapterAssembly).Append(".Generation.RequestBehaviorMetadata.").Append(registration).Append('\n');
-        }
-
-        return source.Append("    }\n}\n").ToString();
+        return RequestBehaviorMetadataSourceBuilder.Build(registrations);
     }
 
     private static HashSet<INamedTypeSymbol> DiscoverTypes(CSharpCompilation compilation, IAssemblySymbol[] assemblies, CancellationToken token)
@@ -299,7 +292,9 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         {
             yield return named;
         }
-        else if (named.IsTupleType || named.ContainingNamespace.ToDisplayString() == "System.Threading.Tasks")
+        else if (named.IsTupleType ||
+            SymbolEqualityComparer.Default.Equals(named.OriginalDefinition, compilation.GetTypeByMetadataName("System.Threading.Tasks.Task`1")) ||
+            SymbolEqualityComparer.Default.Equals(named.OriginalDefinition, compilation.GetTypeByMetadataName("System.Threading.Tasks.ValueTask`1")))
         {
             foreach (var result in named.TypeArguments.SelectMany(argument => ReturnResults(argument, compilation, resultBase)))
             {
@@ -321,8 +316,15 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
 
     private static bool CanReference(Compilation compilation, INamedTypeSymbol type)
     {
-        return !type.IsFileLocal && compilation.IsSymbolAccessibleWithin(type, compilation.Assembly) &&
-            type.TypeKind != TypeKind.Error && type.ContainingType is not { IsGenericType: true };
+        for (var current = type; current is not null; current = current.ContainingType)
+        {
+            if (current.IsFileLocal || current.ContainingType is { IsGenericType: true })
+            {
+                return false;
+            }
+        }
+
+        return compilation.IsSymbolAccessibleWithin(type, compilation.Assembly) && type.TypeKind != TypeKind.Error;
     }
 
     private static bool HasTypeParameter(ITypeSymbol type)
