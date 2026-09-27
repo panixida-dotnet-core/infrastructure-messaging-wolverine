@@ -252,7 +252,7 @@ Kafka option binding is separate from message serialization: `WolverineKafkaConf
 
 The adapter does not configure a message serializer or declare a JSON serialization context. Wolverine's default `SystemTextJsonSerializer` handles transport payloads and durable message bodies. The consuming application owns its message types and can configure serialization through `WolverineOptions.UseSystemTextJsonForSerialization` or `DefaultSerializer`. For a strict AOT path, Wolverine 6.40's serializer source recommends an `IMessageSerializer` backed by generated `JsonTypeInfo`/`JsonSerializerContext`; handler code generation does not supply that metadata.
 
-The EF Core outbox and PostgreSQL/Kafka transports require a separate end-to-end AOT consumer check. A passing behavior smoke check does not exercise host startup, EF models/queries, serialization, or durable message delivery and does not establish Native AOT compatibility for those dependencies.
+The EF Core outbox and PostgreSQL/Kafka transports require a separate end-to-end AOT consumer check. An isolated behavior check does not exercise host startup, EF models/queries, serialization, or durable message delivery and does not establish Native AOT compatibility for those dependencies.
 
 Custom behaviors can be appended or inserted before or after any behavior in the same stage:
 
@@ -308,12 +308,7 @@ dotnet build --configuration Release
 dotnet test --configuration Release
 ```
 
-The Native AOT smoke check is run locally only and requires the platform's native build tools:
-
-```bash
-dotnet publish tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke -c Release -r linux-x64
-./tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke/bin/Release/net10.0/linux-x64/publish/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.AotSmoke
-```
+Native AOT checks are performed locally in a separate consumer application outside this repository. They are not part of CI.
 
 ### Continuous integration
 
