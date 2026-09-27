@@ -1,13 +1,12 @@
 using JasperFx.CodeGeneration;
 using JasperFx.CodeGeneration.Model;
 
-using FluentValidation;
-
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
@@ -245,9 +244,7 @@ public static class HostBuilderExtensions
     {
         return hostBuilder.ConfigureServices(services =>
         {
-            services.AddValidatorsFromAssemblies(
-                discoveryAssemblies.OfType<Assembly>(),
-                includeInternalTypes: true);
+            ValidatorRegistry.AddValidators(services, discoveryAssemblies.OfType<Assembly>());
         });
     }
 

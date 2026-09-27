@@ -236,10 +236,16 @@ The modular overload activates module routing before validation, keeps the appli
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 
-The bundled source generator prepares request behavior metadata during compilation.
-Keep analyzer assets enabled and reference the request and behavior assemblies from
-the host project. These types must be accessible to generated code. No additional
-attributes, partial declarations, or code-generation commands are required.
+The bundled source generator prepares request behavior metadata and scoped
+FluentValidation registrations. Keep analyzer assets enabled in the host and reference
+the assemblies passed to `AddModule` or `UseWolverineMediator`. Requests, behaviors,
+validators, and validated types must be accessible to generated code, normally
+`public` for referenced assemblies. Internal validators require the generator in
+their declaring project. No additional registration calls, attributes, partial
+declarations, or code-generation commands are required.
+
+Missing validator registrations fail explicitly at startup without reflection scanning.
+Validators within each discovery assembly are registered in deterministic type-name order.
 
 Custom behaviors can be appended or inserted before or after any behavior in the same stage:
 
