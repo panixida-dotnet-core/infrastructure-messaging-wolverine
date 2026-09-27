@@ -42,7 +42,7 @@ public class DbContextOutboxProxy<TDbContext> : DispatchProxy
             LastPublishedMessage = args?[0];
             LastDeliveryOptions = args?[1] as DeliveryOptions;
 
-            return DispatchException is null ? ValueTask.CompletedTask : ValueTask.FromException(DispatchException);
+            return DispatchException is null ? ValueTask.CompletedTask : new ValueTask(Task.FromException(DispatchException));
         }
 
         if (targetMethod?.Name == nameof(IMessageBus.SendAsync))
@@ -51,7 +51,7 @@ public class DbContextOutboxProxy<TDbContext> : DispatchProxy
             LastSentMessage = args?[0];
             LastDeliveryOptions = args?[1] as DeliveryOptions;
 
-            return DispatchException is null ? ValueTask.CompletedTask : ValueTask.FromException(DispatchException);
+            return DispatchException is null ? ValueTask.CompletedTask : new ValueTask(Task.FromException(DispatchException));
         }
 
         if (targetMethod?.Name == nameof(IDbContextOutbox<>.FlushOutgoingMessagesAsync))

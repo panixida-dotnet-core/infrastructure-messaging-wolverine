@@ -99,7 +99,7 @@ public sealed class WolverineSchedulerTests
     public async Task SchedulerShouldValidateDelay(bool isCommand)
     {
         var outbox = DbContextOutboxProxy<TestDbContext>.Create(out var proxy);
-        IScheduler scheduler = new WolverineScheduler(outbox);
+        var scheduler = new WolverineScheduler(outbox);
         var command = new TestCommand(Guid.NewGuid());
         var @event = new TestDomainEvent(Guid.NewGuid());
         var token = TestContext.Current.CancellationToken;
