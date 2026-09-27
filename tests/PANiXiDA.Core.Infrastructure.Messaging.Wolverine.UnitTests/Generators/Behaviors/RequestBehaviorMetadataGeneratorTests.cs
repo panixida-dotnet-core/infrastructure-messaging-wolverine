@@ -217,6 +217,60 @@ public sealed class RequestBehaviorMetadataGeneratorTests
         source.ShouldContain("typeof(global::WrongArityBehavior<>), typeof(global::DefaultRequest)");
     }
 
+    [Theory(DisplayName = "Metadata generator substitutes type parameters throughout compound constraints")]
+    [InlineData("TResult[]", "Result[]", "Result[,]")]
+    [InlineData("TResult[,]", "Result[,]", "Result[]")]
+    [InlineData("TResult[][]", "Result[][]", "Result[,]")]
+    [InlineData(
+        "System.Collections.Generic.List<TResult[]>",
+        "System.Collections.Generic.List<Result[]>",
+        "System.Collections.Generic.List<Result[,]>")]
+    [InlineData("(TResult[], int)", "(Result[], int)", "(Result[,], int)")]
+    [InlineData(
+        "ConstraintContainer<TResult>.Nested",
+        "ConstraintContainer<Result>.Nested",
+        "ConstraintContainer<string>.Nested")]
+    [InlineData(
+        "ConstraintContainer<TResult[]>.Nested<TResult[,]>",
+        "ConstraintContainer<Result[]>.Nested<Result[,]>",
+        "ConstraintContainer<Result[]>.Nested<Result[]>")]
+    public void GeneratorShouldSubstituteCompoundConstraints(
+        string constraintType,
+        string matchingType,
+        string nonMatchingType)
+    {
+        // Arrange
+        var input = Source + $$"""
+            public interface IConstraint<T>;
+            public class ConstraintContainer<T>
+            {
+                public class Nested;
+                public class Nested<TItem>;
+            }
+            public sealed class MatchingRequest : IRequest<Result>, IConstraint<{{matchingType}}>;
+            public sealed class NonMatchingRequest : IRequest<Result>, IConstraint<{{nonMatchingType}}>;
+            public class ConstrainedBehavior<TRequest, TResult> : Behavior<TRequest, TResult>
+                where TRequest : IRequest<TResult>, IConstraint<{{constraintType}}>
+                where TResult : Result
+            {
+                public ConstrainedBehavior() : base(new Dependency()) {}
+            }
+            """;
+
+        // Act
+        var source = Generate(input);
+
+        // Assert
+        var bindings = source.Split('\n')
+            .Where(line => line.Contains("RegisterBinding(typeof(global::ConstrainedBehavior<,>)"))
+            .ToArray();
+        var matchingBinding = bindings.Single(line => line.Contains("typeof(global::MatchingRequest)"));
+        matchingBinding.ShouldEndWith(
+            "typeof(global::ConstrainedBehavior<global::MatchingRequest, global::PANiXiDA.Core.ResultPattern.Result>));");
+        var nonMatchingBinding = bindings.Single(line => line.Contains("typeof(global::NonMatchingRequest)"));
+        nonMatchingBinding.ShouldEndWith(", null);");
+    }
+
     [Fact(DisplayName = "Metadata generator skips inaccessible and unsupported request types")]
     public void GeneratorShouldSkipInaccessibleRequests()
     {

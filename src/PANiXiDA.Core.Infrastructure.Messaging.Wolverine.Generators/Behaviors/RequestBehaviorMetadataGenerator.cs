@@ -352,10 +352,11 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         }
 
         return parameter.ConstraintTypes.All(constraint =>
-            IsAssignable(compilation, argument, Substitute(constraint, definition, arguments)));
+            IsAssignable(compilation, argument, Substitute(compilation, constraint, definition, arguments)));
     }
 
     private static ITypeSymbol Substitute(
+        Compilation compilation,
         ITypeSymbol type,
         INamedTypeSymbol definition,
         ITypeSymbol[] arguments)
@@ -366,10 +367,35 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
             return arguments[parameter.Ordinal];
         }
 
-        return type is INamedTypeSymbol { IsGenericType: true } named
-            ? named.ConstructedFrom.Construct(
-                [.. named.TypeArguments.Select(argument => Substitute(argument, definition, arguments))])
-            : type;
+        if (type is IArrayTypeSymbol array)
+        {
+            return compilation.CreateArrayTypeSymbol(
+                Substitute(compilation, array.ElementType, definition, arguments),
+                array.Rank,
+                array.NullableAnnotation);
+        }
+
+        if (type is not INamedTypeSymbol { IsGenericType: true } named)
+        {
+            return type;
+        }
+
+        var constructedFrom = named.ConstructedFrom;
+        if (named.ContainingType is { IsGenericType: true } containingType)
+        {
+            var substitutedContainer = (INamedTypeSymbol)Substitute(
+                compilation,
+                containingType,
+                definition,
+                arguments);
+            constructedFrom = substitutedContainer.GetTypeMembers(named.Name, named.Arity).Single();
+        }
+
+        return (named.Arity == 0
+            ? constructedFrom
+            : constructedFrom.Construct(
+                [.. named.TypeArguments.Select(argument => Substitute(compilation, argument, definition, arguments))]))
+            .WithNullableAnnotation(named.NullableAnnotation);
     }
 
     private static IEnumerable<INamedTypeSymbol> ReturnResults(
@@ -436,7 +462,10 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
     private static bool HasTypeParameter(ITypeSymbol type)
     {
         return type is ITypeParameterSymbol ||
-            type is INamedTypeSymbol named && named.TypeArguments.Any(HasTypeParameter);
+            type is IArrayTypeSymbol array && HasTypeParameter(array.ElementType) ||
+            type is INamedTypeSymbol named &&
+            (named.TypeArguments.Any(HasTypeParameter) ||
+                named.ContainingType is not null && HasTypeParameter(named.ContainingType));
     }
 
     private static string TypeName(ITypeSymbol type)
