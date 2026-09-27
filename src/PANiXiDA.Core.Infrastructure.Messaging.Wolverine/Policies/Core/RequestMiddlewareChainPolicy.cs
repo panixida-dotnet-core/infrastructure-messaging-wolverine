@@ -80,12 +80,7 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
 
     internal static bool IsRequestMessageType(Type messageType)
     {
-        return messageType
-            .GetInterfaces()
-            .Any(item =>
-                item.IsGenericType &&
-                item.GetGenericTypeDefinition() == typeof(IRequest<>) &&
-                typeof(Result).IsAssignableFrom(item.GenericTypeArguments[0]));
+        return typeof(IRequest<Result>).IsAssignableFrom(messageType);
     }
 
     private static Variable? ResolveResultVariable(HandlerChain chain)

@@ -16,6 +16,7 @@
     <File Path="version.json" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.csproj" />
     <Project Path="src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.csproj" />
   </Folder>
   <Folder Name="/tests/">

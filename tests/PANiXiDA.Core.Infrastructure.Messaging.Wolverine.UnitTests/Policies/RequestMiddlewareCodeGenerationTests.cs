@@ -6,6 +6,28 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class RequestMiddlewareCodeGenerationTests
 {
+    [Fact(DisplayName = "Missing generated constructor metadata fails explicitly")]
+    public void ResolveConstructorShouldRejectMissingGeneratedMetadata()
+    {
+        var exception = Should.Throw<InvalidOperationException>(() =>
+            RequestMiddlewareCodeGeneration.ResolveConstructor(typeof(UnregisteredRequest)));
+
+        exception.Message.ShouldStartWith("No generated request behavior metadata exists");
+    }
+
+    [Fact(DisplayName = "Missing generated bindings fail explicitly instead of skipping request middleware")]
+    public void TryResolveClosedMiddlewareTypeShouldRejectMissingGeneratedBinding()
+    {
+        static void act() => RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
+            typeof(TestBeforeBehavior<,>), typeof(UnregisteredRequest), typeof(Result), typeof(IBeforeRequestBehavior<,>), out _);
+
+        var exception = Should.Throw<InvalidOperationException>(act);
+
+        exception.Message.ShouldStartWith("No generated request behavior binding exists");
+    }
+
+    private sealed record UnregisteredRequest : ICommand<Result>;
+
     [Fact(DisplayName = "TryResolveClosedMiddlewareType closes generic middleware for request and result")]
     public void TryResolveClosedMiddlewareTypeShouldCloseGenericMiddlewareForRequestAndResult()
     {
@@ -146,8 +168,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
     {
         var constructor = RequestMiddlewareCodeGeneration.ResolveConstructor(typeof(ClosedCommandBeforeBehavior));
 
-        constructor.DeclaringType.ShouldBe(typeof(ClosedCommandBeforeBehavior));
-        constructor.GetParameters().ShouldBeEmpty();
+        constructor.ShouldBeEmpty();
     }
 
     [Theory(DisplayName = "BuildVariableName builds stable variable names")]

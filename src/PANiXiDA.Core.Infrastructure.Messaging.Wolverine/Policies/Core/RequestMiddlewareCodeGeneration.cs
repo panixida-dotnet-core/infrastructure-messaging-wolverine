@@ -1,6 +1,6 @@
 ﻿using JasperFx.CodeGeneration.Model;
 
-using System.Reflection;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 
@@ -13,82 +13,44 @@ internal static class RequestMiddlewareCodeGeneration
         Type behaviorInterfaceType,
         out Type closedMiddlewareType)
     {
-        if (!middlewareType.IsGenericTypeDefinition)
+        if (!middlewareType.IsGenericTypeDefinition && middlewareType.ContainsGenericParameters)
         {
-            if (middlewareType.ContainsGenericParameters)
-            {
-                closedMiddlewareType = null!;
-                return false;
-            }
-
-            if (!SupportsRequest(
-                    middlewareType,
-                    requestType,
-                    resultType,
-                    behaviorInterfaceType))
-            {
-                closedMiddlewareType = null!;
-                return false;
-            }
-
-            closedMiddlewareType = middlewareType;
-            return true;
+            closedMiddlewareType = null!;
+            return false;
         }
 
-        var genericArguments = middlewareType.GetGenericArguments();
-        if (genericArguments.Length != 2)
+        if (middlewareType.IsGenericTypeDefinition && middlewareType.GetGenericArguments().Length != 2)
         {
             throw new InvalidOperationException(
                 $"Open generic middleware '{middlewareType.FullName}' must have exactly 2 generic parameters.");
         }
 
-        try
-        {
-            var candidate = middlewareType.MakeGenericType(requestType, resultType);
-
-            if (!SupportsRequest(
-                    candidate,
-                    requestType,
-                    resultType,
-                    behaviorInterfaceType))
-            {
-                closedMiddlewareType = null!;
-                return false;
-            }
-
-            closedMiddlewareType = candidate;
-            return true;
-        }
-        catch (ArgumentException)
-        {
-            closedMiddlewareType = null!;
-            return false;
-        }
+        return RequestBehaviorMetadata.TryResolve(
+            middlewareType, requestType, resultType, behaviorInterfaceType, out closedMiddlewareType);
     }
 
-    internal static ConstructorInfo ResolveConstructor(Type middlewareType)
+    internal static IReadOnlyList<Type> ResolveConstructor(Type middlewareType)
     {
-        var constructors = middlewareType.GetConstructors(BindingFlags.Instance | BindingFlags.Public);
+        var metadata = RequestBehaviorMetadata.GetBehavior(middlewareType);
 
-        if (constructors.Length != 1)
+        if (metadata.PublicConstructorCount != 1)
         {
             throw new InvalidOperationException(
                 $"Type '{middlewareType.FullName}' must have exactly one public constructor.");
         }
 
-        return constructors[0];
+        return metadata.ConstructorParameters;
     }
 
     internal static Variable[] ResolveConstructorVariables(
         IMethodVariables chain,
-        ConstructorInfo constructor)
+        IReadOnlyList<Type> parameters)
     {
-        var parameters = constructor.GetParameters();
-        var variables = new Variable[parameters.Length];
+        var variables = new Variable[parameters.Count];
 
-        for (var i = 0; i < parameters.Length; i++)
+        for (var i = 0; i < parameters.Count; i++)
         {
-            variables[i] = chain.FindVariable(parameters[i].ParameterType);
+            variables[i] = chain.FindVariable(parameters[i]);
         }
 
         return variables;
@@ -146,34 +108,6 @@ internal static class RequestMiddlewareCodeGeneration
         var valueTypeName = GetCodeTypeName(resultType.GetGenericArguments().Single());
 
         return $"global::PANiXiDA.Core.ResultPattern.Result.Failure<{valueTypeName}>({sourceResultExpression}.Errors)";
-    }
-
-    private static bool SupportsRequest(
-        Type closedMiddlewareType,
-        Type requestType,
-        Type resultType,
-        Type behaviorInterfaceType)
-    {
-        var behaviorInterfaces = closedMiddlewareType
-            .GetInterfaces()
-            .Where(item =>
-                item.IsGenericType &&
-                item.GetGenericTypeDefinition() == behaviorInterfaceType);
-
-        foreach (var behaviorInterface in behaviorInterfaces)
-        {
-            var genericArguments = behaviorInterface.GetGenericArguments();
-            var declaredRequestType = genericArguments[0];
-            var declaredResultType = genericArguments[1];
-
-            if (declaredRequestType.IsAssignableFrom(requestType) &&
-                declaredResultType.IsAssignableFrom(resultType))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static string ToCamelCase(string value)

@@ -41,13 +41,9 @@ public static class ServiceCollectionExtensions
                 serviceProvider,
                 moduleRegistry));
 
-        foreach (var dbContextType in moduleRegistry.Registrations
-                     .Select(registration => registration.DbContextType))
+        foreach (var registration in moduleRegistry.Registrations)
         {
-            services.TryAddKeyedScoped(
-                typeof(IOutboxDispatcher),
-                dbContextType,
-                typeof(EfCoreOutboxDispatcher<>).MakeGenericType(dbContextType));
+            services.TryAdd(registration.OutboxDispatcher);
         }
 
         services.TryAddScoped<WolverineModuleUnitOfWork>();

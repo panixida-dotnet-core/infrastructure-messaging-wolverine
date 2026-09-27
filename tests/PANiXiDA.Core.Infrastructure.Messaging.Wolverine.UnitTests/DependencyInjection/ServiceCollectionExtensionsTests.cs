@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
@@ -105,6 +106,74 @@ public sealed class ServiceCollectionExtensionsTests
         moduleOutboxDispatcher.FlushCallCount.ShouldBe(1);
 
         moduleContext.Exit(typeof(TestCommand));
+    }
+
+    [Fact(DisplayName = "Modular outbox registration preserves scoped lifetime and routes to each DbContext")]
+    public async Task ModularRegistrationShouldPreserveOutboxScopesAndModuleRouting()
+    {
+        var services = new ServiceCollection();
+        var registry = new WolverineModuleConfiguration()
+            .AddModule<TestDbContext>(typeof(TestCommand).Assembly)
+            .AddModule<SecondTestDbContext>(typeof(DbContext).Assembly)
+            .Build();
+        services.AddSingleton(DbContextOutboxProxy<TestDbContext>.Create(out var firstOutbox));
+        services.AddSingleton(DbContextOutboxProxy<SecondTestDbContext>.Create(out var secondOutbox));
+        services.AddWolverineMediator(registry);
+        services.AddWolverineMediator(registry);
+        await using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true
+        });
+        await using var scope = provider.CreateAsyncScope();
+        await using var otherScope = provider.CreateAsyncScope();
+        var moduleContext = scope.ServiceProvider.GetRequiredService<WolverineModuleExecutionContext>();
+        var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
+        var outboxDispatcher = scope.ServiceProvider.GetRequiredService<IOutboxDispatcher>();
+        var firstEvent = new TestDomainEvent(Guid.NewGuid());
+        var secondEvent = new TestDomainEvent(Guid.NewGuid());
+
+        moduleContext.Enter(typeof(TestCommand));
+        await eventBus.PublishAsync(firstEvent, TestContext.Current.CancellationToken);
+        await outboxDispatcher.FlushAsync(TestContext.Current.CancellationToken);
+        moduleContext.Exit(typeof(TestCommand));
+        moduleContext.Enter(typeof(DbContext));
+        await eventBus.PublishAsync(secondEvent, TestContext.Current.CancellationToken);
+        await outboxDispatcher.FlushAsync(TestContext.Current.CancellationToken);
+        moduleContext.Exit(typeof(DbContext));
+
+        firstOutbox.LastPublishedMessage.ShouldBeSameAs(firstEvent);
+        firstOutbox.PublishCallCount.ShouldBe(1);
+        firstOutbox.FlushCallCount.ShouldBe(1);
+        secondOutbox.LastPublishedMessage.ShouldBeSameAs(secondEvent);
+        secondOutbox.PublishCallCount.ShouldBe(1);
+        secondOutbox.FlushCallCount.ShouldBe(1);
+        foreach (var dbContextType in new[] { typeof(TestDbContext), typeof(SecondTestDbContext) })
+        {
+            var dispatcher = scope.ServiceProvider.GetRequiredKeyedService<IOutboxDispatcher>(dbContextType);
+            scope.ServiceProvider.GetKeyedServices<IOutboxDispatcher>(dbContextType).ShouldHaveSingleItem();
+            scope.ServiceProvider.GetRequiredKeyedService<IOutboxDispatcher>(dbContextType)
+                .ShouldBeSameAs(dispatcher);
+            otherScope.ServiceProvider.GetRequiredKeyedService<IOutboxDispatcher>(dbContextType)
+                .ShouldNotBeSameAs(dispatcher);
+        }
+    }
+
+    [Fact(DisplayName = "Modular registration preserves existing keyed outbox services")]
+    public void ModularRegistrationShouldPreserveExistingKeyedOutboxServices()
+    {
+        var services = new ServiceCollection();
+        var registry = new WolverineModuleConfiguration()
+            .AddModule<TestDbContext>(typeof(TestCommand).Assembly)
+            .Build();
+        var existingOutbox = new TestOutboxDispatcher();
+        services.AddKeyedSingleton<IOutboxDispatcher>(typeof(TestDbContext), existingOutbox);
+
+        services.AddWolverineMediator(registry);
+        services.AddWolverineMediator(registry);
+
+        using var provider = services.BuildServiceProvider();
+        provider.GetKeyedServices<IOutboxDispatcher>(typeof(TestDbContext))
+            .ShouldHaveSingleItem().ShouldBeSameAs(existingOutbox);
     }
 
     [Fact(DisplayName = "Modular event bus uses the active Wolverine message context outside mediator requests")]

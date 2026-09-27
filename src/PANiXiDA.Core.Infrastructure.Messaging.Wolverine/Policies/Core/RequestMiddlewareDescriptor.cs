@@ -1,12 +1,10 @@
 using JasperFx.CodeGeneration.Model;
 
-using System.Reflection;
-
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 
 internal sealed class RequestMiddlewareDescriptor(Type type)
 {
-    private readonly ConstructorInfo constructor =
+    private readonly IReadOnlyList<Type> constructor =
         RequestMiddlewareCodeGeneration.ResolveConstructor(type);
 
     private Variable[] constructorVariables = [];

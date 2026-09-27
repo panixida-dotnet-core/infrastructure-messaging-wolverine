@@ -34,11 +34,15 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - PostgreSQL for Wolverine message storage
 - Kafka only when external event topics are registered
 
+Full Native AOT support is not currently provided.
+
 ### Installation
+
+Use the latest 4.x version:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="..." />
+  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="4.*" />
 </ItemGroup>
 ```
 
@@ -231,6 +235,11 @@ finally: CleanupTransactionBehavior
 The modular overload activates module routing before validation, keeps the application `CleanupTransactionBehavior`, and releases module routing after cleanup. The application-facing pipeline continues to depend only on the PANiXiDA `IUnitOfWork` and `IEventBus` abstractions.
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
+
+The bundled source generator prepares request behavior metadata during compilation.
+Keep analyzer assets enabled and reference the request and behavior assemblies from
+the host project. These types must be accessible to generated code. No additional
+attributes, partial declarations, or code-generation commands are required.
 
 Custom behaviors can be appended or inserted before or after any behavior in the same stage:
 

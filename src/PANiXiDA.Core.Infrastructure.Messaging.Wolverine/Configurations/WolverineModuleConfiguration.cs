@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
 using System.Reflection;
 
@@ -40,7 +42,9 @@ public sealed class WolverineModuleConfiguration
             requestAssembly,
             [.. handlerAssemblies
                 .Prepend(requestAssembly)
-                .Distinct()]));
+                .Distinct()],
+            ServiceDescriptor.KeyedScoped<IOutboxDispatcher, EfCoreOutboxDispatcher<TDbContext>>(
+                typeof(TDbContext))));
 
         return this;
     }

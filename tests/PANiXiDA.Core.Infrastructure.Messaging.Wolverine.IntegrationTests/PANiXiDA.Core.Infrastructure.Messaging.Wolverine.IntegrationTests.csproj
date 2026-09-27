@@ -31,4 +31,9 @@
         <Using Include="Shouldly" />
         <Using Include="Xunit" />
     </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.csproj"
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
 </Project>
