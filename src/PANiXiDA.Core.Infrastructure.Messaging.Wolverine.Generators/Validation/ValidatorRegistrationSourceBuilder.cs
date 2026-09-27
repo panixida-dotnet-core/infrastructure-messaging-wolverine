@@ -26,7 +26,7 @@ internal sealed class ValidatorRegistrationSourceBuilder
     {
         for (var index = 0; index < assemblies.Length; index++)
         {
-            source.Append("            ")
+            source.Append(' ', 12)
                 .Append(Literal(assemblies[index].Identity.ToString()))
                 .Append(index == assemblies.Length - 1 ? ");\n" : ",\n");
         }
@@ -40,10 +40,10 @@ internal sealed class ValidatorRegistrationSourceBuilder
         var typeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         source.Append("        global::PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation.")
             .Append("ValidatorRegistry.Register(\n")
-            .Append("            ")
+            .Append(' ', 12)
             .Append(Literal(type.ContainingAssembly.Identity.ToString()))
             .Append(",\n")
-            .Append("            ")
+            .Append(' ', 12)
             .Append(Literal(typeName))
             .Append(",\n");
 
@@ -58,20 +58,20 @@ internal sealed class ValidatorRegistrationSourceBuilder
             .Append("ServiceCollectionDescriptorExtensions.TryAddEnumerable(\n")
             .Append("                    services,\n")
             .Append("                    global::Microsoft.Extensions.DependencyInjection.ServiceDescriptor.Scoped<\n")
-            .Append("                        ")
+            .Append(' ', 24)
             .Append(contract.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
             .Append(",\n")
-            .Append("                        ")
+            .Append(' ', 24)
             .Append(typeName)
             .Append(">());\n")
             .Append("                global::Microsoft.Extensions.DependencyInjection.Extensions.")
             .Append("ServiceCollectionDescriptorExtensions.TryAdd(\n")
             .Append("                    services,\n")
             .Append("                    global::Microsoft.Extensions.DependencyInjection.ServiceDescriptor.Scoped<\n")
-            .Append("                        ")
+            .Append(' ', 24)
             .Append(typeName)
             .Append(",\n")
-            .Append("                        ")
+            .Append(' ', 24)
             .Append(typeName)
             .Append(">());\n")
             .Append("            });\n");
