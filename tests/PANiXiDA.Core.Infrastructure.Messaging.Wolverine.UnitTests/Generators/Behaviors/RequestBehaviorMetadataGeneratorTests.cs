@@ -333,14 +333,16 @@ public sealed class RequestBehaviorMetadataGeneratorTests
         source.ShouldNotContain("Missing");
     }
 
-    [Fact(DisplayName = "Metadata generator tolerates invalid dynamic constraints during editing")]
-    public void GeneratorShouldTolerateDynamicConstraintsDuringEditing()
+    [Theory(DisplayName = "Metadata generator tolerates invalid compound constraints during editing")]
+    [InlineData("dynamic")]
+    [InlineData("TResult*")]
+    public void GeneratorShouldTolerateInvalidConstraintsDuringEditing(string constraintType)
     {
         // Arrange
-        var input = Source + """
+        var input = Source + $$"""
             public interface IConstraint<T>;
             public class IncompleteBehavior<TRequest, TResult> : Behavior<TRequest, TResult>
-                where TRequest : IRequest<TResult>, IConstraint<dynamic>
+                where TRequest : IRequest<TResult>, IConstraint<{{constraintType}}>
                 where TResult : Result
             {
                 public IncompleteBehavior() : base(new Dependency()) {}
