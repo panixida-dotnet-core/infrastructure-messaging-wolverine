@@ -21,7 +21,7 @@ public sealed class ValidatorRegistrationAnalyzer : DiagnosticAnalyzer
         "ValidatorRegistration",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        customTags: [WellKnownDiagnosticTags.CompilationEnd]);
+        customTags: WellKnownDiagnosticTags.CompilationEnd);
 
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [MissingRegistration];
