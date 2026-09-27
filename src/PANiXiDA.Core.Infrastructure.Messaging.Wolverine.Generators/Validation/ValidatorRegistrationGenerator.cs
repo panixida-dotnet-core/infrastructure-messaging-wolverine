@@ -63,7 +63,7 @@ public sealed class ValidatorRegistrationGenerator : IIncrementalGenerator
                 builder.Add(
                     type,
                     contract,
-                    type.TypeKind == TypeKind.Class && CanReference(compilation, type) &&
+                    CanReference(compilation, type) &&
                     compilation.IsSymbolAccessibleWithin(contract, compilation.Assembly));
             }
         }

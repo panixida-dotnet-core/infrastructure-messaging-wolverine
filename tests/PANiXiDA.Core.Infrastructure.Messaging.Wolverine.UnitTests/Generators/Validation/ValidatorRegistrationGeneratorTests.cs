@@ -78,6 +78,80 @@ public sealed class ValidatorRegistrationGeneratorTests
         validators[1].Validate("valid").IsValid.ShouldBeTrue();
     }
 
+    [Theory(DisplayName = "Value-type validators preserve scanner descriptors, scoped activation, and validation")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeneratorShouldPreserveValueTypeValidators(bool referenced)
+    {
+        var module = Compile("""
+            using System;
+            using System.Threading;
+            using System.Threading.Tasks;
+            using FluentValidation;
+            using FluentValidation.Results;
+            public sealed class Dependency;
+            public readonly struct StructValidator : IValidator<string>
+            {
+                private readonly InlineValidator<string> validator;
+                public Dependency Dependency { get; }
+
+                public StructValidator(Dependency dependency)
+                {
+                    Dependency = dependency;
+                    validator = new InlineValidator<string>();
+                    validator.RuleFor(value => value).NotEmpty();
+                }
+
+                public ValidationResult Validate(string value) => validator.Validate(value);
+                public Task<ValidationResult> ValidateAsync(string value, CancellationToken token = default)
+                    => validator.ValidateAsync(value, token);
+                public ValidationResult Validate(IValidationContext context) => ((IValidator)validator).Validate(context);
+                public Task<ValidationResult> ValidateAsync(IValidationContext context, CancellationToken token = default)
+                    => ((IValidator)validator).ValidateAsync(context, token);
+                public IValidatorDescriptor CreateDescriptor() => validator.CreateDescriptor();
+                public bool CanValidateInstancesOfType(Type type) => ((IValidator)validator).CanValidateInstancesOfType(type);
+            }
+            """, generate: !referenced, includeAdapter: !referenced);
+        if (referenced)
+        {
+            var host = Compile("public static class Host;", references: [module.Reference]);
+            RuntimeHelpers.RunModuleConstructor(host.Assembly.ManifestModule.ModuleHandle);
+        }
+
+        var dependency = module.Assembly.GetType("Dependency", throwOnError: true)!;
+        var validatorType = module.Assembly.GetType("StructValidator", throwOnError: true)!;
+        var expected = new ServiceCollection();
+        expected.AddValidatorsFromAssembly(module.Assembly);
+        expected.Count.ShouldBe(2);
+        var actual = new ServiceCollection();
+
+        ValidatorRegistry.AddValidators(actual, [module.Assembly, module.Assembly]);
+        ValidatorRegistry.AddValidators(actual, [module.Assembly]);
+
+        actual.Select(item => (item.ServiceType, item.ImplementationType, item.Lifetime))
+            .ShouldBe(expected.Select(item => (item.ServiceType, item.ImplementationType, item.Lifetime)));
+        foreach (var services in new[] { expected, actual })
+        {
+            services.AddScoped(dependency);
+            using var provider = services.BuildServiceProvider(validateScopes: true);
+            using var first = provider.CreateScope();
+            using var second = provider.CreateScope();
+            var validator = first.ServiceProvider.GetRequiredService<IValidator<string>>();
+            var self = first.ServiceProvider.GetRequiredService(validatorType);
+
+            validator.GetType().ShouldBe(validatorType);
+            validator.ShouldBeSameAs(first.ServiceProvider.GetRequiredService<IValidator<string>>());
+            validator.ShouldNotBeSameAs(second.ServiceProvider.GetRequiredService<IValidator<string>>());
+            self.ShouldBeSameAs(first.ServiceProvider.GetRequiredService(validatorType));
+            self.ShouldNotBeSameAs(second.ServiceProvider.GetRequiredService(validatorType));
+            validator.ShouldNotBeSameAs(self);
+            validatorType.GetProperty("Dependency")!.GetValue(validator)
+                .ShouldBeSameAs(first.ServiceProvider.GetRequiredService(dependency));
+            validator.Validate("").IsValid.ShouldBeFalse();
+            validator.Validate("valid").IsValid.ShouldBeTrue();
+        }
+    }
+
     [Fact(DisplayName = "Generated registrations preserve the scanner contract for validators with multiple interfaces")]
     public void GeneratorShouldPreserveFirstValidatorContract()
     {
