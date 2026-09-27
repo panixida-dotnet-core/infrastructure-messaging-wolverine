@@ -221,7 +221,6 @@ public sealed class RequestBehaviorMetadataGeneratorTests
     [InlineData("TResult[]", "Result[]", "Result[,]")]
     [InlineData("TResult[,]", "Result[,]", "Result[]")]
     [InlineData("TResult[][]", "Result[][]", "Result[,]")]
-    [InlineData("dynamic", "object", "string")]
     [InlineData(
         "System.Collections.Generic.List<TResult[]>",
         "System.Collections.Generic.List<Result[]>",
@@ -332,6 +331,28 @@ public sealed class RequestBehaviorMetadataGeneratorTests
 
         source.ShouldContain("typeof(global::Behavior<,>)");
         source.ShouldNotContain("Missing");
+    }
+
+    [Fact(DisplayName = "Metadata generator tolerates invalid dynamic constraints during editing")]
+    public void GeneratorShouldTolerateDynamicConstraintsDuringEditing()
+    {
+        // Arrange
+        var input = Source + """
+            public interface IConstraint<T>;
+            public class IncompleteBehavior<TRequest, TResult> : Behavior<TRequest, TResult>
+                where TRequest : IRequest<TResult>, IConstraint<dynamic>
+                where TResult : Result
+            {
+                public IncompleteBehavior() : base(new Dependency()) {}
+            }
+            """;
+
+        // Act
+        var source = Generate(input, requireValidCompilation: false);
+
+        // Assert
+        source.ShouldContain("RegisterBinding(typeof(global::IncompleteBehavior<,>), typeof(global::Request)");
+        source.ShouldContain("typeof(global::Behavior<global::Request, global::PANiXiDA.Core.ResultPattern.Result>)");
     }
 
     [Theory(DisplayName = "Metadata generator discovers types in referenced application and adapter helper assemblies")]
