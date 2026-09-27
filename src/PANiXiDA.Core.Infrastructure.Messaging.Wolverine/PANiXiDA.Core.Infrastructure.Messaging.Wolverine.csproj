@@ -47,8 +47,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.csproj"
-                          OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"
-                          GlobalPropertiesToRemove="PublishAot;RuntimeIdentifier;SelfContained;PublishTrimmed;IsAotCompatible;EnableAotAnalyzer;EnableTrimAnalyzer" />
+                          OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
         <None Include="../PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators/bin/$(Configuration)/netstandard2.0/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.dll"
               Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
     </ItemGroup>
