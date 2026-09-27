@@ -246,6 +246,8 @@ declarations, or code-generation commands are required.
 
 Missing validator registrations fail explicitly at startup without reflection scanning.
 Validators within each discovery assembly are registered in deterministic type-name order.
+Rebuild and republish the host together with changed discovery assemblies to regenerate
+their validator registrations.
 Validators emitted by another source generator must be compiled in a referenced project,
 such as Application, so the host can discover them. Generating them alongside Wolverine
 registrations in the same project produces diagnostic `PANWOLVSG001`.

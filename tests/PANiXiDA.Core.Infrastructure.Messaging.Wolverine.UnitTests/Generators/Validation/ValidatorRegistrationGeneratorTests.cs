@@ -228,6 +228,49 @@ public sealed class ValidatorRegistrationGeneratorTests
         services.ShouldContain(descriptor => descriptor.ServiceType == typeof(IValidator<int>));
     }
 
+    [Fact(DisplayName = "A rebuilt host discovers validators added to a same-version application assembly")]
+    public void GeneratorShouldDiscoverValidatorsAfterHostRebuild()
+    {
+        var original = Compile(PeerValidatorSource, generate: false, includeAdapter: false);
+        var replacementCompilation = CreateCompilation(
+            PeerValidatorSource + " public sealed class AddedValidator : FluentValidation.AbstractValidator<int>;",
+            original.Assembly.GetName().Name!,
+            includeAdapter: false);
+        using var replacementImage = new MemoryStream();
+        using var referenceImage = new MemoryStream();
+        replacementCompilation.Emit(
+                replacementImage,
+                metadataPEStream: referenceImage,
+                options: new Microsoft.CodeAnalysis.Emit.EmitOptions(includePrivateMembers: false),
+                cancellationToken: TestContext.Current.CancellationToken)
+            .Success.ShouldBeTrue();
+        var reference = MetadataReference.CreateFromImage(referenceImage.ToArray());
+        var host = Compile("public static class Host;", references: [reference]);
+        var context = new AssemblyLoadContext("RebuiltApplication", isCollectible: true);
+        replacementImage.Position = 0;
+        var replacement = context.LoadFromStream(replacementImage);
+        using var hostImage = new MemoryStream(host.Image);
+        var hostAssembly = context.LoadFromStream(hostImage);
+        var services = new ServiceCollection();
+
+        try
+        {
+            replacement.FullName.ShouldBe(original.Assembly.FullName);
+            RuntimeHelpers.RunModuleConstructor(hostAssembly.ManifestModule.ModuleHandle);
+            ValidatorRegistry.AddValidators(services, [replacement]);
+
+            services.Count.ShouldBe(4);
+            services.ShouldContain(descriptor => descriptor.ServiceType == typeof(IValidator<int>));
+            using var provider = services.BuildServiceProvider();
+            provider.GetRequiredService<IValidator<string>>().GetType().Assembly.ShouldBe(replacement);
+            provider.GetRequiredService<IValidator<int>>().GetType().Assembly.ShouldBe(replacement);
+        }
+        finally
+        {
+            context.Unload();
+        }
+    }
+
     [Theory(DisplayName = "Validator registrations belong to the selected assembly load context")]
     [InlineData(true)]
     [InlineData(false)]
