@@ -69,13 +69,10 @@ public static class ValidatorRegistry
             ArgumentNullException.ThrowIfNull(assembly);
             RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
 
-            var registrations = GetRegistrations(assembly);
-            if (registrations is null)
-            {
-                throw new InvalidOperationException(
+            var registrations = GetRegistrations(assembly)
+                ?? throw new InvalidOperationException(
                     $"No generated validator metadata exists for assembly '{assembly.FullName}'. " +
                     "Ensure the Wolverine package source generator is enabled in the host or declaring project and can see the discovery assembly.");
-            }
 
             foreach (var entry in registrations.OrderBy(entry => entry.Key, StringComparer.Ordinal))
             {
