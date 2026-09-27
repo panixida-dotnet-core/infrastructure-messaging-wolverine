@@ -221,6 +221,7 @@ public sealed class RequestBehaviorMetadataGeneratorTests
     [InlineData("TResult[]", "Result[]", "Result[,]")]
     [InlineData("TResult[,]", "Result[,]", "Result[]")]
     [InlineData("TResult[][]", "Result[][]", "Result[,]")]
+    [InlineData("dynamic", "object", "string")]
     [InlineData(
         "System.Collections.Generic.List<TResult[]>",
         "System.Collections.Generic.List<Result[]>",
