@@ -12,6 +12,7 @@ internal sealed class ValidatorRegistrationSourceBuilder
         #nullable enable
         #pragma warning disable CA2255
 
+        [global::System.Obsolete("Generated code may reference obsolete validators.")]
         file static class GeneratedWolverineValidators
         {
             [global::System.Runtime.CompilerServices.ModuleInitializer]

@@ -224,6 +224,57 @@ public sealed class ValidatorRegistrationGeneratorTests
         changed.Source.ShouldBe(original.Source);
     }
 
+    [Theory(DisplayName = "Obsolete validators do not break compilation of a host")]
+    [InlineData("[System.Obsolete(\"Removed\", true)]")]
+    [InlineData("[System.Obsolete(\"Deprecated\")]")]
+    [InlineData("[System.Obsolete]")]
+    [InlineData("[System.Obsolete(\"Deprecated\", DiagnosticId = \"OLD001\")]")]
+    public void GeneratorShouldHandleObsoleteValidators(string attribute)
+    {
+        var application = Compile(
+            $$"""
+            using FluentValidation;
+            {{attribute}}
+            public sealed class OldValidator : AbstractValidator<string>;
+            """,
+            generate: false);
+        var host = Compile("public static class Host;", references: [application.Reference]);
+        RuntimeHelpers.RunModuleConstructor(host.Assembly.ManifestModule.ModuleHandle);
+        var services = new ServiceCollection();
+        ValidatorRegistry.AddValidators(services, [host.Assembly]);
+        services.ShouldBeEmpty();
+
+        ValidatorRegistry.AddValidators(services, [application.Assembly]);
+        services.Count.ShouldBe(2);
+    }
+
+    [Fact(DisplayName = "Validator generation is disabled when FluentValidation is absent")]
+    public void GeneratorShouldRequireFluentValidationContract()
+    {
+        var compilation = CreateCompilation("public static class Host;", "WithoutFluentValidation");
+        var fluentValidation = compilation.References.Single(reference =>
+            Path.GetFileName(reference.Display) == "FluentValidation.dll");
+
+        var result = Generate(compilation.RemoveReferences(fluentValidation));
+
+        result.Source.ShouldBeEmpty();
+    }
+
+    [Fact(DisplayName = "Validator callbacks can register before assembly manifests and survive inaccessible entries")]
+    public void RegistryShouldAcceptCallbacksBeforeAssemblyManifests()
+    {
+        var module = Compile("public static class Module;", generate: false);
+        var services = new ServiceCollection();
+        ValidatorRegistry.Register(module.Assembly.FullName!, "Validator", null);
+        ValidatorRegistry.Register(module.Assembly.FullName!, "Validator", collection =>
+            collection.AddSingleton("registered"));
+        ValidatorRegistry.Register(module.Assembly.FullName!, "Validator", null);
+
+        ValidatorRegistry.AddValidators(services, [module.Assembly]);
+
+        services.ShouldHaveSingleItem().ImplementationInstance.ShouldBe("registered");
+    }
+
     private static Module Compile(
         string source,
         bool generate = true,
@@ -252,7 +303,9 @@ public sealed class ValidatorRegistrationGeneratorTests
             name,
             [CSharpSyntaxTree.ParseText(source, cancellationToken: TestContext.Current.CancellationToken)],
             paths.Select(path => MetadataReference.CreateFromFile(path)).Concat(references ?? []),
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(
+                OutputKind.DynamicallyLinkedLibrary,
+                generalDiagnosticOption: ReportDiagnostic.Error));
     }
 
     private static (Compilation Compilation, string Source) Generate(CSharpCompilation compilation)
