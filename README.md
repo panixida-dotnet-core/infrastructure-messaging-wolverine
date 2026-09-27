@@ -308,8 +308,6 @@ dotnet build --configuration Release
 dotnet test --configuration Release
 ```
 
-Native AOT checks are performed locally in a separate consumer application outside this repository. They are not part of CI.
-
 ### Continuous integration
 
 Every pull request and push to `main` runs formatting, tests, and mandatory

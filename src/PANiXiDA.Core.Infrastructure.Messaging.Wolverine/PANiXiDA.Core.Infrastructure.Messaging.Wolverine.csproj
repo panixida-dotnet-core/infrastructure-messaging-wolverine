@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <IsPackable>true</IsPackable>
+        <IsAotCompatible>false</IsAotCompatible>
 
         <AssemblyName>PANiXiDA.Core.Infrastructure.Messaging.Wolverine</AssemblyName>
 
