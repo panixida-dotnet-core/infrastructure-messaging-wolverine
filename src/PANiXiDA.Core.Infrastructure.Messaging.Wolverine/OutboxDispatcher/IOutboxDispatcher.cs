@@ -20,6 +20,21 @@ public interface IOutboxDispatcher
         where TEvent : IDomainEvent;
 
     /// <summary>
+    /// Persists pending outbox messages before committing the current transaction.
+    /// </summary>
+    /// <remarks>
+    /// EF Core implementations also save other tracked changes in the same DbContext.
+    /// Implementations that persist messages immediately can use the default no-op.
+    /// This operation must not commit the transaction or release messages for delivery.
+    /// </remarks>
+    /// <param name="cancellationToken">The token used to cancel persistence.</param>
+    /// <returns>A task that represents the asynchronous persistence operation.</returns>
+    Task PersistAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Flushes all outgoing messages accumulated in the current outbox.
     /// </summary>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>

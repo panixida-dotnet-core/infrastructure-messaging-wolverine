@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
+using PANiXiDA.Core.Application.Messaging.Scheduling;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
@@ -44,6 +45,8 @@ public sealed class WolverineModuleConfiguration
                 .Prepend(requestAssembly)
                 .Distinct()],
             ServiceDescriptor.KeyedScoped<IOutboxDispatcher, EfCoreOutboxDispatcher<TDbContext>>(
+                typeof(TDbContext)),
+            ServiceDescriptor.KeyedScoped<IScheduler, WolverineDbContextScheduler<TDbContext>>(
                 typeof(TDbContext))));
 
         return this;

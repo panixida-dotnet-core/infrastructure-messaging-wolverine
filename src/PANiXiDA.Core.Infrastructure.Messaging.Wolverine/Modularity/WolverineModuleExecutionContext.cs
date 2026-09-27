@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 
+using PANiXiDA.Core.Application.Messaging.Scheduling;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
@@ -68,6 +69,21 @@ internal sealed class WolverineModuleExecutionContext(
             activeModule.DbContextType)
             ?? throw new InvalidOperationException(
                 $"No Wolverine outbox dispatcher is registered for DbContext '{activeModule.DbContextType.FullName}'.");
+
+        return true;
+    }
+
+    internal bool TryGetScheduler(out IScheduler scheduler)
+    {
+        if (!activeModules.TryPeek(out var activeModule))
+        {
+            scheduler = null!;
+            return false;
+        }
+
+        scheduler = serviceProvider.GetKeyedService<IScheduler>(activeModule.DbContextType)
+            ?? throw new InvalidOperationException(
+                $"No Wolverine scheduler is registered for DbContext '{activeModule.DbContextType.FullName}'.");
 
         return true;
     }

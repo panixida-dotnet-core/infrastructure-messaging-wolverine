@@ -8,6 +8,12 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
 
     public int FlushCallCount { get; private set; }
 
+    public int PersistCallCount { get; private set; }
+
+    public CancellationToken LastPersistCancellationToken { get; private set; }
+
+    public Exception? PersistException { get; set; }
+
     public object? LastPublishedEvent { get; private set; }
 
     public CancellationToken LastFlushCancellationToken { get; private set; }
@@ -21,6 +27,14 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
         LastPublishedEvent = @event;
 
         return Task.CompletedTask;
+    }
+
+    public Task PersistAsync(CancellationToken cancellationToken = default)
+    {
+        PersistCallCount++;
+        LastPersistCancellationToken = cancellationToken;
+
+        return PersistException is null ? Task.CompletedTask : Task.FromException(PersistException);
     }
 
     public Task FlushAsync(CancellationToken cancellationToken = default)

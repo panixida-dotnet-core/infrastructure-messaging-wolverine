@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
+using PANiXiDA.Core.Application.Messaging.Scheduling;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
@@ -13,7 +14,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the PANiXiDA mediator and event bus adapters backed by Wolverine.
+    /// Registers the PANiXiDA mediator, event bus, and scheduler adapters backed by Wolverine.
     /// </summary>
     /// <typeparam name="TDbContext">The EF Core DbContext type used by the Wolverine outbox.</typeparam>
     /// <param name="services">The application service collection.</param>
@@ -25,6 +26,7 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IMediator, WolverineMediator>();
         services.TryAddScoped<IEventBus, WolverineEventBus>();
         services.TryAddScoped<IOutboxDispatcher, EfCoreOutboxDispatcher<TDbContext>>();
+        services.TryAddScoped<IScheduler, WolverineDbContextScheduler<TDbContext>>();
 
         return services;
     }
@@ -44,6 +46,7 @@ public static class ServiceCollectionExtensions
         foreach (var registration in moduleRegistry.Registrations)
         {
             services.TryAdd(registration.OutboxDispatcher);
+            services.TryAdd(registration.Scheduler);
         }
 
         services.TryAddScoped<WolverineModuleUnitOfWork>();
@@ -53,6 +56,7 @@ public static class ServiceCollectionExtensions
             serviceProvider.GetRequiredService<WolverineModuleUnitOfWork>());
         services.AddScoped<IOutboxDispatcher>(serviceProvider =>
             serviceProvider.GetRequiredService<WolverineModuleOutboxDispatcher>());
+        services.AddScoped<IScheduler, WolverineModuleScheduler>();
 
         return services;
     }

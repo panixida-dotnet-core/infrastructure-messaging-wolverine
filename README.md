@@ -16,6 +16,7 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 
 - `IMediator` implementation based on Wolverine in-process invocation.
 - `IEventBus` implementation based on Wolverine EF Core outbox.
+- `IScheduler` implementation for durable command and event scheduling through the same outbox.
 - Default in-process event handling for domain events.
 - Explicit Kafka producer and consumer registration per event type.
 - Durable inbox and outbox policies for listeners, local queues, and external senders.
@@ -38,11 +39,11 @@ Full Native AOT support is not currently provided.
 
 ### Installation
 
-Use the latest 4.x version:
+Use the latest 4.1.x version:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="4.*" />
+  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="4.1.*" />
 </ItemGroup>
 ```
 
@@ -58,7 +59,7 @@ builder.Host.UseWolverineMediator<AppDbContext>(
     typeof(CreateUserHandler).Assembly);
 ```
 
-`AddWolverineMediator<TDbContext>()` registers PANiXiDA `IMediator`, `IEventBus`, and the EF Core outbox dispatcher.
+`AddWolverineMediator<TDbContext>()` registers PANiXiDA `IMediator`, `IEventBus`, `IScheduler`, and the EF Core outbox dispatcher.
 
 `UseWolverineMediator<TDbContext>()` configures Wolverine, PostgreSQL message storage, EF Core transactions, request middleware, FluentValidation validators from discovery assemblies, durable local queues, durable inbox, and durable outbox.
 
@@ -86,7 +87,7 @@ builder.Host.UseWolverineMediator(
     });
 ```
 
-This overload registers one `IMediator`, one `IEventBus`, and one Wolverine runtime. Both DbContexts are enrolled in the same PostgreSQL message store and therefore use the same durable inbox/outbox tables in the `wolverine` schema.
+This overload registers one `IMediator`, one `IEventBus`, one `IScheduler`, and one Wolverine runtime. Both DbContexts are enrolled in the same PostgreSQL message store and therefore use the same durable inbox/outbox tables in the `wolverine` schema.
 
 Handlers for the same event type are separated into independent local queues and transactions. Durable message identity includes the destination so fan-out handlers have independent inbox records, retries, and failure handling.
 
@@ -94,13 +95,29 @@ The first assembly passed to `AddModule<TDbContext>()` contains the module's req
 
 The module persistence registration must expose keyed `IUnitOfWork` services under the corresponding DbContext types. `PANiXiDA.Core.Infrastructure.Persistence.Ef` does this automatically for write DbContexts. During a mediator request, the package activates the owning module and routes the existing non-generic `IUnitOfWork` and `IEventBus` abstractions to that module's transaction and EF Core outbox.
 
-Application repositories remain responsible for persisting each business operation before the handler completes. `IUnitOfWork.CommitTransactionAsync()` only completes the active transaction and is not expected to save pending ORM changes.
+Before a successful command commits, `PersistOutgoingMessagesBehavior` saves the active module's DbContext, including tracked message envelopes and business changes. It runs after domain event publication and before `CommitTransactionBehavior`; `FlushOutgoingMessagesBehavior` releases messages only after commit. Custom request pipelines must preserve this order. `IUnitOfWork.CommitTransactionAsync()` itself only completes the transaction.
 
 For ordinary Wolverine messages, including events, module selection is not based on the message assembly. Wolverine detects the transaction from the concrete handler's DbContext dependency. This allows handlers for one shared event contract to commit or roll back independently in different module schemas. A transactional handler must depend on exactly one write DbContext.
 
 `IEventBus` uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published by a native handler therefore share its selected DbContext transaction.
 
 Do not synchronously invoke a command from another module while the first module transaction is active. Separate DbContexts use separate local database transactions, so such a call cannot be atomic. Publish an event through the outbox and let the receiving module handle it independently.
+
+### Scheduling
+
+Inject `IScheduler` from `PANiXiDA.Core.Application.Messaging.Scheduling` into handlers:
+
+```csharp
+await scheduler.ScheduleAsync(command, TimeSpan.FromMinutes(15), cancellationToken);
+await scheduler.ScheduleAtAsync(occurredEvent, publishAt, cancellationToken);
+```
+
+Commands use `SendAsync`; events use `PublishAsync`. Scheduling delays delivery and does not return handler results.
+Inside mediator requests, scheduled messages use the active module's EF Core outbox and commit or roll back with its business changes.
+Native Wolverine handlers use their enlisted message context. The configured PostgreSQL storage and durable queues preserve scheduled messages across restarts.
+
+Outside handlers, resolve the module's keyed `IScheduler` with `typeof(AppDbContext)` (or the unkeyed scheduler in single-context setups), then save and commit through the same `IDbContextOutbox<AppDbContext>`/DbContext transaction. Scheduling alone does not commit changes.
+The adapter uses typed DI registrations and introduces no runtime reflection or code generation; full Native AOT support remains limited by Wolverine and EF Core.
 
 ## Kafka Topics
 
@@ -227,6 +244,7 @@ The default request behavior pipeline is:
 before:  ValidationBehavior
 before:  BeginTransactionBehavior
 after:   PublishDomainEventsBehavior
+after:   PersistOutgoingMessagesBehavior
 after:   CommitTransactionBehavior
 after:   FlushOutgoingMessagesBehavior
 finally: CleanupTransactionBehavior

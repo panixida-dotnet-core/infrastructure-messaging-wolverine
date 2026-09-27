@@ -27,6 +27,11 @@ internal sealed class WolverineModuleOutboxDispatcher(
         await messageContext.PublishAsync(@event);
     }
 
+    public Task PersistAsync(CancellationToken cancellationToken = default)
+    {
+        return moduleContext.GetOutboxDispatcher().PersistAsync(cancellationToken);
+    }
+
     public Task FlushAsync(CancellationToken cancellationToken = default)
     {
         if (moduleContext.TryGetOutboxDispatcher(out var outboxDispatcher))

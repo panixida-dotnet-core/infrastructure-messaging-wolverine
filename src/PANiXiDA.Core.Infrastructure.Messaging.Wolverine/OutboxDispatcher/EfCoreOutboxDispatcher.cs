@@ -27,6 +27,16 @@ public sealed class EfCoreOutboxDispatcher<TDbContext>(IDbContextOutbox<TDbConte
     }
 
     /// <summary>
+    /// Saves tracked changes, including scheduled envelopes, without committing the transaction.
+    /// </summary>
+    /// <param name="cancellationToken">The token used to cancel persistence.</param>
+    /// <returns>A task that represents the asynchronous save operation.</returns>
+    public Task PersistAsync(CancellationToken cancellationToken = default)
+    {
+        return outbox.DbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Flushes all outgoing messages accumulated in the current Wolverine outbox.
     /// </summary>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>

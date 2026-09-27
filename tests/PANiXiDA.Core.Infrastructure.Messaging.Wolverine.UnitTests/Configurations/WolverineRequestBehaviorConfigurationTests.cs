@@ -21,6 +21,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         registry.AfterMiddlewareTypes.ShouldBe(
         [
             typeof(PublishDomainEventsBehavior<,>),
+            typeof(PersistOutgoingMessagesBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
         ]);
@@ -43,6 +44,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         registry.AfterMiddlewareTypes.ShouldBe(
         [
             typeof(PublishDomainEventsBehavior<,>),
+            typeof(PersistOutgoingMessagesBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
         ]);
@@ -79,6 +81,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         registry.AfterMiddlewareTypes.ShouldBe(
         [
             typeof(PublishDomainEventsBehavior<,>),
+            typeof(PersistOutgoingMessagesBehavior<,>),
             typeof(TestAfterBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
