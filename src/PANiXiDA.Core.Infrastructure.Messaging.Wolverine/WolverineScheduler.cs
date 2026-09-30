@@ -10,8 +10,6 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine;
 /// <param name="outbox">The EF Core outbox or enlisted message context for the current transaction.</param>
 public class WolverineScheduler(IMessageBus outbox) : IScheduler
 {
-    private readonly IMessageBus messageBus = outbox ?? throw new ArgumentNullException(nameof(outbox));
-
     /// <inheritdoc />
     public Task ScheduleAsync(
         ICommand<Result> command,
@@ -22,7 +20,7 @@ public class WolverineScheduler(IMessageBus outbox) : IScheduler
         ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return messageBus.SendAsync(command, new DeliveryOptions { ScheduleDelay = delay }).AsTask();
+        return outbox.SendAsync(command, new DeliveryOptions { ScheduleDelay = delay }).AsTask();
     }
 
     /// <inheritdoc />
@@ -35,7 +33,7 @@ public class WolverineScheduler(IMessageBus outbox) : IScheduler
         ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return messageBus.PublishAsync(@event, new DeliveryOptions { ScheduleDelay = delay }).AsTask();
+        return outbox.PublishAsync(@event, new DeliveryOptions { ScheduleDelay = delay }).AsTask();
     }
 
     /// <inheritdoc />
@@ -47,7 +45,7 @@ public class WolverineScheduler(IMessageBus outbox) : IScheduler
         ArgumentNullException.ThrowIfNull(command);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return messageBus.SendAsync(command, new DeliveryOptions { ScheduledTime = deliverAt }).AsTask();
+        return outbox.SendAsync(command, new DeliveryOptions { ScheduledTime = deliverAt }).AsTask();
     }
 
     /// <inheritdoc />
@@ -59,6 +57,6 @@ public class WolverineScheduler(IMessageBus outbox) : IScheduler
         ArgumentNullException.ThrowIfNull(@event);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return messageBus.PublishAsync(@event, new DeliveryOptions { ScheduledTime = deliverAt }).AsTask();
+        return outbox.PublishAsync(@event, new DeliveryOptions { ScheduledTime = deliverAt }).AsTask();
     }
 }

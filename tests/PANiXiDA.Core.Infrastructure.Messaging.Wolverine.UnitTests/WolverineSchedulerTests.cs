@@ -115,12 +115,6 @@ public sealed class WolverineSchedulerTests
         proxy.LastDeliveryOptions.ShouldNotBeNull().ScheduleDelay.ShouldBe(TimeSpan.Zero);
     }
 
-    [Fact(DisplayName = "Scheduler rejects a null outbox")]
-    public void SchedulerShouldRejectNullOutbox()
-    {
-        Should.Throw<ArgumentNullException>(() => new WolverineScheduler(null!));
-    }
-
     private static Task ScheduleAsync(
         IScheduler scheduler,
         object message,
