@@ -44,7 +44,8 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
         IConfiguration? configuration = null,
         Action<WolverineKafkaConfiguration>? configureKafka = null,
         Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors = null,
-        bool useModuleRouting = false)
+        bool useModuleRouting = false,
+        bool resetDatabase = true)
     {
         container ??= new PostgreSqlBuilder("postgres:16-alpine")
             .WithDatabase("wolverine_integration_tests")
@@ -61,7 +62,10 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
         var connectionString = container.GetConnectionString();
         var journal = new IntegrationTestJournal();
 
-        await ResetDatabaseAsync(connectionString, useModuleRouting);
+        if (resetDatabase)
+        {
+            await ResetDatabaseAsync(connectionString, useModuleRouting);
+        }
 
         var hostBuilder = Host
             .CreateDefaultBuilder()

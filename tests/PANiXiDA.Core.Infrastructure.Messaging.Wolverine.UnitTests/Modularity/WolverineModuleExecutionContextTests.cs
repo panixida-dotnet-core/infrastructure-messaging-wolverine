@@ -34,7 +34,8 @@ public sealed class WolverineModuleExecutionContextTests
 
         context.Enter(typeof(TestCommand));
         context.GetUnitOfWork().ShouldBeSameAs(firstUnitOfWork);
-        context.GetOutboxDispatcher().ShouldBeSameAs(firstOutbox);
+        context.TryGetOutboxDispatcher(out var outboxDispatcher).ShouldBeTrue();
+        outboxDispatcher.ShouldBeSameAs(firstOutbox);
         context.Enter(typeof(DbContext));
         context.GetUnitOfWork().ShouldBeSameAs(secondUnitOfWork);
 
@@ -96,8 +97,6 @@ public sealed class WolverineModuleExecutionContextTests
 
         context.TryGetOutboxDispatcher(out _).ShouldBeFalse();
         Should.Throw<InvalidOperationException>(context.GetUnitOfWork)
-            .Message.ShouldContain("No Wolverine module is active");
-        Should.Throw<InvalidOperationException>(context.GetOutboxDispatcher)
             .Message.ShouldContain("No Wolverine module is active");
     }
 

@@ -47,6 +47,7 @@ public sealed class WolverineRequestBehaviorConfiguration
         configuration.Before.Add(typeof(BeginTransactionBehavior<,>));
 
         configuration.After.Add(typeof(PublishDomainEventsBehavior<,>));
+        configuration.After.Add(typeof(PersistOutgoingMessagesBehavior<,>));
         configuration.After.Add(typeof(CommitTransactionBehavior<,>));
         configuration.After.Add(typeof(FlushOutgoingMessagesBehavior<,>));
 
@@ -64,6 +65,7 @@ public sealed class WolverineRequestBehaviorConfiguration
         configuration.Before.Add(typeof(BeginTransactionBehavior<,>));
 
         configuration.After.Add(typeof(PublishDomainEventsBehavior<,>));
+        configuration.After.Add(typeof(PersistOutgoingMessagesBehavior<,>));
         configuration.After.Add(typeof(CommitTransactionBehavior<,>));
         configuration.After.Add(typeof(FlushOutgoingMessagesBehavior<,>));
 

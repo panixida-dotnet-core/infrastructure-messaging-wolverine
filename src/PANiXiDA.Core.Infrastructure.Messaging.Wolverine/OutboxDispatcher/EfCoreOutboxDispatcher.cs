@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using Wolverine;
 using Wolverine.EntityFrameworkCore;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
@@ -13,25 +14,34 @@ public sealed class EfCoreOutboxDispatcher<TDbContext>(IDbContextOutbox<TDbConte
     : IOutboxDispatcher
     where TDbContext : DbContext
 {
-    /// <summary>
-    /// Adds the specified domain event to the current Wolverine outbox.
-    /// </summary>
-    /// <typeparam name="TEvent">The domain event type.</typeparam>
-    /// <param name="event">The domain event instance to publish.</param>
-    /// <param name="cancellationToken">The token used to cancel the operation.</param>
-    /// <returns>A task that represents the asynchronous publish operation.</returns>
+    /// <inheritdoc />
     public async Task PublishAsync<TEvent>(TEvent @event, CancellationToken cancellationToken = default)
         where TEvent : IDomainEvent
     {
         await outbox.PublishAsync(@event);
     }
 
-    /// <summary>
-    /// Flushes all outgoing messages accumulated in the current Wolverine outbox.
-    /// </summary>
-    /// <param name="cancellationToken">The token used to cancel the operation.</param>
-    /// <returns>A task that represents the asynchronous flush operation.</returns>
-    public Task FlushAsync(CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
+        where TEvent : IDomainEvent
+    {
+        return outbox.PublishAsync(@event, options).AsTask();
+    }
+
+    /// <inheritdoc />
+    public Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken)
+    {
+        return outbox.SendAsync(command, options).AsTask();
+    }
+
+    /// <inheritdoc />
+    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        return outbox.DbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task FlushAsync(CancellationToken cancellationToken)
     {
         return outbox.FlushOutgoingMessagesAsync();
     }

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 using PANiXiDA.Core.Application.Messaging.Mediator.Behaviors;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Behaviors;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Fixtures;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Behaviors;
@@ -10,6 +11,7 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messagin
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Queries;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Support;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Views;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Wolverine;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Database;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Messaging.Commands;
@@ -262,6 +264,48 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             "handler.command",
             "unitOfWork.commit",
             "handler.event");
+    }
+
+    [Theory(DisplayName = "Published event survives restart after commit when outbox flush is interrupted")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PublishedEventShouldSurviveRestartWhenFlushIsInterrupted(bool useModules)
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        var command = new CreateIntegrationRecordAndPublishEventCommand(id, "recover-after-commit");
+
+        await using (var app = await fixture.CreateApplicationAsync(
+            configureRequestBehaviors: behaviors => behaviors.After.InsertBefore(
+                typeof(FailBeforeOutboxFlushBehavior<,>),
+                typeof(FlushOutgoingMessagesBehavior<,>)),
+            useModuleRouting: useModules))
+        {
+            // Act: interrupt the pipeline after commit, before it can send buffered messages.
+            var exception = await Should.ThrowAsync<Exception>(() => app.ExecuteWithMediatorAsync(
+                (mediator, token) => mediator.SendAsync(command, token),
+                TestContext.Current.CancellationToken));
+
+            // Assert: a separate connection sees both the committed business data and durable message.
+            (exception is PlannedCommandException || exception.InnerException is PlannedCommandException)
+                .ShouldBeTrue();
+            ShouldContainInOrder(app.Journal.Entries, "unitOfWork.commit", "behavior.failBeforeFlush");
+            (await app.CountRecordsAsync(id)).ShouldBe(1);
+            (await app.CountHandledEventsAsync(id)).ShouldBe(0);
+            (await app.CountRowsAsync(WolverineStorageConstants.IncomingEnvelopesTable)).ShouldBe(1);
+        }
+
+        // A fresh host must recover the event from PostgreSQL without another publish or flush call.
+        await using var restarted = await fixture.CreateApplicationAsync(
+            useModuleRouting: useModules, resetDatabase: false);
+
+        await WolverineIntegrationApp.WaitUntilAsync(
+            async () => await restarted.CountHandledEventsAsync(id) == 1,
+            TimeSpan.FromSeconds(60));
+
+        (await restarted.CountRecordsAsync(id)).ShouldBe(1);
+        restarted.Journal.Entries.ShouldContain("handler.event");
+        restarted.Journal.Entries.ShouldNotContain("handler.command");
     }
 
     [Fact(DisplayName = "Failed command result rolls back changes and does not flush outbox")]
