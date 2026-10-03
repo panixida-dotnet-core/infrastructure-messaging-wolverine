@@ -96,7 +96,7 @@ public sealed class ServiceCollectionExtensionsTests
         await eventBus.PublishAsync(
             new TestDomainEvent(Guid.NewGuid()),
             TestContext.Current.CancellationToken);
-        await outboxDispatcher.PersistAsync(TestContext.Current.CancellationToken);
+        await outboxDispatcher.SaveChangesAsync(TestContext.Current.CancellationToken);
         await outboxDispatcher.FlushAsync(TestContext.Current.CancellationToken);
 
         moduleUnitOfWork.BeginTransactionCallCount.ShouldBe(4);
@@ -104,8 +104,8 @@ public sealed class ServiceCollectionExtensionsTests
         moduleUnitOfWork.RollbackTransactionCallCount.ShouldBe(1);
         moduleUnitOfWork.DisposeTransactionCallCount.ShouldBe(1);
         moduleOutboxDispatcher.PublishCallCount.ShouldBe(1);
-        moduleOutboxDispatcher.PersistCallCount.ShouldBe(1);
-        moduleOutboxDispatcher.LastPersistCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
+        moduleOutboxDispatcher.SaveChangesCallCount.ShouldBe(1);
+        moduleOutboxDispatcher.LastSaveChangesCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
         moduleOutboxDispatcher.FlushCallCount.ShouldBe(1);
 
         moduleContext.Exit(typeof(TestCommand));
@@ -179,7 +179,33 @@ public sealed class ServiceCollectionExtensionsTests
             .ShouldHaveSingleItem().ShouldBeSameAs(existingOutbox);
     }
 
-    [Fact(DisplayName = "Modular outbox uses the native message context and leaves persistence and flush to Wolverine")]
+    [Theory(DisplayName = "Explicit outbox saving requires an active module even when a native message context exists")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ModularSaveChangesShouldRequireActiveModule(bool hasMessageContext)
+    {
+        var services = new ServiceCollection();
+        var moduleConfiguration = new WolverineModuleConfiguration()
+            .AddModule<TestDbContext>(typeof(TestCommand).Assembly);
+        services.AddWolverineMediator(moduleConfiguration.Build());
+        if (hasMessageContext)
+        {
+            var messageContext = MessageContextProxy.Create(out _);
+            services.AddScoped(_ => messageContext);
+        }
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var outboxDispatcher = scope.ServiceProvider.GetRequiredService<IOutboxDispatcher>();
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
+            outboxDispatcher.SaveChangesAsync(TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("No Wolverine module is active");
+        exception.Message.ShouldContain("keyed module outbox dispatcher");
+    }
+
+    [Fact(DisplayName = "Modular event bus uses the native message context and leaves flushing to Wolverine")]
     public async Task ModularEventBusShouldUseActiveWolverineMessageContextOutsideMediatorRequests()
     {
         var services = new ServiceCollection();
@@ -199,8 +225,6 @@ public sealed class ServiceCollectionExtensionsTests
 
         await eventBus.PublishAsync(
             domainEvent,
-            TestContext.Current.CancellationToken);
-        await outboxDispatcher.PersistAsync(
             TestContext.Current.CancellationToken);
         await outboxDispatcher.FlushAsync(
             TestContext.Current.CancellationToken);

@@ -19,7 +19,7 @@ public sealed class PersistOutgoingMessagesBehavior<TCommand, TResult>(
     public Task AfterAsync(TCommand request, TResult result, CancellationToken cancellationToken)
     {
         return result.IsSuccess && unitOfWork.HasActiveTransaction
-            ? outboxDispatcher.PersistAsync(cancellationToken)
+            ? outboxDispatcher.SaveChangesAsync(cancellationToken)
             : Task.CompletedTask;
     }
 }

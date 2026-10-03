@@ -97,17 +97,17 @@ The module persistence registration must expose keyed `IUnitOfWork` services und
 
 Before a successful command commits, `PersistOutgoingMessagesBehavior` saves the active module's DbContext, including tracked message envelopes and business changes. It runs after domain event publication and before `CommitTransactionBehavior`; `FlushOutgoingMessagesBehavior` releases messages only after commit. Custom request pipelines must preserve this order. `IUnitOfWork.CommitTransactionAsync()` itself only completes the transaction.
 
-Custom `IOutboxDispatcher` implementations must implement `PersistAsync(CancellationToken cancellationToken)` when upgrading. Persist pending messages before commit, or explicitly return a completed task if they were already persisted in the current transaction. No default implementation is provided by the interface.
+Custom `IOutboxDispatcher` implementations must implement `SaveChangesAsync(CancellationToken cancellationToken)` when upgrading. Persist pending messages before commit, or explicitly return a completed task if they were already persisted in the current transaction. No default implementation is provided by the interface.
 
 They must also implement `SendAsync` and the `PublishAsync` overload accepting Wolverine `DeliveryOptions`. Preserve those options and add messages to the same transactional outbox without committing or flushing it.
 
-Calls to `PersistAsync` and `FlushAsync` require an explicit cancellation token. Pass `CancellationToken.None` when cancellation is not needed.
+Calls to `SaveChangesAsync` and `FlushAsync` require an explicit cancellation token. Pass `CancellationToken.None` when cancellation is not needed.
 
 For ordinary Wolverine messages, including events, module selection is not based on the message assembly. Wolverine detects the transaction from the concrete handler's DbContext dependency. This allows handlers for one shared event contract to commit or roll back independently in different module schemas. A transactional handler must depend on exactly one write DbContext.
 
 `IEventBus` and `IScheduler` share `IOutboxDispatcher`, which uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published or scheduled by a native handler therefore share its selected DbContext transaction.
 
-Without an active mediator module, the modular dispatcher's `PersistAsync` and `FlushAsync` are no-ops; native handlers rely on Wolverine's transaction middleware. Outside handlers, use the keyed module dispatcher to persist and flush explicitly.
+Without an active mediator module, the modular dispatcher's `SaveChangesAsync` throws `InvalidOperationException`: it cannot select a DbContext to save. Native handlers rely on Wolverine's transaction middleware to save changes and flush messages, so `FlushAsync` remains a no-op in that context. Outside the mediator pipeline, use the keyed module dispatcher to save and flush explicitly.
 
 Do not synchronously invoke a command from another module while the first module transaction is active. Separate DbContexts use separate local database transactions, so such a call cannot be atomic. Publish an event through the outbox and let the receiving module handle it independently.
 

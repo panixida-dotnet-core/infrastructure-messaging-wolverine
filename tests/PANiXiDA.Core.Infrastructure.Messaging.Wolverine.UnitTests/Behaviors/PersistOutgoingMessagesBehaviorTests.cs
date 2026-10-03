@@ -19,12 +19,12 @@ public sealed class PersistOutgoingMessagesBehaviorTests
 
         await behavior.AfterAsync(new TestCommand(Guid.NewGuid()), result, TestContext.Current.CancellationToken);
 
-        outbox.PersistCallCount.ShouldBe(success && activeTransaction ? 1 : 0);
+        outbox.SaveChangesCallCount.ShouldBe(success && activeTransaction ? 1 : 0);
         outbox.FlushCallCount.ShouldBe(0);
         unitOfWork.CommitTransactionCallCount.ShouldBe(0);
         if (success && activeTransaction)
         {
-            outbox.LastPersistCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
+            outbox.LastSaveChangesCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
         }
     }
 
@@ -33,7 +33,7 @@ public sealed class PersistOutgoingMessagesBehaviorTests
     {
         var failure = new InvalidOperationException("Persistence failed.");
         var unitOfWork = new TestUnitOfWork { HasActiveTransaction = true };
-        var outbox = new TestOutboxDispatcher { PersistException = failure };
+        var outbox = new TestOutboxDispatcher { SaveChangesException = failure };
         var behavior = new PersistOutgoingMessagesBehavior<TestCommand, Result>(unitOfWork, outbox);
 
         var exception = await Should.ThrowAsync<InvalidOperationException>(() => behavior.AfterAsync(

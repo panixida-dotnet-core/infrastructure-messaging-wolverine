@@ -130,7 +130,7 @@ public sealed class SchedulerRegistrationTests
         dispatcher.PublishCallCount.ShouldBe(2);
         dispatcher.LastPublishedEvent.ShouldBeSameAs(scheduledEvent);
         dispatcher.LastDispatchCancellationToken.ShouldBe(token);
-        dispatcher.PersistCallCount.ShouldBe(0);
+        dispatcher.SaveChangesCallCount.ShouldBe(0);
         dispatcher.FlushCallCount.ShouldBe(0);
     }
 }

@@ -10,11 +10,11 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
 
     public int FlushCallCount { get; private set; }
 
-    public int PersistCallCount { get; private set; }
+    public int SaveChangesCallCount { get; private set; }
 
-    public CancellationToken LastPersistCancellationToken { get; private set; }
+    public CancellationToken LastSaveChangesCancellationToken { get; private set; }
 
-    public Exception? PersistException { get; set; }
+    public Exception? SaveChangesException { get; set; }
 
     public object? LastPublishedEvent { get; private set; }
 
@@ -62,12 +62,12 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
         return DispatchException is null ? Task.CompletedTask : Task.FromException(DispatchException);
     }
 
-    public Task PersistAsync(CancellationToken cancellationToken)
+    public Task SaveChangesAsync(CancellationToken cancellationToken)
     {
-        PersistCallCount++;
-        LastPersistCancellationToken = cancellationToken;
+        SaveChangesCallCount++;
+        LastSaveChangesCancellationToken = cancellationToken;
 
-        return PersistException is null ? Task.CompletedTask : Task.FromException(PersistException);
+        return SaveChangesException is null ? Task.CompletedTask : Task.FromException(SaveChangesException);
     }
 
     public Task FlushAsync(CancellationToken cancellationToken)
