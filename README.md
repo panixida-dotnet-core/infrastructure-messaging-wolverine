@@ -97,6 +97,8 @@ The module persistence registration must expose keyed `IUnitOfWork` services und
 
 Before a successful command commits, `PersistOutgoingMessagesBehavior` saves the active module's DbContext, including tracked message envelopes and business changes. It runs after domain event publication and before `CommitTransactionBehavior`; `FlushOutgoingMessagesBehavior` releases messages only after commit. Custom request pipelines must preserve this order. `IUnitOfWork.CommitTransactionAsync()` itself only completes the transaction.
 
+Custom `IOutboxDispatcher` implementations must implement `PersistAsync(CancellationToken cancellationToken = default)` when upgrading. Persist pending messages before commit, or explicitly return a completed task if they were already persisted in the current transaction. No default implementation is provided by the interface.
+
 For ordinary Wolverine messages, including events, module selection is not based on the message assembly. Wolverine detects the transaction from the concrete handler's DbContext dependency. This allows handlers for one shared event contract to commit or roll back independently in different module schemas. A transactional handler must depend on exactly one write DbContext.
 
 `IEventBus` uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published by a native handler therefore share its selected DbContext transaction.

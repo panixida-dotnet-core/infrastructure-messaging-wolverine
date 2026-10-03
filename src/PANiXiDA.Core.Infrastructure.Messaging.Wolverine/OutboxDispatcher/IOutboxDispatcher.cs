@@ -24,15 +24,12 @@ public interface IOutboxDispatcher
     /// </summary>
     /// <remarks>
     /// EF Core implementations also save other tracked changes in the same DbContext.
-    /// Implementations that persist messages immediately can use the default no-op.
+    /// Implementations that persist messages immediately can return a completed task.
     /// This operation must not commit the transaction or release messages for delivery.
     /// </remarks>
     /// <param name="cancellationToken">The token used to cancel persistence.</param>
     /// <returns>A task that represents the asynchronous persistence operation.</returns>
-    Task PersistAsync(CancellationToken cancellationToken = default)
-    {
-        return Task.CompletedTask;
-    }
+    Task PersistAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Flushes all outgoing messages accumulated in the current outbox.
