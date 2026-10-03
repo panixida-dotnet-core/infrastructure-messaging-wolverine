@@ -57,26 +57,32 @@ public sealed class WolverineSchedulerTests
         exception.ShouldBeSameAs(failure);
     }
 
-    [Theory(DisplayName = "Scheduler rejects negative delays and accepts zero")]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task SchedulerShouldValidateDelay(bool isCommand)
+    [Theory(DisplayName = "Scheduler passes negative and zero delays to the outbox unchanged")]
+    [InlineData(true, -1)]
+    [InlineData(true, 0)]
+    [InlineData(false, -1)]
+    [InlineData(false, 0)]
+    public async Task SchedulerShouldPreserveDelay(bool isCommand, int delayTicks)
     {
         var proxy = new TestOutboxDispatcher();
         var scheduler = new WolverineScheduler(proxy);
         var command = new TestCommand(Guid.NewGuid());
         var @event = new TestDomainEvent(Guid.NewGuid());
         var token = TestContext.Current.CancellationToken;
-        Task schedule(TimeSpan delay) => isCommand
-            ? scheduler.ScheduleAsync(command, delay, token)
-            : scheduler.ScheduleAsync(@event, delay, token);
+        var delay = TimeSpan.FromTicks(delayTicks);
 
-        await Should.ThrowAsync<ArgumentOutOfRangeException>(() => schedule(TimeSpan.FromTicks(-1)));
-        proxy.SendCallCount.ShouldBe(0);
-        proxy.PublishCallCount.ShouldBe(0);
-        await schedule(TimeSpan.Zero);
+        if (isCommand)
+        {
+            await scheduler.ScheduleAsync(command, delay, token);
+        }
+        else
+        {
+            await scheduler.ScheduleAsync(@event, delay, token);
+        }
 
-        proxy.LastDeliveryOptions.ShouldNotBeNull().ScheduleDelay.ShouldBe(TimeSpan.Zero);
+        proxy.SendCallCount.ShouldBe(isCommand ? 1 : 0);
+        proxy.PublishCallCount.ShouldBe(isCommand ? 0 : 1);
+        proxy.LastDeliveryOptions.ShouldNotBeNull().ScheduleDelay.ShouldBe(delay);
     }
 
     private static Task ScheduleAsync(

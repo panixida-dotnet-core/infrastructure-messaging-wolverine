@@ -89,6 +89,18 @@ builder.Host.UseWolverineMediator(
 
 This overload registers one `IMediator`, one `IEventBus`, one `IScheduler`, and one Wolverine runtime. Both DbContexts are enrolled in the same PostgreSQL message store and therefore use the same durable inbox/outbox tables in the `wolverine` schema.
 
+Each `AddModule<TDbContext>()` also creates a scoped `IOutboxDispatcher` registration keyed by `typeof(TDbContext)`. Outside the mediator pipeline, resolve it from the same DI scope as the module's DbContext:
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
+
+var outbox = scope.ServiceProvider.GetRequiredKeyedService<IOutboxDispatcher>(
+    typeof(OrdersWriteDbContext));
+```
+
+This selects the module's EF Core outbox directly. Within an explicit transaction, call `outbox.SaveChangesAsync(cancellationToken)` before commit and `outbox.FlushAsync(cancellationToken)` after commit.
+
 Handlers for the same event type are separated into independent local queues and transactions. Durable message identity includes the destination so fan-out handlers have independent inbox records, retries, and failure handling.
 
 The first assembly passed to `AddModule<TDbContext>()` contains the module's requests and is owned by exactly one DbContext. Additional assemblies are used only for handler and validator discovery. Assigning one request assembly to different DbContexts is rejected during configuration.
@@ -121,7 +133,7 @@ await scheduler.ScheduleAtAsync(occurredEvent, publishAt, cancellationToken);
 ```
 
 Commands use `SendAsync`; events use `PublishAsync`. Scheduling delays delivery and does not return handler results.
-The adapters do not check messages or delivery options for null, or check cancellation before dispatch. Persistence still passes the cancellation token to EF Core.
+The adapters do not check messages or delivery options for null, reject negative delays, or check cancellation before dispatch. Delay values are passed unchanged to Wolverine. Persistence still passes the cancellation token to EF Core.
 Inside mediator requests, scheduled messages use the active module's EF Core outbox and commit or roll back with its business changes.
 Native Wolverine handlers use their enlisted message context. The configured PostgreSQL storage and durable queues preserve scheduled messages across restarts.
 

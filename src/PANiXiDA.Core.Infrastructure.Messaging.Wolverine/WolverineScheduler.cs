@@ -20,8 +20,6 @@ public sealed class WolverineScheduler(IOutboxDispatcher outboxDispatcher) : ISc
         TimeSpan delay,
         CancellationToken cancellationToken)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero);
-
         return outboxDispatcher.SendAsync(command, new DeliveryOptions { ScheduleDelay = delay }, cancellationToken);
     }
 
@@ -31,8 +29,6 @@ public sealed class WolverineScheduler(IOutboxDispatcher outboxDispatcher) : ISc
         TimeSpan delay,
         CancellationToken cancellationToken)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero);
-
         return outboxDispatcher.PublishAsync(@event, new DeliveryOptions { ScheduleDelay = delay }, cancellationToken);
     }
 
