@@ -107,6 +107,8 @@ For ordinary Wolverine messages, including events, module selection is not based
 
 `IEventBus` and `IScheduler` share `IOutboxDispatcher`, which uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published or scheduled by a native handler therefore share its selected DbContext transaction.
 
+Without an active mediator module, the modular dispatcher's `PersistAsync` and `FlushAsync` are no-ops; native handlers rely on Wolverine's transaction middleware. Outside handlers, use the keyed module dispatcher to persist and flush explicitly.
+
 Do not synchronously invoke a command from another module while the first module transaction is active. Separate DbContexts use separate local database transactions, so such a call cannot be atomic. Publish an event through the outbox and let the receiving module handle it independently.
 
 ### Scheduling

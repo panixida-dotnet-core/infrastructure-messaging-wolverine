@@ -50,7 +50,12 @@ internal sealed class WolverineModuleOutboxDispatcher(
 
     public Task PersistAsync(CancellationToken cancellationToken)
     {
-        return moduleContext.GetOutboxDispatcher().PersistAsync(cancellationToken);
+        if (moduleContext.TryGetOutboxDispatcher(out var outboxDispatcher))
+        {
+            return outboxDispatcher.PersistAsync(cancellationToken);
+        }
+
+        return Task.CompletedTask;
     }
 
     public Task FlushAsync(CancellationToken cancellationToken)

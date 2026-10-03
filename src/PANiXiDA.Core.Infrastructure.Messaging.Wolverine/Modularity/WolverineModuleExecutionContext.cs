@@ -44,17 +44,6 @@ internal sealed class WolverineModuleExecutionContext(
                 "Register the module write DbContext with PANiXiDA EF persistence infrastructure.");
     }
 
-    internal IOutboxDispatcher GetOutboxDispatcher()
-    {
-        if (TryGetOutboxDispatcher(out var outboxDispatcher))
-        {
-            return outboxDispatcher;
-        }
-
-        throw new InvalidOperationException(
-            "No Wolverine module is active in the current request scope.");
-    }
-
     internal bool TryGetOutboxDispatcher(
         out IOutboxDispatcher outboxDispatcher)
     {

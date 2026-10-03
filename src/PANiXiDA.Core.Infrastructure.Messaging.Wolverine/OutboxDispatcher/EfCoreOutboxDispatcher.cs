@@ -27,14 +27,27 @@ public sealed class EfCoreOutboxDispatcher<TDbContext>(IDbContextOutbox<TDbConte
         await outbox.PublishAsync(@event);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Adds a domain event with the specified delivery options to the current Wolverine outbox.
+    /// </summary>
+    /// <typeparam name="TEvent">The domain event type.</typeparam>
+    /// <param name="event">The domain event instance to publish.</param>
+    /// <param name="options">The delivery options, including any scheduling delay or time.</param>
+    /// <param name="cancellationToken">The caller's cancellation token; Wolverine publishing does not support cancellation.</param>
+    /// <returns>A task that represents the asynchronous publish operation.</returns>
     public Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
         where TEvent : IDomainEvent
     {
         return outbox.PublishAsync(@event, options).AsTask();
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Adds a command with the specified delivery options to the current Wolverine outbox.
+    /// </summary>
+    /// <param name="command">The command to send.</param>
+    /// <param name="options">The delivery options, including any scheduling delay or time.</param>
+    /// <param name="cancellationToken">The caller's cancellation token; Wolverine sending does not support cancellation.</param>
+    /// <returns>A task that represents the asynchronous send operation.</returns>
     public Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken)
     {
         return outbox.SendAsync(command, options).AsTask();

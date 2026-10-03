@@ -96,6 +96,7 @@ public sealed class ServiceCollectionExtensionsTests
         await eventBus.PublishAsync(
             new TestDomainEvent(Guid.NewGuid()),
             TestContext.Current.CancellationToken);
+        await outboxDispatcher.PersistAsync(TestContext.Current.CancellationToken);
         await outboxDispatcher.FlushAsync(TestContext.Current.CancellationToken);
 
         moduleUnitOfWork.BeginTransactionCallCount.ShouldBe(4);
@@ -103,6 +104,8 @@ public sealed class ServiceCollectionExtensionsTests
         moduleUnitOfWork.RollbackTransactionCallCount.ShouldBe(1);
         moduleUnitOfWork.DisposeTransactionCallCount.ShouldBe(1);
         moduleOutboxDispatcher.PublishCallCount.ShouldBe(1);
+        moduleOutboxDispatcher.PersistCallCount.ShouldBe(1);
+        moduleOutboxDispatcher.LastPersistCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
         moduleOutboxDispatcher.FlushCallCount.ShouldBe(1);
 
         moduleContext.Exit(typeof(TestCommand));
@@ -176,7 +179,7 @@ public sealed class ServiceCollectionExtensionsTests
             .ShouldHaveSingleItem().ShouldBeSameAs(existingOutbox);
     }
 
-    [Fact(DisplayName = "Modular event bus uses the active Wolverine message context outside mediator requests")]
+    [Fact(DisplayName = "Modular outbox uses the native message context and leaves persistence and flush to Wolverine")]
     public async Task ModularEventBusShouldUseActiveWolverineMessageContextOutsideMediatorRequests()
     {
         var services = new ServiceCollection();
@@ -196,6 +199,8 @@ public sealed class ServiceCollectionExtensionsTests
 
         await eventBus.PublishAsync(
             domainEvent,
+            TestContext.Current.CancellationToken);
+        await outboxDispatcher.PersistAsync(
             TestContext.Current.CancellationToken);
         await outboxDispatcher.FlushAsync(
             TestContext.Current.CancellationToken);
