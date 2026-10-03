@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
+using PANiXiDA.Core.Application.Messaging.Scheduling;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
@@ -265,6 +266,7 @@ public static class HostBuilderExtensions
 
         options.ApplicationAssembly = ResolveApplicationAssembly();
         options.CodeGeneration.TypeLoadMode = TypeLoadMode.Auto;
+        options.CodeGeneration.AlwaysUseServiceLocationFor<IScheduler>();
 
         ConfigureInboxOutbox<TDbContext>(
             options,

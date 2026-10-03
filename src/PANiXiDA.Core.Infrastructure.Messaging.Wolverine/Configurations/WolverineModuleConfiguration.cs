@@ -7,6 +7,8 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
 using System.Reflection;
 
+using Wolverine.EntityFrameworkCore;
+
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 
 /// <summary>
@@ -46,8 +48,10 @@ public sealed class WolverineModuleConfiguration
                 .Distinct()],
             ServiceDescriptor.KeyedScoped<IOutboxDispatcher, EfCoreOutboxDispatcher<TDbContext>>(
                 typeof(TDbContext)),
-            ServiceDescriptor.KeyedScoped<IScheduler, WolverineDbContextScheduler<TDbContext>>(
-                typeof(TDbContext))));
+            ServiceDescriptor.KeyedScoped<IScheduler>(
+                typeof(TDbContext),
+                (serviceProvider, _) =>
+                    new WolverineScheduler(serviceProvider.GetRequiredService<IDbContextOutbox<TDbContext>>()))));
 
         return this;
     }

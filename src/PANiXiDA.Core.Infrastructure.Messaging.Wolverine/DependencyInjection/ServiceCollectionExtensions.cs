@@ -6,6 +6,8 @@ using PANiXiDA.Core.Application.Messaging.Scheduling;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
+using Wolverine.EntityFrameworkCore;
+
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
 
 /// <summary>
@@ -26,7 +28,8 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IMediator, WolverineMediator>();
         services.TryAddScoped<IEventBus, WolverineEventBus>();
         services.TryAddScoped<IOutboxDispatcher, EfCoreOutboxDispatcher<TDbContext>>();
-        services.TryAddScoped<IScheduler, WolverineDbContextScheduler<TDbContext>>();
+        services.TryAddScoped<IScheduler>(serviceProvider =>
+            new WolverineScheduler(serviceProvider.GetRequiredService<IDbContextOutbox<TDbContext>>()));
 
         return services;
     }

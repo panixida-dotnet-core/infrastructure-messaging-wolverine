@@ -8,7 +8,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine;
 /// Schedules commands and domain events through a Wolverine transactional outbox.
 /// </summary>
 /// <param name="outbox">The EF Core outbox or enlisted message context for the current transaction.</param>
-public class WolverineScheduler(IMessageBus outbox) : IScheduler
+public sealed class WolverineScheduler(IMessageBus outbox) : IScheduler
 {
     /// <inheritdoc />
     public Task ScheduleAsync(
