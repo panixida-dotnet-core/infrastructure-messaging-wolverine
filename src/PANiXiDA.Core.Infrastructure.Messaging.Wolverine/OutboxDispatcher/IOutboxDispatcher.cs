@@ -22,17 +22,6 @@ public interface IOutboxDispatcher
         where TEvent : IDomainEvent;
 
     /// <summary>
-    /// Adds a command with the specified delivery options to the current outbox.
-    /// </summary>
-    /// <param name="command">The command to send.</param>
-    /// <param name="options">The delivery options, including any scheduling delay or time.</param>
-    /// <param name="cancellationToken">The token used to cancel adding the command.</param>
-    /// <returns>A task that represents the asynchronous send operation.</returns>
-    /// <exception cref="ArgumentNullException">The command or delivery options are null.</exception>
-    /// <exception cref="OperationCanceledException">Cancellation has been requested.</exception>
-    Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken);
-
-    /// <summary>
     /// Adds a domain event with the specified delivery options to the current outbox.
     /// </summary>
     /// <typeparam name="TEvent">The domain event type.</typeparam>
@@ -44,6 +33,17 @@ public interface IOutboxDispatcher
     /// <exception cref="OperationCanceledException">Cancellation has been requested.</exception>
     Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
         where TEvent : IDomainEvent;
+
+    /// <summary>
+    /// Adds a command with the specified delivery options to the current outbox.
+    /// </summary>
+    /// <param name="command">The command to send.</param>
+    /// <param name="options">The delivery options, including any scheduling delay or time.</param>
+    /// <param name="cancellationToken">The token used to cancel adding the command.</param>
+    /// <returns>A task that represents the asynchronous send operation.</returns>
+    /// <exception cref="ArgumentNullException">The command or delivery options are null.</exception>
+    /// <exception cref="OperationCanceledException">Cancellation has been requested.</exception>
+    Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken);
 
     /// <summary>
     /// Persists pending outbox messages before committing the current transaction.

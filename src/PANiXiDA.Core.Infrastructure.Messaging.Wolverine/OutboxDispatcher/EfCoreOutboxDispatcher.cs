@@ -28,16 +28,6 @@ public sealed class EfCoreOutboxDispatcher<TDbContext>(IDbContextOutbox<TDbConte
     }
 
     /// <inheritdoc />
-    public Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(command);
-        ArgumentNullException.ThrowIfNull(options);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return outbox.SendAsync(command, options).AsTask();
-    }
-
-    /// <inheritdoc />
     public Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
         where TEvent : IDomainEvent
     {
@@ -46,6 +36,16 @@ public sealed class EfCoreOutboxDispatcher<TDbContext>(IDbContextOutbox<TDbConte
         cancellationToken.ThrowIfCancellationRequested();
 
         return outbox.PublishAsync(@event, options).AsTask();
+    }
+
+    /// <inheritdoc />
+    public Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(options);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return outbox.SendAsync(command, options).AsTask();
     }
 
     /// <summary>

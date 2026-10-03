@@ -41,21 +41,21 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
         return Task.CompletedTask;
     }
 
-    public Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken)
+    public Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
+        where TEvent : IDomainEvent
     {
-        SendCallCount++;
-        LastSentMessage = command;
+        PublishCallCount++;
+        LastPublishedEvent = @event;
         LastDeliveryOptions = options;
         LastDispatchCancellationToken = cancellationToken;
 
         return DispatchException is null ? Task.CompletedTask : Task.FromException(DispatchException);
     }
 
-    public Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
-        where TEvent : IDomainEvent
+    public Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken)
     {
-        PublishCallCount++;
-        LastPublishedEvent = @event;
+        SendCallCount++;
+        LastSentMessage = command;
         LastDeliveryOptions = options;
         LastDispatchCancellationToken = cancellationToken;
 
