@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using Wolverine;
 using Wolverine.EntityFrameworkCore;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
@@ -24,6 +25,27 @@ public sealed class EfCoreOutboxDispatcher<TDbContext>(IDbContextOutbox<TDbConte
         where TEvent : IDomainEvent
     {
         await outbox.PublishAsync(@event);
+    }
+
+    /// <inheritdoc />
+    public Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(options);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return outbox.SendAsync(command, options).AsTask();
+    }
+
+    /// <inheritdoc />
+    public Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
+        where TEvent : IDomainEvent
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+        ArgumentNullException.ThrowIfNull(options);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return outbox.PublishAsync(@event, options).AsTask();
     }
 
     /// <summary>

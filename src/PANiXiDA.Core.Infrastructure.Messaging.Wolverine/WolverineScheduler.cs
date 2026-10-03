@@ -1,4 +1,5 @@
 using PANiXiDA.Core.Application.Messaging.Scheduling;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
 using Wolverine;
 
@@ -7,8 +8,8 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine;
 /// <summary>
 /// Schedules commands and domain events through a Wolverine transactional outbox.
 /// </summary>
-/// <param name="outbox">The EF Core outbox or enlisted message context for the current transaction.</param>
-public sealed class WolverineScheduler(IMessageBus outbox) : IScheduler
+/// <param name="outboxDispatcher">The dispatcher used to schedule messages through the current outbox.</param>
+public sealed class WolverineScheduler(IOutboxDispatcher outboxDispatcher) : IScheduler
 {
     /// <inheritdoc />
     public Task ScheduleAsync(
@@ -20,7 +21,7 @@ public sealed class WolverineScheduler(IMessageBus outbox) : IScheduler
         ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return outbox.SendAsync(command, new DeliveryOptions { ScheduleDelay = delay }).AsTask();
+        return outboxDispatcher.SendAsync(command, new DeliveryOptions { ScheduleDelay = delay }, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -33,7 +34,7 @@ public sealed class WolverineScheduler(IMessageBus outbox) : IScheduler
         ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return outbox.PublishAsync(@event, new DeliveryOptions { ScheduleDelay = delay }).AsTask();
+        return outboxDispatcher.PublishAsync(@event, new DeliveryOptions { ScheduleDelay = delay }, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -45,7 +46,7 @@ public sealed class WolverineScheduler(IMessageBus outbox) : IScheduler
         ArgumentNullException.ThrowIfNull(command);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return outbox.SendAsync(command, new DeliveryOptions { ScheduledTime = deliverAt }).AsTask();
+        return outboxDispatcher.SendAsync(command, new DeliveryOptions { ScheduledTime = deliverAt }, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -57,6 +58,6 @@ public sealed class WolverineScheduler(IMessageBus outbox) : IScheduler
         ArgumentNullException.ThrowIfNull(@event);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return outbox.PublishAsync(@event, new DeliveryOptions { ScheduledTime = deliverAt }).AsTask();
+        return outboxDispatcher.PublishAsync(@event, new DeliveryOptions { ScheduledTime = deliverAt }, cancellationToken);
     }
 }

@@ -1,6 +1,5 @@
 using PANiXiDA.Core.Application.Messaging.Scheduling;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles;
-using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.DependencyInjection;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests;
 
@@ -15,15 +14,15 @@ public sealed class WolverineSchedulerTests
     [InlineData(false, false)]
     public async Task SchedulerShouldUseOutbox(bool isCommand, bool absoluteTime)
     {
-        var outbox = DbContextOutboxProxy<TestDbContext>.Create(out var proxy);
-        IScheduler scheduler = new WolverineScheduler(outbox);
+        var proxy = new TestOutboxDispatcher();
+        IScheduler scheduler = new WolverineScheduler(proxy);
         object message = isCommand ? new TestCommand(Guid.NewGuid()) : new TestDomainEvent(Guid.NewGuid());
 
         await ScheduleAsync(scheduler, message, isCommand, absoluteTime, TestContext.Current.CancellationToken);
 
         proxy.SendCallCount.ShouldBe(isCommand ? 1 : 0);
         proxy.PublishCallCount.ShouldBe(isCommand ? 0 : 1);
-        (isCommand ? proxy.LastSentMessage : proxy.LastPublishedMessage).ShouldBeSameAs(message);
+        (isCommand ? proxy.LastSentMessage : proxy.LastPublishedEvent).ShouldBeSameAs(message);
         var options = proxy.LastDeliveryOptions.ShouldNotBeNull();
         if (absoluteTime)
         {
@@ -34,6 +33,8 @@ public sealed class WolverineSchedulerTests
             options.ScheduleDelay.ShouldBe(TimeSpan.FromMinutes(15));
         }
 
+        proxy.LastDispatchCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
+        proxy.PersistCallCount.ShouldBe(0);
         proxy.FlushCallCount.ShouldBe(0);
     }
 
@@ -44,8 +45,8 @@ public sealed class WolverineSchedulerTests
     [InlineData(false, false)]
     public async Task SchedulerShouldRejectNullMessages(bool isCommand, bool absoluteTime)
     {
-        var outbox = DbContextOutboxProxy<TestDbContext>.Create(out var proxy);
-        IScheduler scheduler = new WolverineScheduler(outbox);
+        var proxy = new TestOutboxDispatcher();
+        IScheduler scheduler = new WolverineScheduler(proxy);
 
         await Should.ThrowAsync<ArgumentNullException>(() =>
             ScheduleAsync(scheduler, null!, isCommand, absoluteTime, TestContext.Current.CancellationToken));
@@ -61,8 +62,8 @@ public sealed class WolverineSchedulerTests
     [InlineData(false, false)]
     public async Task SchedulerShouldRespectCancellation(bool isCommand, bool absoluteTime)
     {
-        var outbox = DbContextOutboxProxy<TestDbContext>.Create(out var proxy);
-        IScheduler scheduler = new WolverineScheduler(outbox);
+        var proxy = new TestOutboxDispatcher();
+        IScheduler scheduler = new WolverineScheduler(proxy);
         object message = isCommand ? new TestCommand(Guid.NewGuid()) : new TestDomainEvent(Guid.NewGuid());
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
@@ -81,8 +82,8 @@ public sealed class WolverineSchedulerTests
     [InlineData(false, false)]
     public async Task SchedulerShouldPropagateOutboxFailures(bool isCommand, bool absoluteTime)
     {
-        var outbox = DbContextOutboxProxy<TestDbContext>.Create(out var proxy);
-        IScheduler scheduler = new WolverineScheduler(outbox);
+        var proxy = new TestOutboxDispatcher();
+        IScheduler scheduler = new WolverineScheduler(proxy);
         object message = isCommand ? new TestCommand(Guid.NewGuid()) : new TestDomainEvent(Guid.NewGuid());
         var failure = new InvalidOperationException("Outbox failed.");
         proxy.DispatchException = failure;
@@ -98,8 +99,8 @@ public sealed class WolverineSchedulerTests
     [InlineData(false)]
     public async Task SchedulerShouldValidateDelay(bool isCommand)
     {
-        var outbox = DbContextOutboxProxy<TestDbContext>.Create(out var proxy);
-        var scheduler = new WolverineScheduler(outbox);
+        var proxy = new TestOutboxDispatcher();
+        var scheduler = new WolverineScheduler(proxy);
         var command = new TestCommand(Guid.NewGuid());
         var @event = new TestDomainEvent(Guid.NewGuid());
         var token = TestContext.Current.CancellationToken;

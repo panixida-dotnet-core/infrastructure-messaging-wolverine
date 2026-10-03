@@ -99,11 +99,13 @@ Before a successful command commits, `PersistOutgoingMessagesBehavior` saves the
 
 Custom `IOutboxDispatcher` implementations must implement `PersistAsync(CancellationToken cancellationToken)` when upgrading. Persist pending messages before commit, or explicitly return a completed task if they were already persisted in the current transaction. No default implementation is provided by the interface.
 
+They must also implement `SendAsync` and the `PublishAsync` overload accepting Wolverine `DeliveryOptions`. Preserve those options and add messages to the same transactional outbox without committing or flushing it.
+
 Calls to `PersistAsync` and `FlushAsync` require an explicit cancellation token. Pass `CancellationToken.None` when cancellation is not needed.
 
 For ordinary Wolverine messages, including events, module selection is not based on the message assembly. Wolverine detects the transaction from the concrete handler's DbContext dependency. This allows handlers for one shared event contract to commit or roll back independently in different module schemas. A transactional handler must depend on exactly one write DbContext.
 
-`IEventBus` uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published by a native handler therefore share its selected DbContext transaction.
+`IEventBus` and `IScheduler` share `IOutboxDispatcher`, which uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published or scheduled by a native handler therefore share its selected DbContext transaction.
 
 Do not synchronously invoke a command from another module while the first module transaction is active. Separate DbContexts use separate local database transactions, so such a call cannot be atomic. Publish an event through the outbox and let the receiving module handle it independently.
 
@@ -120,7 +122,7 @@ Commands use `SendAsync`; events use `PublishAsync`. Scheduling delays delivery 
 Inside mediator requests, scheduled messages use the active module's EF Core outbox and commit or roll back with its business changes.
 Native Wolverine handlers use their enlisted message context. The configured PostgreSQL storage and durable queues preserve scheduled messages across restarts.
 
-Outside handlers, resolve the module's keyed `IScheduler` with `typeof(AppDbContext)` (or the unkeyed scheduler in single-context setups), then save and commit through the same `IDbContextOutbox<AppDbContext>`/DbContext transaction. Scheduling alone does not commit changes.
+Outside handlers in modular setups, construct `WolverineScheduler` with the module's keyed `IOutboxDispatcher` resolved using `typeof(AppDbContext)`. Single-context setups can use the registered `IScheduler`. Save and commit through the same `IDbContextOutbox<AppDbContext>`/DbContext transaction; scheduling alone does not commit changes.
 The adapter uses typed DI registrations and introduces no runtime reflection or code generation; full Native AOT support remains limited by Wolverine and EF Core.
 
 ## Kafka Topics

@@ -5,6 +5,7 @@ using PANiXiDA.Core.Application.Messaging.Scheduling;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.DependencyInjection;
 
@@ -33,6 +34,9 @@ public sealed class SchedulerRegistrationTests
         await using var otherScope = provider.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<WolverineModuleExecutionContext>();
         var scheduler = scope.ServiceProvider.GetRequiredService<IScheduler>();
+        scheduler.ShouldBeOfType<WolverineScheduler>();
+        scope.ServiceProvider.GetRequiredService<IScheduler>().ShouldBeSameAs(scheduler);
+        otherScope.ServiceProvider.GetRequiredService<IScheduler>().ShouldNotBeSameAs(scheduler);
         var command = new TestCommand(Guid.NewGuid());
         var @event = new TestDomainEvent(Guid.NewGuid());
         var token = TestContext.Current.CancellationToken;
@@ -59,9 +63,7 @@ public sealed class SchedulerRegistrationTests
         secondOutbox.PublishCallCount.ShouldBe(isCommand ? 0 : 1);
         foreach (var dbContextType in new[] { typeof(TestDbContext), typeof(SecondTestDbContext) })
         {
-            var keyed = scope.ServiceProvider.GetKeyedServices<IScheduler>(dbContextType).ShouldHaveSingleItem();
-            scope.ServiceProvider.GetRequiredKeyedService<IScheduler>(dbContextType).ShouldBeSameAs(keyed);
-            otherScope.ServiceProvider.GetRequiredKeyedService<IScheduler>(dbContextType).ShouldNotBeSameAs(keyed);
+            scope.ServiceProvider.GetKeyedServices<IScheduler>(dbContextType).ShouldBeEmpty();
         }
     }
 
@@ -86,19 +88,49 @@ public sealed class SchedulerRegistrationTests
         customProvider.GetServices<IScheduler>().ShouldHaveSingleItem().ShouldBeSameAs(scheduler);
     }
 
-    [Fact(DisplayName = "Module context reports missing scheduler registrations")]
-    public void ModuleContextShouldReportMissingScheduler()
+    [Theory(DisplayName = "Scheduler uses the existing outbox dispatcher in single and modular setups")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SchedulerShouldUseExistingOutboxDispatcher(bool useModules)
     {
-        var registry = new WolverineModuleConfiguration()
-            .AddModule<TestDbContext>(typeof(TestCommand).Assembly)
-            .Build();
-        using var provider = new ServiceCollection().BuildServiceProvider();
-        var context = new WolverineModuleExecutionContext(provider, registry);
+        var services = new ServiceCollection();
+        var dispatcher = new TestOutboxDispatcher();
+        if (useModules)
+        {
+            services.AddKeyedSingleton<IOutboxDispatcher>(typeof(TestDbContext), dispatcher);
+            services.AddWolverineMediator(new WolverineModuleConfiguration()
+                .AddModule<TestDbContext>(typeof(TestCommand).Assembly)
+                .Build());
+        }
+        else
+        {
+            services.AddSingleton<IOutboxDispatcher>(dispatcher);
+            services.AddWolverineMediator<TestDbContext>();
+        }
 
-        context.TryGetScheduler(out _).ShouldBeFalse();
-        context.Enter(typeof(TestCommand));
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        if (useModules)
+        {
+            scope.ServiceProvider.GetRequiredService<WolverineModuleExecutionContext>().Enter(typeof(TestCommand));
+        }
 
-        Should.Throw<InvalidOperationException>(() => context.TryGetScheduler(out _))
-            .Message.ShouldContain("No Wolverine scheduler is registered");
+        var scheduler = scope.ServiceProvider.GetRequiredService<IScheduler>();
+        var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
+        var command = new TestCommand(Guid.NewGuid());
+        var scheduledEvent = new TestDomainEvent(Guid.NewGuid());
+        var token = TestContext.Current.CancellationToken;
+
+        await eventBus.PublishAsync(new TestDomainEvent(Guid.NewGuid()), token);
+        await scheduler.ScheduleAsync(command, TimeSpan.FromMinutes(15), token);
+        await scheduler.ScheduleAsync(scheduledEvent, TimeSpan.FromMinutes(15), token);
+
+        dispatcher.SendCallCount.ShouldBe(1);
+        dispatcher.LastSentMessage.ShouldBeSameAs(command);
+        dispatcher.PublishCallCount.ShouldBe(2);
+        dispatcher.LastPublishedEvent.ShouldBeSameAs(scheduledEvent);
+        dispatcher.LastDispatchCancellationToken.ShouldBe(token);
+        dispatcher.PersistCallCount.ShouldBe(0);
+        dispatcher.FlushCallCount.ShouldBe(0);
     }
 }

@@ -8,5 +8,4 @@ internal sealed record WolverineModuleRegistration(
     Type DbContextType,
     Assembly RequestAssembly,
     IReadOnlyList<Assembly> DiscoveryAssemblies,
-    ServiceDescriptor OutboxDispatcher,
-    ServiceDescriptor Scheduler);
+    ServiceDescriptor OutboxDispatcher);

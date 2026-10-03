@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 
-using PANiXiDA.Core.Application.Messaging.Scheduling;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Fixtures;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Commands;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Support;
@@ -78,14 +78,15 @@ public sealed class WolverineSchedulerIntegrationTests(PostgreSqlContainerFixtur
         (await CountEnvelopesAsync(app)).ShouldBe(0);
     }
 
-    [Fact(DisplayName = "Keyed module scheduler delivers delayed events to all module subscribers")]
-    public async Task KeyedSchedulerShouldFanOutEvents()
+    [Fact(DisplayName = "Scheduler using a keyed module outbox delivers delayed events to all module subscribers")]
+    public async Task SchedulerWithKeyedOutboxShouldFanOutEvents()
     {
         await using var app = await fixture.CreateApplicationAsync(useModuleRouting: true);
         var id = Guid.NewGuid();
         await using (var scope = app.Host.Services.CreateAsyncScope())
         {
-            var scheduler = scope.ServiceProvider.GetRequiredKeyedService<IScheduler>(typeof(SecondModuleDbContext));
+            var dispatcher = scope.ServiceProvider.GetRequiredKeyedService<IOutboxDispatcher>(typeof(SecondModuleDbContext));
+            var scheduler = new WolverineScheduler(dispatcher);
             var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox<SecondModuleDbContext>>();
 
             await scheduler.ScheduleAsync(

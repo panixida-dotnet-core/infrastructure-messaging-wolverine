@@ -6,8 +6,6 @@ using PANiXiDA.Core.Application.Messaging.Scheduling;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
-using Wolverine.EntityFrameworkCore;
-
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
 
 /// <summary>
@@ -28,8 +26,7 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IMediator, WolverineMediator>();
         services.TryAddScoped<IEventBus, WolverineEventBus>();
         services.TryAddScoped<IOutboxDispatcher, EfCoreOutboxDispatcher<TDbContext>>();
-        services.TryAddScoped<IScheduler>(serviceProvider =>
-            new WolverineScheduler(serviceProvider.GetRequiredService<IDbContextOutbox<TDbContext>>()));
+        services.TryAddScoped<IScheduler, WolverineScheduler>();
 
         return services;
     }
@@ -40,6 +37,7 @@ public static class ServiceCollectionExtensions
     {
         services.TryAddScoped<IMediator, WolverineMediator>();
         services.TryAddScoped<IEventBus, WolverineEventBus>();
+        services.TryAddScoped<IScheduler, WolverineScheduler>();
 
         services.TryAddScoped(serviceProvider =>
             new WolverineModuleExecutionContext(
@@ -49,7 +47,6 @@ public static class ServiceCollectionExtensions
         foreach (var registration in moduleRegistry.Registrations)
         {
             services.TryAdd(registration.OutboxDispatcher);
-            services.TryAdd(registration.Scheduler);
         }
 
         services.TryAddScoped<WolverineModuleUnitOfWork>();
@@ -59,7 +56,6 @@ public static class ServiceCollectionExtensions
             serviceProvider.GetRequiredService<WolverineModuleUnitOfWork>());
         services.AddScoped<IOutboxDispatcher>(serviceProvider =>
             serviceProvider.GetRequiredService<WolverineModuleOutboxDispatcher>());
-        services.AddScoped<IScheduler, WolverineModuleScheduler>();
 
         return services;
     }

@@ -1,5 +1,7 @@
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
+using Wolverine;
+
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles;
 
 public sealed class TestOutboxDispatcher : IOutboxDispatcher
@@ -18,6 +20,16 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
 
     public CancellationToken LastFlushCancellationToken { get; private set; }
 
+    public int SendCallCount { get; private set; }
+
+    public object? LastSentMessage { get; private set; }
+
+    public DeliveryOptions? LastDeliveryOptions { get; private set; }
+
+    public CancellationToken LastDispatchCancellationToken { get; private set; }
+
+    public Exception? DispatchException { get; set; }
+
     public Task PublishAsync<TEvent>(
         TEvent @event,
         CancellationToken cancellationToken = default)
@@ -27,6 +39,27 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
         LastPublishedEvent = @event;
 
         return Task.CompletedTask;
+    }
+
+    public Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken)
+    {
+        SendCallCount++;
+        LastSentMessage = command;
+        LastDeliveryOptions = options;
+        LastDispatchCancellationToken = cancellationToken;
+
+        return DispatchException is null ? Task.CompletedTask : Task.FromException(DispatchException);
+    }
+
+    public Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
+        where TEvent : IDomainEvent
+    {
+        PublishCallCount++;
+        LastPublishedEvent = @event;
+        LastDeliveryOptions = options;
+        LastDispatchCancellationToken = cancellationToken;
+
+        return DispatchException is null ? Task.CompletedTask : Task.FromException(DispatchException);
     }
 
     public Task PersistAsync(CancellationToken cancellationToken)

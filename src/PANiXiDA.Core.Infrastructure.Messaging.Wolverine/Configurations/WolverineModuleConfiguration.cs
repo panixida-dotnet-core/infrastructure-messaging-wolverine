@@ -1,13 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
-using PANiXiDA.Core.Application.Messaging.Scheduling;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.OutboxDispatcher;
 
 using System.Reflection;
-
-using Wolverine.EntityFrameworkCore;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 
@@ -47,11 +44,7 @@ public sealed class WolverineModuleConfiguration
                 .Prepend(requestAssembly)
                 .Distinct()],
             ServiceDescriptor.KeyedScoped<IOutboxDispatcher, EfCoreOutboxDispatcher<TDbContext>>(
-                typeof(TDbContext)),
-            ServiceDescriptor.KeyedScoped<IScheduler>(
-                typeof(TDbContext),
-                (serviceProvider, _) =>
-                    new WolverineScheduler(serviceProvider.GetRequiredService<IDbContextOutbox<TDbContext>>()))));
+                typeof(TDbContext))));
 
         return this;
     }
