@@ -29,7 +29,7 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
         return Task.CompletedTask;
     }
 
-    public Task PersistAsync(CancellationToken cancellationToken = default)
+    public Task PersistAsync(CancellationToken cancellationToken)
     {
         PersistCallCount++;
         LastPersistCancellationToken = cancellationToken;
@@ -37,7 +37,7 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
         return PersistException is null ? Task.CompletedTask : Task.FromException(PersistException);
     }
 
-    public Task FlushAsync(CancellationToken cancellationToken = default)
+    public Task FlushAsync(CancellationToken cancellationToken)
     {
         FlushCallCount++;
         LastFlushCancellationToken = cancellationToken;

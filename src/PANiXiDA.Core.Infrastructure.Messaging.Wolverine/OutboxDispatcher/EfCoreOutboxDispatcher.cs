@@ -31,7 +31,7 @@ public sealed class EfCoreOutboxDispatcher<TDbContext>(IDbContextOutbox<TDbConte
     /// </summary>
     /// <param name="cancellationToken">The token used to cancel persistence.</param>
     /// <returns>A task that represents the asynchronous save operation.</returns>
-    public Task PersistAsync(CancellationToken cancellationToken = default)
+    public Task PersistAsync(CancellationToken cancellationToken)
     {
         return outbox.DbContext.SaveChangesAsync(cancellationToken);
     }
@@ -41,7 +41,7 @@ public sealed class EfCoreOutboxDispatcher<TDbContext>(IDbContextOutbox<TDbConte
     /// </summary>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>A task that represents the asynchronous flush operation.</returns>
-    public Task FlushAsync(CancellationToken cancellationToken = default)
+    public Task FlushAsync(CancellationToken cancellationToken)
     {
         return outbox.FlushOutgoingMessagesAsync();
     }

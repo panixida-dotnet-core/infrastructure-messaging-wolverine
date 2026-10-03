@@ -29,12 +29,12 @@ public interface IOutboxDispatcher
     /// </remarks>
     /// <param name="cancellationToken">The token used to cancel persistence.</param>
     /// <returns>A task that represents the asynchronous persistence operation.</returns>
-    Task PersistAsync(CancellationToken cancellationToken = default);
+    Task PersistAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// Flushes all outgoing messages accumulated in the current outbox.
     /// </summary>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>A task that represents the asynchronous flush operation.</returns>
-    Task FlushAsync(CancellationToken cancellationToken = default);
+    Task FlushAsync(CancellationToken cancellationToken);
 }
