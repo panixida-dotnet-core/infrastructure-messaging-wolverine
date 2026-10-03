@@ -52,30 +52,6 @@ public sealed class EfCoreOutboxDispatcherTests
         proxy.FlushCallCount.ShouldBe(0);
     }
 
-    [Theory(DisplayName = "Dispatcher validates messages, delivery options and cancellation before dispatch")]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task DispatchShouldValidateArgumentsAndCancellation(bool isCommand)
-    {
-        var outbox = DbContextOutboxProxy<TestDbContext>.Create(out var proxy);
-        var dispatcher = new EfCoreOutboxDispatcher<TestDbContext>(outbox);
-        var command = new TestCommand(Guid.NewGuid());
-        var @event = new TestDomainEvent(Guid.NewGuid());
-        var options = new DeliveryOptions();
-        using var cancellation = new CancellationTokenSource();
-        await cancellation.CancelAsync();
-        Task dispatch(bool nullMessage, DeliveryOptions deliveryOptions, CancellationToken token) => isCommand
-            ? dispatcher.SendAsync(nullMessage ? null! : command, deliveryOptions, token)
-            : dispatcher.PublishAsync(nullMessage ? null! : @event, deliveryOptions, token);
-
-        await Should.ThrowAsync<ArgumentNullException>(() => dispatch(true, options, CancellationToken.None));
-        await Should.ThrowAsync<ArgumentNullException>(() => dispatch(false, null!, CancellationToken.None));
-        await Should.ThrowAsync<OperationCanceledException>(() => dispatch(false, options, cancellation.Token));
-
-        proxy.SendCallCount.ShouldBe(0);
-        proxy.PublishCallCount.ShouldBe(0);
-    }
-
     [Theory(DisplayName = "Dispatcher propagates failures from the transactional outbox")]
     [InlineData(true)]
     [InlineData(false)]

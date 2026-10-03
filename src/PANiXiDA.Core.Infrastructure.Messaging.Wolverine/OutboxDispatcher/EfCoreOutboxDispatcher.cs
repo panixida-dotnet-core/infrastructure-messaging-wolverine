@@ -31,20 +31,12 @@ public sealed class EfCoreOutboxDispatcher<TDbContext>(IDbContextOutbox<TDbConte
     public Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
         where TEvent : IDomainEvent
     {
-        ArgumentNullException.ThrowIfNull(@event);
-        ArgumentNullException.ThrowIfNull(options);
-        cancellationToken.ThrowIfCancellationRequested();
-
         return outbox.PublishAsync(@event, options).AsTask();
     }
 
     /// <inheritdoc />
     public Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(command);
-        ArgumentNullException.ThrowIfNull(options);
-        cancellationToken.ThrowIfCancellationRequested();
-
         return outbox.SendAsync(command, options).AsTask();
     }
 

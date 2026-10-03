@@ -8,6 +8,9 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine;
 /// <summary>
 /// Schedules commands and domain events through a Wolverine transactional outbox.
 /// </summary>
+/// <remarks>
+/// Cancellation support depends on the dispatcher. The built-in Wolverine dispatchers do not cancel scheduling operations.
+/// </remarks>
 /// <param name="outboxDispatcher">The dispatcher used to schedule messages through the current outbox.</param>
 public sealed class WolverineScheduler(IOutboxDispatcher outboxDispatcher) : IScheduler
 {
@@ -17,9 +20,7 @@ public sealed class WolverineScheduler(IOutboxDispatcher outboxDispatcher) : ISc
         TimeSpan delay,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(command);
         ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero);
-        cancellationToken.ThrowIfCancellationRequested();
 
         return outboxDispatcher.SendAsync(command, new DeliveryOptions { ScheduleDelay = delay }, cancellationToken);
     }
@@ -30,9 +31,7 @@ public sealed class WolverineScheduler(IOutboxDispatcher outboxDispatcher) : ISc
         TimeSpan delay,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(@event);
         ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero);
-        cancellationToken.ThrowIfCancellationRequested();
 
         return outboxDispatcher.PublishAsync(@event, new DeliveryOptions { ScheduleDelay = delay }, cancellationToken);
     }
@@ -43,9 +42,6 @@ public sealed class WolverineScheduler(IOutboxDispatcher outboxDispatcher) : ISc
         DateTimeOffset deliverAt,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(command);
-        cancellationToken.ThrowIfCancellationRequested();
-
         return outboxDispatcher.SendAsync(command, new DeliveryOptions { ScheduledTime = deliverAt }, cancellationToken);
     }
 
@@ -55,9 +51,6 @@ public sealed class WolverineScheduler(IOutboxDispatcher outboxDispatcher) : ISc
         DateTimeOffset deliverAt,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(@event);
-        cancellationToken.ThrowIfCancellationRequested();
-
         return outboxDispatcher.PublishAsync(@event, new DeliveryOptions { ScheduledTime = deliverAt }, cancellationToken);
     }
 }

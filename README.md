@@ -119,6 +119,7 @@ await scheduler.ScheduleAtAsync(occurredEvent, publishAt, cancellationToken);
 ```
 
 Commands use `SendAsync`; events use `PublishAsync`. Scheduling delays delivery and does not return handler results.
+The adapters do not check messages or delivery options for null, or check cancellation before dispatch. Persistence still passes the cancellation token to EF Core.
 Inside mediator requests, scheduled messages use the active module's EF Core outbox and commit or roll back with its business changes.
 Native Wolverine handlers use their enlisted message context. The configured PostgreSQL storage and durable queues preserve scheduled messages across restarts.
 

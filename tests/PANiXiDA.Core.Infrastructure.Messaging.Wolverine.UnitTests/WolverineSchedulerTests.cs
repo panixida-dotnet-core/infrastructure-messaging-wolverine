@@ -38,43 +38,6 @@ public sealed class WolverineSchedulerTests
         proxy.FlushCallCount.ShouldBe(0);
     }
 
-    [Theory(DisplayName = "Scheduler rejects null messages before using the outbox")]
-    [InlineData(true, true)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(false, false)]
-    public async Task SchedulerShouldRejectNullMessages(bool isCommand, bool absoluteTime)
-    {
-        var proxy = new TestOutboxDispatcher();
-        IScheduler scheduler = new WolverineScheduler(proxy);
-
-        await Should.ThrowAsync<ArgumentNullException>(() =>
-            ScheduleAsync(scheduler, null!, isCommand, absoluteTime, TestContext.Current.CancellationToken));
-
-        proxy.SendCallCount.ShouldBe(0);
-        proxy.PublishCallCount.ShouldBe(0);
-    }
-
-    [Theory(DisplayName = "Scheduler rejects cancellation before using the outbox")]
-    [InlineData(true, true)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(false, false)]
-    public async Task SchedulerShouldRespectCancellation(bool isCommand, bool absoluteTime)
-    {
-        var proxy = new TestOutboxDispatcher();
-        IScheduler scheduler = new WolverineScheduler(proxy);
-        object message = isCommand ? new TestCommand(Guid.NewGuid()) : new TestDomainEvent(Guid.NewGuid());
-        using var cancellation = new CancellationTokenSource();
-        await cancellation.CancelAsync();
-
-        await Should.ThrowAsync<OperationCanceledException>(() =>
-            ScheduleAsync(scheduler, message, isCommand, absoluteTime, cancellation.Token));
-
-        proxy.SendCallCount.ShouldBe(0);
-        proxy.PublishCallCount.ShouldBe(0);
-    }
-
     [Theory(DisplayName = "Scheduler propagates outbox failures")]
     [InlineData(true, true)]
     [InlineData(true, false)]

@@ -30,10 +30,6 @@ internal sealed class WolverineModuleOutboxDispatcher(
     public Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
         where TEvent : IDomainEvent
     {
-        ArgumentNullException.ThrowIfNull(@event);
-        ArgumentNullException.ThrowIfNull(options);
-        cancellationToken.ThrowIfCancellationRequested();
-
         if (moduleContext.TryGetOutboxDispatcher(out var outboxDispatcher))
         {
             return outboxDispatcher.PublishAsync(@event, options, cancellationToken);
@@ -44,10 +40,6 @@ internal sealed class WolverineModuleOutboxDispatcher(
 
     public Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(command);
-        ArgumentNullException.ThrowIfNull(options);
-        cancellationToken.ThrowIfCancellationRequested();
-
         if (moduleContext.TryGetOutboxDispatcher(out var outboxDispatcher))
         {
             return outboxDispatcher.SendAsync(command, options, cancellationToken);

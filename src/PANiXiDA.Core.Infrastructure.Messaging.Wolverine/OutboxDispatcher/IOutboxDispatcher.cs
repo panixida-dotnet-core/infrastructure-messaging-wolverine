@@ -27,10 +27,8 @@ public interface IOutboxDispatcher
     /// <typeparam name="TEvent">The domain event type.</typeparam>
     /// <param name="event">The domain event instance to publish.</param>
     /// <param name="options">The delivery options, including any scheduling delay or time.</param>
-    /// <param name="cancellationToken">The token used to cancel adding the event.</param>
+    /// <param name="cancellationToken">The caller's cancellation token; support depends on the implementation.</param>
     /// <returns>A task that represents the asynchronous publish operation.</returns>
-    /// <exception cref="ArgumentNullException">The event or delivery options are null.</exception>
-    /// <exception cref="OperationCanceledException">Cancellation has been requested.</exception>
     Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
         where TEvent : IDomainEvent;
 
@@ -39,10 +37,8 @@ public interface IOutboxDispatcher
     /// </summary>
     /// <param name="command">The command to send.</param>
     /// <param name="options">The delivery options, including any scheduling delay or time.</param>
-    /// <param name="cancellationToken">The token used to cancel adding the command.</param>
+    /// <param name="cancellationToken">The caller's cancellation token; support depends on the implementation.</param>
     /// <returns>A task that represents the asynchronous send operation.</returns>
-    /// <exception cref="ArgumentNullException">The command or delivery options are null.</exception>
-    /// <exception cref="OperationCanceledException">Cancellation has been requested.</exception>
     Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken);
 
     /// <summary>
