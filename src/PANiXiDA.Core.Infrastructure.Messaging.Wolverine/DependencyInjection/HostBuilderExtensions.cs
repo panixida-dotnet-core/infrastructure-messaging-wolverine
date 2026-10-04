@@ -208,6 +208,85 @@ public static class HostBuilderExtensions
         });
     }
 
+    /// <summary>
+    /// Configures one Wolverine runtime with typed recurring commands, optional Kafka topology, and EF Core modules.
+    /// </summary>
+    /// <param name="hostBuilder">The application host builder.</param>
+    /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
+    /// <param name="configuration">The application configuration containing typed Kafka and schedule options.</param>
+    /// <param name="configureModules">The callback that registers module DbContexts and assemblies.</param>
+    /// <param name="configureKafka">An optional callback for registering typed Kafka topology.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <param name="configureSchedules">The callback that registers typed recurring commands before the container is built.</param>
+    /// <returns>The same host builder instance for fluent configuration.</returns>
+    public static IHostBuilder UseWolverineMediator(
+        this IHostBuilder hostBuilder,
+        string messageStoreConnectionString,
+        IConfiguration configuration,
+        Action<WolverineModuleConfiguration> configureModules,
+        Action<WolverineKafkaConfiguration>? configureKafka,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors,
+        Action<WolverineScheduleConfiguration> configureSchedules)
+    {
+        ArgumentNullException.ThrowIfNull(hostBuilder);
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(configureSchedules);
+
+        return UseModularWolverineMediator(
+            hostBuilder,
+            messageStoreConnectionString,
+            configureModules,
+            options => ConfigureSchedulesAndKafka(options, configuration, configureSchedules, configureKafka),
+            configureRequestBehaviors);
+    }
+
+    /// <summary>
+    /// Configures Wolverine with PostgreSQL persistence, typed recurring commands, and optional Kafka topology.
+    /// </summary>
+    /// <typeparam name="TDbContext">The EF Core DbContext type enrolled in Wolverine message storage.</typeparam>
+    /// <param name="hostBuilder">The application host builder.</param>
+    /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
+    /// <param name="configuration">The application configuration containing typed Kafka and schedule options.</param>
+    /// <param name="configureKafka">An optional callback for registering typed Kafka topology.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <param name="configureSchedules">The callback that registers typed recurring commands before the container is built.</param>
+    /// <param name="discoveryAssemblies">The assemblies where Wolverine should discover message handlers.</param>
+    /// <returns>The same host builder instance for fluent configuration.</returns>
+    public static IHostBuilder UseWolverineMediator<TDbContext>(
+        this IHostBuilder hostBuilder,
+        string messageStoreConnectionString,
+        IConfiguration configuration,
+        Action<WolverineKafkaConfiguration>? configureKafka,
+        Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors,
+        Action<WolverineScheduleConfiguration> configureSchedules,
+        params Assembly[] discoveryAssemblies)
+        where TDbContext : DbContext
+    {
+        ArgumentNullException.ThrowIfNull(hostBuilder);
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(configureSchedules);
+        ArgumentNullException.ThrowIfNull(discoveryAssemblies);
+
+        return RegisterFluentValidationValidators(hostBuilder, discoveryAssemblies)
+            .UseWolverine(options => ConfigureWolverineMediator<TDbContext>(
+                options,
+                messageStoreConnectionString,
+                configuredOptions => ConfigureSchedulesAndKafka(
+                    configuredOptions, configuration, configureSchedules, configureKafka),
+                configureRequestBehaviors,
+                discoveryAssemblies));
+    }
+
+    private static void ConfigureSchedulesAndKafka(
+        WolverineOptions options,
+        IConfiguration configuration,
+        Action<WolverineScheduleConfiguration> configureSchedules,
+        Action<WolverineKafkaConfiguration>? configureKafka)
+    {
+        configureKafka?.Invoke(new WolverineKafkaConfiguration(options, configuration));
+        configureSchedules(new WolverineScheduleConfiguration(options, configuration));
+    }
+
     private static IHostBuilder UseModularWolverineMediator(
         IHostBuilder hostBuilder,
         string messageStoreConnectionString,

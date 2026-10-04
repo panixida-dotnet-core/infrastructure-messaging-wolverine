@@ -17,6 +17,7 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - `IMediator` implementation based on Wolverine in-process invocation.
 - `IEventBus` implementation based on Wolverine EF Core outbox.
 - `IScheduler` implementation for durable command and event scheduling through the same outbox.
+- Typed recurring command registration from cron configuration sections.
 - Default in-process event handling for domain events.
 - Explicit Kafka producer and consumer registration per event type.
 - Durable inbox and outbox policies for listeners, local queues, and external senders.
@@ -39,11 +40,11 @@ Full Native AOT support is not currently provided.
 
 ### Installation
 
-Use the latest 4.1.x version:
+Use the latest 4.2.x version:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="4.1.*" />
+  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="4.2.*" />
 </ItemGroup>
 ```
 
@@ -139,6 +140,76 @@ Native Wolverine handlers use their enlisted message context. The configured Pos
 
 Outside handlers in modular setups, construct `WolverineScheduler` with the module's keyed `IOutboxDispatcher` resolved using `typeof(AppDbContext)`. Single-context setups can use the registered `IScheduler`. Save and commit through the same `IDbContextOutbox<AppDbContext>`/DbContext transaction; scheduling alone does not commit changes.
 The adapter uses typed DI registrations and introduces no runtime reflection or code generation; full Native AOT support remains limited by Wolverine and EF Core.
+
+### Recurring Commands
+
+Use recurring commands for periodic work that would otherwise run in a timer-based `BackgroundService`.
+Define a configuration type derived from `RecurringCommandOption`, and register its command through
+`WolverineScheduleConfiguration`. Like Kafka options, the configuration section name is the option type's name.
+Only reference-type `ICommand<Result>` messages are accepted. Queries and events cannot be registered through this API.
+
+```csharp
+using PANiXiDA.Core.Application.Messaging.Mediator.Contracts;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options;
+using PANiXiDA.Core.ResultPattern;
+
+public sealed class CleanupScheduleOption : RecurringCommandOption;
+
+public sealed record CleanupExpiredItemsCommand(DateTimeOffset OccurrenceTime) : ICommand<Result>;
+```
+
+```json
+{
+  "CleanupScheduleOption": {
+    "Enabled": true,
+    "Name": "cleanup-expired-items",
+    "CronExpression": "*/15 * * * *",
+    "TimeZoneId": "UTC"
+  }
+}
+```
+
+Register the schedule alongside the application's existing DbContext and command handler:
+
+```csharp
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
+
+builder.Services.AddWolverineMediator<AppDbContext>();
+
+builder.Host.UseWolverineMediator<AppDbContext>(
+    builder.Configuration.GetConnectionString("PostgreSqlConnectionString")!,
+    builder.Configuration,
+    configureKafka: null,
+    configureRequestBehaviors: null,
+    configureSchedules: schedules => schedules
+        .AddRecurringCommand<CleanupScheduleOption, CleanupExpiredItemsCommand>(
+            occurrence => new CleanupExpiredItemsCommand(occurrence)),
+    discoveryAssemblies: typeof(CleanupExpiredItemsHandler).Assembly);
+```
+
+The modular overload accepts the same `configureSchedules` callback after `configureRequestBehaviors`.
+Pass the existing `configureModules` callback and register the command's assembly with its owning DbContext.
+Kafka and schedules can be configured together; the existing overloads remain available for hosts without schedules.
+Schedule registration runs before the DI container is built, so Wolverine can register its recurring agent and services.
+
+`Enabled` defaults to `true`, and `TimeZoneId` defaults to `UTC`. Every registration requires its typed section.
+An enabled schedule requires a stable, application-wide unique `Name`, a valid cron expression, and a system time zone ID.
+Invalid settings fail during host construction. A disabled section only needs `Enabled: false`; it does not enable
+recurring infrastructure or validate the remaining schedule values. Configuration is read at host construction,
+not hot-reloaded. Renaming a schedule changes its occurrence deduplication identity.
+
+The factory receives the scheduled occurrence time, which can differ from the eventual execution time after a delay
+or restart. Keep factories free of side effects and put business work in the ordinary `ICommandHandler<TCommand, Result>`.
+Commands use the existing validation, transaction, and outbox pipeline, including module routing. No handler result is
+returned to a caller. Returning `Result.Failure` is not a thrown exception and does not automatically request a Wolverine retry.
+
+Wolverine evaluates five-field cron expressions, or six-field expressions including seconds, with a minimum cadence
+of five seconds. Its singular recurring agent coordinates schedules across a cluster using the shared message store.
+The first enabled schedule adds Wolverine's `wolverine_recurring_messages` tracking table to the message-store schema;
+include that schema update in the existing Wolverine managed-resource deployment process. No business EF migration is required.
+Already persisted occurrences survive restarts. Missed intervals are not all replayed, and the cron registration does not
+serialize different occurrences of a long-running command. Keep business effects idempotent and handle any required
+catch-up or overlap policy explicitly. See [Wolverine recurring messages](https://wolverinefx.net/guide/messaging/recurring.html).
 
 ## Kafka Topics
 

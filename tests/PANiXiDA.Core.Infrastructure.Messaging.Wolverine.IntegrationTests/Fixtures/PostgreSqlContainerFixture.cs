@@ -45,7 +45,8 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
         Action<WolverineKafkaConfiguration>? configureKafka = null,
         Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors = null,
         bool useModuleRouting = false,
-        bool resetDatabase = true)
+        bool resetDatabase = true,
+        Action<WolverineScheduleConfiguration>? configureSchedules = null)
     {
         container ??= new PostgreSqlBuilder("postgres:16-alpine")
             .WithDatabase("wolverine_integration_tests")
@@ -111,7 +112,17 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
                         typeof(CreateSecondModuleRecordCommand).Assembly);
             }
 
-            if (configureKafka is null)
+            if (configureSchedules is not null)
+            {
+                hostBuilder.UseWolverineMediator(
+                    connectionString,
+                    configuration ?? new ConfigurationManager(),
+                    configureModules,
+                    configureKafka,
+                    configureRequestBehaviors,
+                    configureSchedules);
+            }
+            else if (configureKafka is null)
             {
                 hostBuilder.UseWolverineMediator(
                     connectionString,
@@ -127,6 +138,16 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
                     configureKafka,
                     configureRequestBehaviors);
             }
+        }
+        else if (configureSchedules is not null)
+        {
+            hostBuilder.UseWolverineMediator<IntegrationDbContext>(
+                connectionString,
+                configuration ?? new ConfigurationManager(),
+                configureKafka,
+                configureRequestBehaviors,
+                configureSchedules,
+                typeof(PostgreSqlContainerFixture).Assembly);
         }
         else if (configureKafka is null && configureRequestBehaviors is null)
         {
