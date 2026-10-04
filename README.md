@@ -249,6 +249,24 @@ protected override void OnModelCreating(ModelBuilder modelBuilder)
 
 With the modular overload, the configured message-store schema is shared by all modules. Let Wolverine managed resources own that schema, or map it in exactly one dedicated messaging migration context. Do not map the shared envelope tables in every business module DbContext.
 
+### Dead Letter Expiration
+
+Both single-context and modular registrations enable automatic expiration of database-backed dead letters after seven days. Wolverine assigns the expiration when a message enters the dead letter store: it uses the message's `DeliverBy` value when present, otherwise the current time plus seven days. Its background durability agent permanently deletes expired messages; cleanup is periodic, not immediate at the expiration time.
+
+Applications can override the retention period or disable expiration by configuring Wolverine after `UseWolverineMediator`:
+
+```csharp
+using Wolverine;
+
+builder.Services.ConfigureWolverine(options =>
+{
+    options.Durability.DeadLetterQueueExpirationEnabled = true;
+    options.Durability.DeadLetterQueueExpiration = TimeSpan.FromDays(14);
+});
+```
+
+Set `DeadLetterQueueExpirationEnabled` to `false` to disable automatic cleanup. These settings apply to database-backed dead letters, not native broker dead letter queues. Existing rows without an expiration timestamp are not backfilled by this configuration change.
+
 ## Behavior
 
 Commands and queries are invoked in-process through Wolverine and PANiXiDA request contracts.

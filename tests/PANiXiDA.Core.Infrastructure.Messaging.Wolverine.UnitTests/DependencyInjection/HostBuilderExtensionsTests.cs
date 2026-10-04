@@ -7,10 +7,47 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.DependencyInjection;
 
+using Wolverine;
+
+using HostBuilderExtensions = PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection.HostBuilderExtensions;
+
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.DependencyInjection;
 
 public sealed class HostBuilderExtensionsTests
 {
+    [Theory(DisplayName = "Mediator registrations enable dead letter expiration after seven days")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MediatorRegistrationsShouldEnableDeadLetterExpirationAfterSevenDays(bool useModuleRouting)
+    {
+        var hostBuilder = CreateHostBuilder(useModuleRouting);
+
+        using var host = hostBuilder.Build();
+        var options = host.Services.GetRequiredService<WolverineOptions>();
+
+        options.Durability.DeadLetterQueueExpirationEnabled.ShouldBeTrue();
+        options.Durability.DeadLetterQueueExpiration.ShouldBe(TimeSpan.FromDays(7));
+    }
+
+    [Theory(DisplayName = "Applications can override the default dead letter expiration settings")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ApplicationsShouldBeAbleToOverrideDeadLetterExpirationSettings(bool useModuleRouting)
+    {
+        var hostBuilder = CreateHostBuilder(useModuleRouting);
+        hostBuilder.ConfigureServices(services => services.ConfigureWolverine(options =>
+        {
+            options.Durability.DeadLetterQueueExpirationEnabled = false;
+            options.Durability.DeadLetterQueueExpiration = TimeSpan.FromDays(14);
+        }));
+
+        using var host = hostBuilder.Build();
+        var options = host.Services.GetRequiredService<WolverineOptions>();
+
+        options.Durability.DeadLetterQueueExpirationEnabled.ShouldBeFalse();
+        options.Durability.DeadLetterQueueExpiration.ShouldBe(TimeSpan.FromDays(14));
+    }
+
     [Fact(DisplayName = "ResolveApplicationAssembly uses the entry assembly or executing assembly fallback")]
     public void ResolveApplicationAssemblyShouldUseEntryAssemblyOrExecutingAssemblyFallback()
     {
@@ -123,5 +160,19 @@ public sealed class HostBuilderExtensionsTests
 
         exception.Message.ShouldBe(
             "The Wolverine message store connection string must not be empty. (Parameter 'messageStoreConnectionString')");
+    }
+
+    private static IHostBuilder CreateHostBuilder(bool useModuleRouting)
+    {
+        const string connectionString = "Host=localhost;Database=wolverine";
+        var hostBuilder = Host.CreateDefaultBuilder();
+
+        return useModuleRouting
+            ? hostBuilder.UseWolverineMediator(
+                connectionString,
+                modules => modules.AddModule<TestDbContext>(typeof(HostBuilderExtensionsTests).Assembly))
+            : hostBuilder.UseWolverineMediator<TestDbContext>(
+                connectionString,
+                typeof(HostBuilderExtensionsTests).Assembly);
     }
 }
