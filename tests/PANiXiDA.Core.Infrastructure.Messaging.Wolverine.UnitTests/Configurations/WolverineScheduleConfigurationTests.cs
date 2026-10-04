@@ -107,7 +107,7 @@ public sealed class WolverineScheduleConfigurationTests
         var exception = Should.Throw<ArgumentException>(() =>
             schedules.AddRecurringCommand<TestRecurringCommandOption, TestCommand>(_ => new TestCommand(Guid.NewGuid())));
 
-        exception.ParamName.ShouldBe(setting);
+        exception.ParamName.ShouldBe($"option.{setting}");
         options.Durability.EnableRecurringMessages.ShouldBeFalse();
     }
 

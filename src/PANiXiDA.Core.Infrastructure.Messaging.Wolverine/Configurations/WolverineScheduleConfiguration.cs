@@ -56,9 +56,9 @@ public sealed class WolverineScheduleConfiguration
             return this;
         }
 
-        ArgumentException.ThrowIfNullOrWhiteSpace(option.Name, nameof(RecurringCommandOption.Name));
-        ArgumentException.ThrowIfNullOrWhiteSpace(option.CronExpression, nameof(RecurringCommandOption.CronExpression));
-        ArgumentException.ThrowIfNullOrWhiteSpace(option.TimeZoneId, nameof(RecurringCommandOption.TimeZoneId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(option.Name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(option.CronExpression);
+        ArgumentException.ThrowIfNullOrWhiteSpace(option.TimeZoneId);
 
         var timeZone = TimeZoneInfo.FindSystemTimeZoneById(option.TimeZoneId);
         var schedule = new CronSchedule(option.CronExpression, timeZone);
