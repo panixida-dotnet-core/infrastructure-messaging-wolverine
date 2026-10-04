@@ -24,6 +24,42 @@ public sealed class WolverineKafkaConfiguration
     }
 
     /// <summary>
+    /// Registers a Kafka broker from the specified configuration section.
+    /// </summary>
+    /// <param name="sectionName">The broker configuration section. Defaults to Messaging:Kafka.</param>
+    /// <returns>The Wolverine Kafka transport expression for additional configuration.</returns>
+    public KafkaTransportExpression AddKafkaBroker(string sectionName = "Messaging:Kafka")
+    {
+        return RegisterKafkaBroker(GetRequiredOption<KafkaBrokerOption>(sectionName));
+    }
+
+    /// <summary>
+    /// Registers a durable Kafka producer from the child section named after the event type.
+    /// </summary>
+    /// <typeparam name="TEvent">The domain event type to publish.</typeparam>
+    /// <param name="parentSectionName">The parent configuration section. Defaults to Messaging:Producers.</param>
+    /// <returns>The Wolverine Kafka sender configuration for additional topic tuning.</returns>
+    public KafkaSubscriberConfiguration AddProducer<TEvent>(string parentSectionName = "Messaging:Producers")
+        where TEvent : DomainEvent
+    {
+        var option = GetRequiredOption<KafkaProducerOption>($"{parentSectionName}:{typeof(TEvent).Name}");
+        return RegisterKafkaProducer<TEvent>(option);
+    }
+
+    /// <summary>
+    /// Registers a durable Kafka consumer from the child section named after the event type.
+    /// </summary>
+    /// <typeparam name="TEvent">The domain event type consumed from the topic.</typeparam>
+    /// <param name="parentSectionName">The parent configuration section. Defaults to Messaging:Consumers.</param>
+    /// <returns>The Wolverine Kafka listener configuration for additional topic tuning.</returns>
+    public KafkaListenerConfiguration AddConsumer<TEvent>(string parentSectionName = "Messaging:Consumers")
+        where TEvent : DomainEvent
+    {
+        var option = GetRequiredOption<KafkaConsumerOption>($"{parentSectionName}:{typeof(TEvent).Name}");
+        return RegisterKafkaConsumer<TEvent>(option);
+    }
+
+    /// <summary>
     /// Registers a Kafka broker from the section named after <typeparamref name="TOption"/>.
     /// </summary>
     /// <typeparam name="TOption">The configuration model type inherited from <see cref="KafkaBrokerOption"/>.</typeparam>
@@ -133,7 +169,12 @@ public sealed class WolverineKafkaConfiguration
     private TOption GetRequiredOption<TOption>()
         where TOption : new()
     {
-        var sectionName = typeof(TOption).Name;
+        return GetRequiredOption<TOption>(typeof(TOption).Name);
+    }
+
+    private TOption GetRequiredOption<TOption>(string sectionName)
+        where TOption : new()
+    {
         var section = configuration.GetSection(sectionName);
 
         if (!section.Exists())

@@ -362,8 +362,10 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             "unitOfWork.rollback");
     }
 
-    [Fact(DisplayName = "Kafka broker receives event after outbox flush and Wolverine handles it once")]
-    public async Task KafkaBrokerShouldReceiveEventAfterOutboxFlushAndHandleItOnce()
+    [Theory(DisplayName = "Kafka broker receives event after outbox flush with typed or conventional registration")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task KafkaBrokerShouldReceiveEventAfterOutboxFlushAndHandleItOnce(bool useConventions)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var kafka = new KafkaBuilder("apache/kafka-native:4.0.0")
@@ -374,19 +376,31 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
 
         var topicName = $"broker-integration-events-{Guid.NewGuid():N}";
         var consumerGroupId = $"broker-integration-tests-{Guid.NewGuid():N}";
+        var brokerSection = useConventions ? "Messaging:Kafka" : nameof(IntegrationKafkaBrokerOption);
+        var producerSection = useConventions ? "Messaging:Producers:KafkaIntegrationDomainEvent" : nameof(KafkaIntegrationProducerOption);
+        var consumerSection = useConventions ? "Messaging:Consumers:KafkaIntegrationDomainEvent" : nameof(KafkaIntegrationConsumerOption);
         var configuration = CreateConfiguration(
-            ("IntegrationKafkaBrokerOption:BootstrapServers", kafka.GetBootstrapAddress()),
-            ("KafkaIntegrationProducerOption:TopicName", topicName),
-            ("KafkaIntegrationConsumerOption:TopicName", topicName),
-            ("KafkaIntegrationConsumerOption:ConsumerGroupId", consumerGroupId),
-            ("KafkaIntegrationConsumerOption:AutoOffsetReset", "Earliest"));
+            ($"{brokerSection}:BootstrapServers", kafka.GetBootstrapAddress()),
+            ($"{producerSection}:TopicName", topicName),
+            ($"{consumerSection}:TopicName", topicName),
+            ($"{consumerSection}:ConsumerGroupId", consumerGroupId),
+            ($"{consumerSection}:AutoOffsetReset", "Earliest"));
         await using var app = await fixture.CreateApplicationAsync(
             configuration,
             kafkaOptions =>
             {
-                kafkaOptions.AddKafkaBroker<IntegrationKafkaBrokerOption>();
-                kafkaOptions.AddKafkaProducer<KafkaIntegrationProducerOption, KafkaIntegrationDomainEvent>();
-                kafkaOptions.AddKafkaConsumer<KafkaIntegrationConsumerOption, KafkaIntegrationDomainEvent>();
+                if (useConventions)
+                {
+                    kafkaOptions.AddKafkaBroker();
+                    kafkaOptions.AddProducer<KafkaIntegrationDomainEvent>();
+                    kafkaOptions.AddConsumer<KafkaIntegrationDomainEvent>();
+                }
+                else
+                {
+                    kafkaOptions.AddKafkaBroker<IntegrationKafkaBrokerOption>();
+                    kafkaOptions.AddKafkaProducer<KafkaIntegrationProducerOption, KafkaIntegrationDomainEvent>();
+                    kafkaOptions.AddKafkaConsumer<KafkaIntegrationConsumerOption, KafkaIntegrationDomainEvent>();
+                }
             });
         var id = Guid.NewGuid();
 

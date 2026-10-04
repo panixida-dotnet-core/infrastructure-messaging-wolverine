@@ -11,6 +11,63 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class WolverineKafkaConfigurationTests
 {
+    [Fact(DisplayName = "Kafka convention methods read the standard messaging sections")]
+    public void ConventionMethodsShouldReadStandardSections()
+    {
+        var configuration = CreateConventionConfiguration("Messaging");
+        var kafka = new WolverineKafkaConfiguration(new WolverineOptions(), configuration);
+
+        var broker = kafka.AddKafkaBroker();
+        var producer = kafka.AddProducer<TestDomainEvent>();
+        var consumer = kafka.AddConsumer<TestDomainEvent>();
+
+        broker.ShouldNotBeNull();
+        producer.ShouldNotBeNull();
+        consumer.ShouldNotBeNull();
+    }
+
+    [Fact(DisplayName = "Kafka convention methods allow custom configuration sections and named brokers")]
+    public void ConventionMethodsShouldReadCustomSections()
+    {
+        var configuration = CreateConventionConfiguration("External");
+        configuration["External:Kafka:BrokerName"] = "external";
+        configuration["External:Producers:TestDomainEvent:BrokerName"] = "external";
+        configuration["External:Consumers:TestDomainEvent:BrokerName"] = "external";
+        var kafka = new WolverineKafkaConfiguration(new WolverineOptions(), configuration);
+
+        var broker = kafka.AddKafkaBroker("External:Kafka");
+        var producer = kafka.AddProducer<TestDomainEvent>("External:Producers");
+        var consumer = kafka.AddConsumer<TestDomainEvent>("External:Consumers");
+
+        broker.ShouldNotBeNull();
+        producer.ShouldNotBeNull();
+        consumer.ShouldNotBeNull();
+    }
+
+    [Fact(DisplayName = "Kafka convention methods report missing sections without falling back to typed options")]
+    public void ConventionMethodsShouldRejectMissingSections()
+    {
+        var kafka = new WolverineKafkaConfiguration(new WolverineOptions(), new ConfigurationManager());
+
+        var brokerError = Should.Throw<InvalidOperationException>(() => kafka.AddKafkaBroker());
+        var producerError = Should.Throw<InvalidOperationException>(() => kafka.AddProducer<TestDomainEvent>());
+        var consumerError = Should.Throw<InvalidOperationException>(() => kafka.AddConsumer<TestDomainEvent>());
+
+        brokerError.Message.ShouldBe("Configuration section 'Messaging:Kafka' was not found.");
+        producerError.Message.ShouldBe("Configuration section 'Messaging:Producers:TestDomainEvent' was not found.");
+        consumerError.Message.ShouldBe("Configuration section 'Messaging:Consumers:TestDomainEvent' was not found.");
+    }
+
+    private static ConfigurationManager CreateConventionConfiguration(string rootSection)
+    {
+        return CreateConfiguration(
+            ($"{rootSection}:Kafka:BootstrapServers", "localhost:9092"),
+            ($"{rootSection}:Producers:TestDomainEvent:TopicName", "produced-events"),
+            ($"{rootSection}:Consumers:TestDomainEvent:TopicName", "consumed-events"),
+            ($"{rootSection}:Consumers:TestDomainEvent:ConsumerGroupId", "test-group"),
+            ($"{rootSection}:Consumers:TestDomainEvent:AutoOffsetReset", "Earliest"));
+    }
+
     [Fact(DisplayName = "AddKafkaBroker registers default broker from option section")]
     public void AddKafkaBrokerShouldRegisterDefaultBrokerFromOptionSection()
     {

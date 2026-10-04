@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Configurations;
@@ -94,10 +95,12 @@ public sealed class WolverineScheduleConfigurationTests
         var options = new WolverineOptions();
         var schedules = new WolverineScheduleConfiguration(options, configuration);
 
-        var exception = Should.Throw<ArgumentException>(() =>
+        var exception = Should.Throw<OptionsValidationException>(() =>
             schedules.AddRecurringCommand<TestRecurringCommandOption, TestCommand>(_ => new TestCommand(Guid.NewGuid())));
 
-        exception.ParamName.ShouldBe($"option.{setting}");
+        exception.OptionsName.ShouldBe(nameof(TestRecurringCommandOption));
+        exception.OptionsType.ShouldBe(typeof(TestRecurringCommandOption));
+        exception.Failures.ShouldContain($"TestRecurringCommandOption:{setting} must not be empty.");
         options.Durability.EnableRecurringMessages.ShouldBeFalse();
     }
 
@@ -110,8 +113,9 @@ public sealed class WolverineScheduleConfigurationTests
         configuration["TestRecurringCommandOption:CronExpression"] = cron;
         var schedules = new WolverineScheduleConfiguration(new WolverineOptions(), configuration);
 
-        Should.Throw<ArgumentException>(() =>
+        var exception = Should.Throw<OptionsValidationException>(() =>
             schedules.AddRecurringCommand<TestRecurringCommandOption, TestCommand>(_ => new TestCommand(Guid.NewGuid())));
+        exception.Failures.Single().ShouldStartWith("TestRecurringCommandOption:CronExpression");
     }
 
     [Fact(DisplayName = "Recurring commands reject unknown time zones")]
@@ -121,8 +125,9 @@ public sealed class WolverineScheduleConfigurationTests
         configuration["TestRecurringCommandOption:TimeZoneId"] = "Unknown/TestTimeZone";
         var schedules = new WolverineScheduleConfiguration(new WolverineOptions(), configuration);
 
-        Should.Throw<TimeZoneNotFoundException>(() =>
+        var exception = Should.Throw<OptionsValidationException>(() =>
             schedules.AddRecurringCommand<TestRecurringCommandOption, TestCommand>(_ => new TestCommand(Guid.NewGuid())));
+        exception.Failures.Single().ShouldStartWith("TestRecurringCommandOption:TimeZoneId");
     }
 
     [Fact(DisplayName = "Recurring commands reject duplicate schedule names")]

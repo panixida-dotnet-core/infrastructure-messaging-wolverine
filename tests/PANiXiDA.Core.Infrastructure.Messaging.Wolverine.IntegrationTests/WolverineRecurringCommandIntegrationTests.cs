@@ -8,7 +8,6 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Database;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Fixtures;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Commands;
-using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options;
 
 using Wolverine.Persistence.Durability;
 using Wolverine.Runtime.Recurring;
@@ -104,7 +103,7 @@ public sealed class WolverineRecurringCommandIntegrationTests(PostgreSqlContaine
 
     private static void RegisterSchedule(WolverineScheduleConfiguration schedules)
     {
-        schedules.AddRecurringCommand<RecurringCommandOption, CreateIntegrationRecordAndPublishEventCommand>(
+        schedules.AddRecurringCommand<CreateIntegrationRecordAndPublishEventCommand>(
             occurrence => new CreateIntegrationRecordAndPublishEventCommand(
                 Guid.NewGuid(), occurrence.ToString("O", CultureInfo.InvariantCulture)));
     }
@@ -113,8 +112,8 @@ public sealed class WolverineRecurringCommandIntegrationTests(PostgreSqlContaine
     {
         return new ConfigurationManager
         {
-            ["RecurringCommandOption:Name"] = "integration-recurring-command",
-            ["RecurringCommandOption:CronExpression"] = cron,
+            ["Messaging:Schedules:CreateIntegrationRecordAndPublishEventCommand:Name"] = "integration-recurring-command",
+            ["Messaging:Schedules:CreateIntegrationRecordAndPublishEventCommand:CronExpression"] = cron,
         };
     }
 }

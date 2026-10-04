@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
@@ -15,6 +16,23 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.DependencyI
 
 public sealed class RecurringCommandRegistrationTests
 {
+    [Theory(DisplayName = "Invalid conventional schedule settings fail while building generic and modular hosts")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InvalidSchedulesShouldFailHostConstruction(bool useModules)
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Messaging:Schedules:TestRecurringCommand:Name"] = "invalid-command",
+        };
+        var builder = ConfigureHost(Host.CreateDefaultBuilder(), configuration, useModules,
+            schedules => schedules.AddRecurringCommand<TestRecurringCommand>());
+
+        var exception = Should.Throw<OptionsValidationException>(() => builder.Build());
+
+        exception.Failures.ShouldContain("Messaging:Schedules:TestRecurringCommand:CronExpression must not be empty.");
+    }
+
     [Theory(DisplayName = "Mediator schedules register recurring services before the container is built")]
     [InlineData(false, false)]
     [InlineData(false, true)]
