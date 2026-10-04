@@ -342,6 +342,9 @@ public static class HostBuilderExtensions
 
         options.UseEntityFrameworkCoreTransactions();
 
+        options.Durability.DeadLetterQueueExpirationEnabled = true;
+        options.Durability.DeadLetterQueueExpiration = TimeSpan.FromDays(7);
+
         options.Policies.UseDurableLocalQueues();
         options.Policies.UseDurableInboxOnAllListeners();
         options.Policies.UseDurableOutboxOnAllSendingEndpoints();
@@ -362,6 +365,9 @@ public static class HostBuilderExtensions
         }
 
         options.UseEntityFrameworkCoreTransactions();
+
+        options.Durability.DeadLetterQueueExpirationEnabled = true;
+        options.Durability.DeadLetterQueueExpiration = TimeSpan.FromDays(7);
 
         options.Policies.UseDurableLocalQueues();
         options.Policies.UseDurableInboxOnAllListeners();
