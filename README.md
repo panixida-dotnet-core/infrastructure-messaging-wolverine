@@ -197,6 +197,8 @@ An enabled schedule requires a stable, application-wide unique `Name`, a valid c
 Invalid settings fail during host construction. A disabled section only needs `Enabled: false`; it does not enable
 recurring infrastructure or validate the remaining schedule values. Configuration is read at host construction,
 not hot-reloaded. Renaming a schedule changes its occurrence deduplication identity.
+Disabling registration does not cancel an occurrence already persisted in the inbox. To cancel a pending occurrence,
+pause the registered schedule through Wolverine's `IRecurringScheduleControl.PauseAsync(name)` before disabling it.
 
 The factory receives the scheduled occurrence time, which can differ from the eventual execution time after a delay
 or restart. Keep factories free of side effects and put business work in the ordinary `ICommandHandler<TCommand, Result>`.
