@@ -17,6 +17,7 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - `IMediator` implementation based on Wolverine in-process invocation.
 - `IEventBus` implementation based on Wolverine EF Core outbox.
 - `IScheduler` implementation for durable command and event scheduling through the same outbox.
+- Typed recurring command registration from cron configuration sections.
 - Default in-process event handling for domain events.
 - Explicit Kafka producer and consumer registration per event type.
 - Durable inbox and outbox policies for listeners, local queues, and external senders.
@@ -39,11 +40,11 @@ Full Native AOT support is not currently provided.
 
 ### Installation
 
-Use the latest 4.1.x version:
+Use the latest 4.2.x version:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="4.1.*" />
+  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="4.2.*" />
 </ItemGroup>
 ```
 
@@ -140,29 +141,57 @@ Native Wolverine handlers use their enlisted message context. The configured Pos
 Outside handlers in modular setups, construct `WolverineScheduler` with the module's keyed `IOutboxDispatcher` resolved using `typeof(AppDbContext)`. Single-context setups can use the registered `IScheduler`. Save and commit through the same `IDbContextOutbox<AppDbContext>`/DbContext transaction; scheduling alone does not commit changes.
 The adapter uses typed DI registrations and introduces no runtime reflection or code generation; full Native AOT support remains limited by Wolverine and EF Core.
 
-## Kafka Topics
+### Recurring Commands
 
-Kafka is opt-in per event type. If no Kafka producer is registered for an event, publishing stays in-process.
-
-Create typed option models in the consuming infrastructure project:
+Register periodic `ICommand<Result>` messages by command type, without a separate options class:
 
 ```csharp
-using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options;
+using PANiXiDA.Core.Application.Messaging.Mediator.Contracts;
+using PANiXiDA.Core.ResultPattern;
 
-public sealed class MainKafkaBrokerOption : KafkaBrokerOption
-{
-}
+public sealed record CleanupExpiredItemsCommand : ICommand<Result>;
+```
 
-public sealed class UserCreatedKafkaProducerOption : KafkaProducerOption
+```json
 {
-}
-
-public sealed class UserCreatedKafkaConsumerOption : KafkaConsumerOption
-{
+  "Messaging": {
+    "Schedules": {
+      "CleanupExpiredItemsCommand": {
+        "Name": "cleanup-expired-items",
+        "CronExpression": "*/15 * * * *"
+      }
+    }
+  }
 }
 ```
 
-Register brokers, producers, and consumers in the Wolverine mediator configuration:
+```csharp
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
+
+builder.Services.AddWolverineMediator<AppDbContext>();
+
+builder.Host.UseWolverineMediator<AppDbContext>(
+    builder.Configuration.GetConnectionString("PostgreSqlConnectionString")!,
+    builder.Configuration,
+    configureKafka: null,
+    configureRequestBehaviors: null,
+    configureSchedules: schedules => schedules.AddRecurringCommand<CleanupExpiredItemsCommand>(),
+    discoveryAssemblies: typeof(CleanupExpiredItemsHandler).Assembly);
+```
+
+Each occurrence creates a new command and runs its ordinary handler through the transaction/outbox pipeline.
+For a command with an occurrence-time constructor, use `AddRecurringCommand<MyCommand>(time => new MyCommand(time))`.
+`Enabled` defaults to `true`, and `TimeZoneId` to `UTC`. Invalid enabled settings raise `OptionsValidationException`
+during host construction. Keep `Name` stable and unique within the application.
+
+An optional `parentSectionName` selects another parent section. The typed `AddRecurringCommand<TOption, TCommand>(factory)`
+overload still binds the section named after `TOption`. Both APIs work with modules and Kafka.
+The first enabled schedule requires updating Wolverine's message-store schema. See [Wolverine recurring messages](https://wolverinefx.net/guide/messaging/recurring.html).
+
+## Kafka Topics
+
+Register Kafka routes by domain event type. Options are read from `Messaging:Kafka`,
+`Messaging:Producers:<EventType>`, and `Messaging:Consumers:<EventType>`:
 
 ```csharp
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
@@ -174,63 +203,46 @@ builder.Host.UseWolverineMediator<AppDbContext>(
     builder.Configuration,
     options =>
     {
-        options.AddKafkaBroker<MainKafkaBrokerOption>();
-        options.AddKafkaProducer<UserCreatedKafkaProducerOption, UserCreated>();
-        options.AddKafkaConsumer<UserCreatedKafkaConsumerOption, UserCreated>();
+        options.AddKafkaBroker();
+        options.AddProducer<UserCreated>();
+        options.AddConsumer<UserCreated>();
     },
     typeof(UserCreatedHandler).Assembly);
 ```
 
-Configuration sections are resolved by option type name:
-
 ```json
 {
-  "ConnectionStrings": {
-    "PostgreSqlConnectionString": "Host=localhost;Port=5432;Database=app;Username=app;Password=app"
-  },
-  "MainKafkaBrokerOption": {
-    "BootstrapServers": "localhost:9092"
-  },
-  "UserCreatedKafkaProducerOption": {
-    "TopicName": "users.created"
-  },
-  "UserCreatedKafkaConsumerOption": {
-    "TopicName": "users.created",
-    "ConsumerGroupId": "users-service",
-    "AutoOffsetReset": "Earliest"
+  "Messaging": {
+    "Kafka": {
+      "BootstrapServers": "localhost:9092"
+    },
+    "Producers": {
+      "UserCreated": {
+        "TopicName": "users.created"
+      }
+    },
+    "Consumers": {
+      "UserCreated": {
+        "TopicName": "users.created",
+        "ConsumerGroupId": "users-service",
+        "AutoOffsetReset": "Earliest"
+      }
+    }
   }
 }
 ```
 
-For named Kafka brokers, put the broker name into broker and topic options:
+Producers use the durable outbox; consumers use the durable inbox. Events without a Kafka producer remain in-process.
+For named brokers, set the same `BrokerName` in broker and route settings. Custom configuration paths are supported:
 
 ```csharp
-public sealed class ExternalKafkaBrokerOption : KafkaBrokerOption
-{
-}
-
-public sealed class ExternalUserCreatedKafkaProducerOption : KafkaProducerOption
-{
-}
+options.AddKafkaBroker("External:Kafka");
+options.AddProducer<UserCreated>("External:Producers");
+options.AddConsumer<UserCreated>("External:Consumers");
 ```
 
-```json
-{
-  "ExternalKafkaBrokerOption": {
-    "BrokerName": "external",
-    "BootstrapServers": "external-kafka:9092"
-  },
-  "ExternalUserCreatedKafkaProducerOption": {
-    "BrokerName": "external",
-    "TopicName": "external.users.created"
-  }
-}
-```
-
-```csharp
-options.AddKafkaBroker<ExternalKafkaBrokerOption>();
-options.AddKafkaProducer<ExternalUserCreatedKafkaProducerOption, UserCreated>();
-```
+The existing `AddKafkaBroker<TOption>()`, `AddKafkaProducer<TOption, TEvent>()`, and
+`AddKafkaConsumer<TOption, TEvent>()` methods remain available and bind sections named after their option types.
 
 ## EF Core Storage
 

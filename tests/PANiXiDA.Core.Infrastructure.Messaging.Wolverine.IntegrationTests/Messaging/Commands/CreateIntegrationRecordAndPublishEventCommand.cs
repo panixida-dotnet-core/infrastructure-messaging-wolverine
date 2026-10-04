@@ -2,4 +2,9 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Mess
 
 public sealed record CreateIntegrationRecordAndPublishEventCommand(
     Guid Id,
-    string Name) : ICommand<Result>;
+    string Name) : ICommand<Result>
+{
+    public CreateIntegrationRecordAndPublishEventCommand() : this(Guid.NewGuid(), "parameterless-command")
+    {
+    }
+}
