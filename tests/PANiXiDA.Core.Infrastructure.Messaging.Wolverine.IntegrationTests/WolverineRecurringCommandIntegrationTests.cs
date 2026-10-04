@@ -17,6 +17,24 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
 public sealed class WolverineRecurringCommandIntegrationTests(PostgreSqlContainerFixture fixture)
     : IClassFixture<PostgreSqlContainerFixture>
 {
+    [Fact(DisplayName = "Parameterless recurring registration creates distinct commands and persists their outbox events")]
+    public async Task ParameterlessCommandsShouldBeCreatedPerOccurrence()
+    {
+        var configuration = CreateConfiguration("*/10 * * * * *");
+        await using var app = await fixture.CreateApplicationAsync(
+            configuration: configuration,
+            configureSchedules: schedules => schedules.AddRecurringCommand<CreateIntegrationRecordAndPublishEventCommand>());
+
+        await WaitForOccurrencesAsync(app, 2);
+
+        using var scope = app.Host.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<IntegrationDbContext>();
+        var records = await dbContext.Records.ToListAsync(TestContext.Current.CancellationToken);
+        records.Count.ShouldBeGreaterThanOrEqualTo(2);
+        records.Select(record => record.Id).Distinct().Count().ShouldBe(records.Count);
+        records.ShouldAllBe(record => record.Name == "parameterless-command");
+    }
+
     [Theory(DisplayName = "Recurring commands persist business changes and outbox events across host restarts")]
     [InlineData(false)]
     [InlineData(true)]
