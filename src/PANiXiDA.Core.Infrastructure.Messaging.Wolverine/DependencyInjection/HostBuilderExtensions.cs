@@ -228,10 +228,6 @@ public static class HostBuilderExtensions
         Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors,
         Action<WolverineScheduleConfiguration> configureSchedules)
     {
-        ArgumentNullException.ThrowIfNull(hostBuilder);
-        ArgumentNullException.ThrowIfNull(configuration);
-        ArgumentNullException.ThrowIfNull(configureSchedules);
-
         return UseModularWolverineMediator(
             hostBuilder,
             messageStoreConnectionString,
@@ -262,11 +258,6 @@ public static class HostBuilderExtensions
         params Assembly[] discoveryAssemblies)
         where TDbContext : DbContext
     {
-        ArgumentNullException.ThrowIfNull(hostBuilder);
-        ArgumentNullException.ThrowIfNull(configuration);
-        ArgumentNullException.ThrowIfNull(configureSchedules);
-        ArgumentNullException.ThrowIfNull(discoveryAssemblies);
-
         return RegisterFluentValidationValidators(hostBuilder, discoveryAssemblies)
             .UseWolverine(options => ConfigureWolverineMediator<TDbContext>(
                 options,

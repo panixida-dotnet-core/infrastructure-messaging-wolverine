@@ -9,17 +9,10 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 /// <summary>
 /// Registers recurring application commands from typed configuration sections.
 /// </summary>
-public sealed class WolverineScheduleConfiguration
+/// <param name="wolverineOptions">The Wolverine options receiving the recurring command registrations.</param>
+/// <param name="configuration">The application configuration containing typed schedule options.</param>
+public sealed class WolverineScheduleConfiguration(WolverineOptions wolverineOptions, IConfiguration configuration)
 {
-    private readonly WolverineOptions wolverineOptions;
-    private readonly IConfiguration configuration;
-
-    internal WolverineScheduleConfiguration(WolverineOptions wolverineOptions, IConfiguration configuration)
-    {
-        this.wolverineOptions = wolverineOptions;
-        this.configuration = configuration;
-    }
-
     /// <summary>
     /// Registers a recurring command from the section named after <typeparamref name="TOption"/>.
     /// Disabled options do not register a schedule or validate its name, cron expression, or time zone.
@@ -28,7 +21,6 @@ public sealed class WolverineScheduleConfiguration
     /// <typeparam name="TCommand">The application command to dispatch on each occurrence.</typeparam>
     /// <param name="createCommand">Builds a command from its scheduled occurrence time, not its delivery time.</param>
     /// <returns>The same configuration instance for registering additional schedules.</returns>
-    /// <exception cref="ArgumentNullException">The command factory is null.</exception>
     /// <exception cref="InvalidOperationException">The configuration section is missing or cannot be bound.</exception>
     /// <exception cref="ArgumentException">An enabled schedule has an invalid name, cron expression, or duplicate name.</exception>
     /// <exception cref="TimeZoneNotFoundException">The configured time zone is not available on the host.</exception>
@@ -38,8 +30,6 @@ public sealed class WolverineScheduleConfiguration
         where TOption : RecurringCommandOption, new()
         where TCommand : class, ICommand<Result>
     {
-        ArgumentNullException.ThrowIfNull(createCommand);
-
         var sectionName = typeof(TOption).Name;
         var section = configuration.GetSection(sectionName);
         if (!section.Exists())

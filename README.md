@@ -191,6 +191,9 @@ The modular overload accepts the same `configureSchedules` callback after `confi
 Pass the existing `configureModules` callback and register the command's assembly with its owning DbContext.
 Kafka and schedules can be configured together; the existing overloads remain available for hosts without schedules.
 Schedule registration runs before the DI container is built, so Wolverine can register its recurring agent and services.
+`WolverineScheduleConfiguration` also exposes a public primary constructor accepting `WolverineOptions` and
+`IConfiguration` for direct registration inside a native Wolverine setup callback. The scheduling API relies on its
+non-nullable argument contract rather than adding explicit null guards; null argument exception behavior is not guaranteed.
 
 `Enabled` defaults to `true`, and `TimeZoneId` defaults to `UTC`. Every registration requires its typed section.
 An enabled schedule requires a stable, application-wide unique `Name`, a valid cron expression, and a system time zone ID.

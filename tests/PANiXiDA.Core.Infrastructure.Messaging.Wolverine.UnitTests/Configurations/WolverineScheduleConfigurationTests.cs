@@ -58,17 +58,6 @@ public sealed class WolverineScheduleConfigurationTests
         options.Schedules.FindByName("test-command").ShouldBeNull();
     }
 
-    [Fact(DisplayName = "Recurring commands reject a null command factory")]
-    public void RecurringCommandsShouldRejectNullFactory()
-    {
-        var schedules = new WolverineScheduleConfiguration(new WolverineOptions(), CreateConfiguration());
-
-        var exception = Should.Throw<ArgumentNullException>(() =>
-            schedules.AddRecurringCommand<TestRecurringCommandOption, TestCommand>(null!));
-
-        exception.ParamName.ShouldBe("createCommand");
-    }
-
     [Fact(DisplayName = "Recurring commands reject a missing typed section")]
     public void RecurringCommandsShouldRejectMissingSection()
     {
