@@ -36,7 +36,7 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - PostgreSQL for Wolverine message storage
 - Kafka only when external event topics are registered
 
-Full Native AOT support is not currently provided.
+The package uses Wolverine 6.45.0. Full Native AOT support is not currently provided.
 
 ### Installation
 
@@ -260,6 +260,12 @@ protected override void OnModelCreating(ModelBuilder modelBuilder)
 ```
 
 With the modular overload, the configured message-store schema is shared by all modules. Let Wolverine managed resources own that schema, or map it in exactly one dedicated messaging migration context. Do not map the shared envelope tables in every business module DbContext.
+
+When upgrading an existing PostgreSQL store from Wolverine 6.40, review the envelope tables' UTC timestamp defaults;
+the package update alone does not change deployed defaults ([6.42 notes](https://github.com/JasperFx/wolverine/releases/tag/V6.42.0)).
+Recurring schedules now select `CompareByHash` by default and preserve an explicit `CompareByString`. Hash mode requires
+`wolverine_deduplication_hashed` alongside `wolverine_recurring_messages`. Existing deduplication claims are not copied
+from the old table; `CompareByString` retains that table and its comparison behavior ([6.45 notes](https://github.com/JasperFx/wolverine/releases/tag/V6.45.0)).
 
 ### Dead Letter Expiration
 
