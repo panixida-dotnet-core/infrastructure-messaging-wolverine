@@ -14,6 +14,7 @@ public sealed class WolverineScheduleConfigurationTests
     {
         var options = new WolverineOptions();
         var configuration = CreateConfiguration();
+        configuration["TestRecurringCommandOption:Name"] = "configured-command";
         configuration["TestRecurringCommandOption:TimeZoneId"] = "Europe/Moscow";
         var schedules = new WolverineScheduleConfiguration(options, configuration);
 
@@ -22,15 +23,15 @@ public sealed class WolverineScheduleConfigurationTests
 
         result.ShouldBeSameAs(schedules);
         options.Durability.EnableRecurringMessages.ShouldBeTrue();
-        var schedule = options.Schedules.FindByName("test-command");
+        var schedule = options.Schedules.FindByName("configured-command");
         schedule.ShouldNotBeNull();
         schedule.MessageType.ShouldBe(typeof(TestCommand));
         schedule.Schedule.Expression.ShouldBe("0 3 * * *");
         schedule.Schedule.TimeZone.Id.ShouldBe("Europe/Moscow");
     }
 
-    [Fact(DisplayName = "Recurring commands default to UTC")]
-    public void RecurringCommandsShouldDefaultToUtc()
+    [Fact(DisplayName = "Recurring commands preserve the model's default name and UTC time zone")]
+    public void RecurringCommandsShouldPreserveModelDefaults()
     {
         var options = new WolverineOptions();
         var schedules = new WolverineScheduleConfiguration(options, CreateConfiguration());
@@ -138,7 +139,6 @@ public sealed class WolverineScheduleConfigurationTests
     {
         return new ConfigurationManager
         {
-            ["TestRecurringCommandOption:Name"] = "test-command",
             ["TestRecurringCommandOption:CronExpression"] = "0 3 * * *",
         };
     }
