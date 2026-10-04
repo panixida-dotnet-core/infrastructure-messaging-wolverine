@@ -8,10 +8,10 @@ using Wolverine;
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 
 /// <summary>
-/// Registers recurring application commands from typed configuration sections.
+/// Registers recurring application commands from option-type or command-type configuration sections.
 /// </summary>
 /// <param name="wolverineOptions">The Wolverine options receiving the recurring command registrations.</param>
-/// <param name="configuration">The application configuration containing typed schedule options.</param>
+/// <param name="configuration">The application configuration containing schedule options.</param>
 public sealed class WolverineScheduleConfiguration(WolverineOptions wolverineOptions, IConfiguration configuration)
 {
     /// <summary>

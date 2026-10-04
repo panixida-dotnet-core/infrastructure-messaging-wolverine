@@ -8,7 +8,7 @@ using Wolverine.Kafka;
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 
 /// <summary>
-/// Builds Wolverine Kafka broker, producer, and consumer topology from typed configuration sections.
+/// Builds Wolverine Kafka broker, producer, and consumer topology from configuration sections.
 /// </summary>
 public sealed class WolverineKafkaConfiguration
 {
