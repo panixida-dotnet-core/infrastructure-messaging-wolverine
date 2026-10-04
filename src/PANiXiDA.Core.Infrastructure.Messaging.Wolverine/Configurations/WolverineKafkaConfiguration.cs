@@ -24,16 +24,6 @@ public sealed class WolverineKafkaConfiguration
     }
 
     /// <summary>
-    /// Registers a Kafka broker from the specified configuration section.
-    /// </summary>
-    /// <param name="sectionName">The broker configuration section. Defaults to Messaging:Kafka.</param>
-    /// <returns>The Wolverine Kafka transport expression for additional configuration.</returns>
-    public KafkaTransportExpression AddKafkaBroker(string sectionName = "Messaging:Kafka")
-    {
-        return RegisterKafkaBroker(GetRequiredOption<KafkaBrokerOption>(sectionName));
-    }
-
-    /// <summary>
     /// Registers a durable Kafka producer from the child section named after the event type.
     /// </summary>
     /// <typeparam name="TEvent">The domain event type to publish.</typeparam>
@@ -57,6 +47,16 @@ public sealed class WolverineKafkaConfiguration
     {
         var option = GetRequiredOption<KafkaConsumerOption>($"{parentSectionName}:{typeof(TEvent).Name}");
         return RegisterKafkaConsumer<TEvent>(option);
+    }
+
+    /// <summary>
+    /// Registers a Kafka broker from the specified configuration section.
+    /// </summary>
+    /// <param name="sectionName">The broker configuration section. Defaults to Messaging:Kafka.</param>
+    /// <returns>The Wolverine Kafka transport expression for additional configuration.</returns>
+    public KafkaTransportExpression AddKafkaBroker(string sectionName = "Messaging:Kafka")
+    {
+        return RegisterKafkaBroker(GetRequiredOption<KafkaBrokerOption>(sectionName));
     }
 
     /// <summary>
