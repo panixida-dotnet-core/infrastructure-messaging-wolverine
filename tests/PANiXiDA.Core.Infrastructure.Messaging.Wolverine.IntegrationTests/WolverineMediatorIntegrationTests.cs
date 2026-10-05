@@ -39,10 +39,12 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         options.ApplicationAssembly.ShouldBeSameAs(Assembly.GetEntryAssembly());
     }
 
-    [Fact(DisplayName = "Mediator dispatches command and query to Wolverine handlers")]
-    public async Task MediatorShouldDispatchCommandAndQueryToWolverineHandlers()
+    [Theory(DisplayName = "Mediator dispatches commands and reads queries without additional transactions")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MediatorShouldDispatchCommandAndQueryToWolverineHandlers(bool useModules)
     {
-        await using var app = await fixture.CreateApplicationAsync();
+        await using var app = await fixture.CreateApplicationAsync(useModuleRouting: useModules);
         var cancellationToken = TestContext.Current.CancellationToken;
         var id = Guid.NewGuid();
         const string name = "command-query";
@@ -53,6 +55,7 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
                 cancellationToken),
             cancellationToken);
 
+        var journalBeforeQuery = app.Journal.Entries;
         var queryResult = await app.ExecuteWithMediatorAsync(
             (mediator, cancellationToken) => mediator.QueryAsync(
                 new GetIntegrationRecordQuery(id),
@@ -62,6 +65,7 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         commandResult.IsSuccess.ShouldBeTrue();
         queryResult.IsSuccess.ShouldBeTrue();
         queryResult.Value.ShouldBe(new IntegrationRecordView(id, name));
+        app.Journal.Entries.ShouldBe(journalBeforeQuery);
         ShouldContainInOrder(
             app.Journal.Entries,
             "unitOfWork.begin",

@@ -289,7 +289,7 @@ Kafka consumers use durable inbox and map incoming topic messages to the configu
 
 ## Request Behaviors
 
-The default request behavior pipeline is:
+The default command behavior pipeline is:
 
 ```text
 before:  ValidationBehavior
@@ -300,6 +300,8 @@ after:   CommitTransactionBehavior
 after:   FlushOutgoingMessagesBehavior
 finally: CleanupTransactionBehavior
 ```
+
+Query pipelines retain `ValidationBehavior` and exclude domain event publication, transaction management, and outbox persistence or flushing. The source generator applies the `ICommand<TResult>` constraints from Application 4.1.2 when binding these behaviors. Consumers must rebuild after updating the package so request behavior metadata is regenerated.
 
 The modular overload activates module routing before validation, keeps the application `CleanupTransactionBehavior`, and releases module routing after cleanup. The application-facing pipeline continues to depend only on the PANiXiDA `IUnitOfWork` and `IEventBus` abstractions.
 

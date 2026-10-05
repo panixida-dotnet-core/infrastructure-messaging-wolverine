@@ -1,11 +1,73 @@
 using PANiXiDA.Core.Application.Messaging.Mediator.Behaviors;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Behaviors;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurations;
 
 public sealed class WolverineRequestBehaviorConfigurationTests
 {
+    [Theory(DisplayName = "Query pipelines exclude domain event publication, transactions, and outbox behaviors")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void QueryPipelineShouldExcludeCommandBehaviors(bool useModules)
+    {
+        // Arrange
+        var configuration = useModules
+            ? WolverineRequestBehaviorConfiguration.CreateModularDefault()
+            : WolverineRequestBehaviorConfiguration.CreateDefault();
+        var registry = configuration.Build();
+
+        // Act
+        var before = RequestMiddlewareDescriptor.Resolve(
+            typeof(TestQuery), typeof(Result<TestQueryView>),
+            typeof(IBeforeRequestBehavior<,>), registry.BeforeMiddlewareTypes);
+        var after = RequestMiddlewareDescriptor.Resolve(
+            typeof(TestQuery), typeof(Result<TestQueryView>),
+            typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes);
+        var finallyBehaviors = RequestMiddlewareDescriptor.Resolve(
+            typeof(TestQuery), typeof(Result<TestQueryView>),
+            typeof(IFinallyRequestBehavior<,>), registry.FinallyMiddlewareTypes);
+
+        // Assert
+        Type[] expectedBefore = useModules
+            ? [typeof(ActivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>>),
+                typeof(ValidationBehavior<TestQuery, Result<TestQueryView>>)]
+            : [typeof(ValidationBehavior<TestQuery, Result<TestQueryView>>)];
+        Type[] expectedFinally = useModules
+            ? [typeof(DeactivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>>)]
+            : [];
+        before.Select(behavior => behavior.Type).ShouldBe(expectedBefore);
+        after.ShouldBeEmpty();
+        finallyBehaviors.Select(behavior => behavior.Type).ShouldBe(expectedFinally);
+    }
+
+    [Theory(DisplayName = "Command pipelines retain domain event publication and transactional outbox behaviors")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CommandPipelineShouldRetainPublicationAndOutboxBehaviors(bool useModules)
+    {
+        // Arrange
+        var configuration = useModules
+            ? WolverineRequestBehaviorConfiguration.CreateModularDefault()
+            : WolverineRequestBehaviorConfiguration.CreateDefault();
+        var registry = configuration.Build();
+
+        // Act
+        var after = RequestMiddlewareDescriptor.Resolve(
+            typeof(TestCommand), typeof(Result),
+            typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes);
+
+        // Assert
+        after.Select(behavior => behavior.Type).ShouldBe(
+        [
+            typeof(PublishDomainEventsBehavior<TestCommand, Result>),
+            typeof(PersistOutgoingMessagesBehavior<TestCommand, Result>),
+            typeof(CommitTransactionBehavior<TestCommand, Result>),
+            typeof(FlushOutgoingMessagesBehavior<TestCommand, Result>)
+        ]);
+    }
+
     [Fact(DisplayName = "CreateDefault registers the built-in request pipeline")]
     public void CreateDefaultShouldRegisterBuiltInRequestPipeline()
     {
