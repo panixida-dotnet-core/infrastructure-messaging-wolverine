@@ -285,8 +285,6 @@ Commands and queries are invoked in-process through Wolverine and PANiXiDA reque
 
 Domain events are published through `IEventBus`. By default, Wolverine dispatches them to local handlers. When a Kafka producer is registered for the event type, the same event is also routed to the configured Kafka topic through durable outbox.
 
-The built-in publication adapters delegate directly to Wolverine. Synchronous dispatch or service-resolution errors are thrown when calling `PublishAsync`; asynchronous failures are reported by the returned task. To handle both, call and await `PublishAsync` inside the same `try` block.
-
 Kafka consumers use durable inbox and map incoming topic messages to the configured event type with `DefaultIncomingMessage<TEvent>()`.
 
 ## Request Behaviors
