@@ -26,4 +26,10 @@ public class KafkaConsumerOption
     /// Gets or sets the offset reset rule for a new Kafka consumer group.
     /// </summary>
     public AutoOffsetReset? AutoOffsetReset { get; set; }
+
+    /// <summary>
+    /// Gets or sets the consumer group protocol. Consumer enables KIP-848 and requires Kafka 4.0 or later.
+    /// A null value leaves the protocol unspecified and preserves existing consumer configuration behavior.
+    /// </summary>
+    public GroupProtocol? GroupProtocol { get; set; }
 }

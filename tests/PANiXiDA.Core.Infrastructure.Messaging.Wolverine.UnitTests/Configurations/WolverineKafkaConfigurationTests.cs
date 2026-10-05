@@ -6,6 +6,8 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Configurations;
 
 using Wolverine;
+using Wolverine.Configuration;
+using Wolverine.Kafka;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurations;
 
@@ -238,6 +240,86 @@ public sealed class WolverineKafkaConfigurationTests
         }
 
         Should.NotThrow(act);
+    }
+
+    [Theory(DisplayName = "Kafka consumer registration maps the configured group protocol and preserves consumer settings")]
+    [InlineData(false, null, null)]
+    [InlineData(true, null, null)]
+    [InlineData(false, "Classic", null)]
+    [InlineData(true, "Classic", null)]
+    [InlineData(false, "Consumer", null)]
+    [InlineData(true, "Consumer", null)]
+    [InlineData(false, "Consumer", "external")]
+    [InlineData(true, "Consumer", "external")]
+    public void ConsumerRegistrationShouldMapGroupProtocol(bool useConventions, string? groupProtocol, string? brokerName)
+    {
+        var section = useConventions ? "Messaging:Consumers:TestDomainEvent" : "TestConsumerOption";
+        var configuration = CreateConfiguration(
+            ($"{section}:TopicName", "test-events"),
+            ($"{section}:BrokerName", brokerName),
+            ($"{section}:ConsumerGroupId", "test-group"),
+            ($"{section}:AutoOffsetReset", "Earliest"),
+            ($"{section}:GroupProtocol", groupProtocol));
+        var kafka = new WolverineKafkaConfiguration(new WolverineOptions(), configuration);
+
+        var listener = useConventions
+            ? kafka.AddConsumer<TestDomainEvent>()
+            : kafka.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>();
+        ((IDelayedEndpointConfiguration)listener).Apply();
+
+        var topic = listener.Endpoint.ShouldBeOfType<KafkaTopic>();
+        topic.Mode.ShouldBe(EndpointMode.Durable);
+        var consumerConfig = topic.ConsumerConfig.ShouldNotBeNull();
+        consumerConfig.GroupId.ShouldBe("test-group");
+        consumerConfig.AutoOffsetReset.ShouldBe(AutoOffsetReset.Earliest);
+        consumerConfig.GroupProtocol.ShouldBe(groupProtocol is null ? null : Enum.Parse<GroupProtocol>(groupProtocol));
+    }
+
+    [Theory(DisplayName = "Kafka consumers apply the group protocol without other optional consumer settings")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ConsumerRegistrationShouldApplyGroupProtocolWithoutOtherSettings(bool useConventions)
+    {
+        var section = useConventions ? "Messaging:Consumers:TestDomainEvent" : "TestConsumerOption";
+        var configuration = CreateConfiguration(
+            ($"{section}:TopicName", "test-events"),
+            ($"{section}:GroupProtocol", "Consumer"));
+        var kafka = new WolverineKafkaConfiguration(new WolverineOptions(), configuration);
+
+        var listener = useConventions
+            ? kafka.AddConsumer<TestDomainEvent>()
+            : kafka.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>();
+        ((IDelayedEndpointConfiguration)listener).Apply();
+
+        var topic = listener.Endpoint.ShouldBeOfType<KafkaTopic>();
+        topic.ConsumerConfig.ShouldNotBeNull().GroupProtocol.ShouldBe(GroupProtocol.Consumer);
+    }
+
+    [Theory(DisplayName = "Kafka consumers reject an invalid group protocol during configuration binding")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ConsumerRegistrationShouldRejectInvalidGroupProtocol(bool useConventions)
+    {
+        var section = useConventions ? "Messaging:Consumers:TestDomainEvent" : "TestConsumerOption";
+        var configuration = CreateConfiguration(
+            ($"{section}:TopicName", "test-events"),
+            ($"{section}:GroupProtocol", "Invalid"));
+        var kafka = new WolverineKafkaConfiguration(new WolverineOptions(), configuration);
+
+        void act()
+        {
+            if (useConventions)
+            {
+                kafka.AddConsumer<TestDomainEvent>();
+            }
+            else
+            {
+                kafka.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>();
+            }
+        }
+
+        var error = Should.Throw<InvalidOperationException>(act);
+        error.Message.ShouldContain($"{section}:GroupProtocol");
     }
 
     private static ConfigurationManager CreateConfiguration(params (string Key, string? Value)[] values)

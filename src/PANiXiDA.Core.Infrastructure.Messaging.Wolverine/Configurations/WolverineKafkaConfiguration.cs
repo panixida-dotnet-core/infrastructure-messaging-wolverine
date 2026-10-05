@@ -147,7 +147,8 @@ public sealed class WolverineKafkaConfiguration
         listener.DefaultIncomingMessage<TEvent>();
 
         if (!string.IsNullOrWhiteSpace(option.ConsumerGroupId) ||
-            option.AutoOffsetReset.HasValue)
+            option.AutoOffsetReset.HasValue ||
+            option.GroupProtocol.HasValue)
         {
             listener.ConfigureConsumer(config =>
             {
@@ -159,6 +160,11 @@ public sealed class WolverineKafkaConfiguration
                 if (option.AutoOffsetReset.HasValue)
                 {
                     config.AutoOffsetReset = option.AutoOffsetReset.Value;
+                }
+
+                if (option.GroupProtocol.HasValue)
+                {
+                    config.GroupProtocol = option.GroupProtocol.Value;
                 }
             });
         }

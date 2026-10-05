@@ -244,6 +244,41 @@ options.AddConsumer<UserCreated>("External:Consumers");
 The existing `AddKafkaBroker<TOption>()`, `AddKafkaProducer<TOption, TEvent>()`, and
 `AddKafkaConsumer<TOption, TEvent>()` methods remain available and bind sections named after their option types.
 
+### Consumer Rebalance Protocol (KIP-848)
+
+For Kafka 4.0 or later, set `GroupProtocol` to `Consumer` in the consumer section to
+enable broker-driven, incremental rebalancing. This reduces rebalance pauses when
+service instances join or leave a consumer group, for example during scaling or rolling deployments:
+
+```json
+{
+  "Messaging": {
+    "Consumers": {
+      "UserCreated": {
+        "TopicName": "users.created",
+        "ConsumerGroupId": "users-service",
+        "AutoOffsetReset": "Earliest",
+        "GroupProtocol": "Consumer"
+      }
+    }
+  }
+}
+```
+
+The same property is available on typed `KafkaConsumerOption` models and named-broker consumers.
+Omitting it preserves existing consumer configuration behavior; the Kafka client defaults to `Classic`.
+Configure the protocol explicitly per consumer when enabling KIP-848, because Wolverine's
+topic-specific `ConfigureConsumer` settings replace the transport-level consumer configuration.
+Set `GroupProtocol` to `Classic` explicitly to select the previous protocol.
+The existing Wolverine and Confluent.Kafka dependencies already support KIP-848; no upgrade is required.
+
+With `Consumer`, the broker controls heartbeat intervals, session timeouts, and partition assignment.
+Do not combine it with client-side `HeartbeatIntervalMs`, `SessionTimeoutMs`, or `PartitionAssignmentStrategy` settings.
+Use `GroupRemoteAssignor` through Wolverine's consumer configuration if a specific server-side assignor is needed.
+Plan existing-group migrations according to the broker's migration policy and assignor compatibility;
+see the [Apache Kafka migration guide](https://kafka.apache.org/42/operations/consumer-rebalance-protocol/).
+This setting does not change the durable inbox/outbox configuration or provide exactly-once processing by itself.
+
 ## EF Core Storage
 
 The package enrolls `TDbContext` in Wolverine PostgreSQL message storage. If the application keeps Wolverine envelope tables in EF Core migrations, map them in the DbContext model:
