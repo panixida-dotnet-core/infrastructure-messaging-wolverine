@@ -225,12 +225,17 @@ builder.Host.UseWolverineMediator<AppDbContext>(
       "UserCreated": {
         "TopicName": "users.created",
         "ConsumerGroupId": "users-service",
-        "AutoOffsetReset": "Earliest"
+        "AutoOffsetReset": "Earliest",
+        "GroupProtocol": "Consumer"
       }
     }
   }
 }
 ```
+
+`GroupProtocol: Consumer` enables KIP-848 incremental rebalancing and requires Kafka 4.0 or later.
+Set it explicitly per consumer; omitting it preserves existing behavior, with `Classic` as the client default.
+With `Consumer`, heartbeat intervals, session timeouts, and partition assignment are controlled by the broker.
 
 Producers use the durable outbox; consumers use the durable inbox. Events without a Kafka producer remain in-process.
 For named brokers, set the same `BrokerName` in broker and route settings. Custom configuration paths are supported:

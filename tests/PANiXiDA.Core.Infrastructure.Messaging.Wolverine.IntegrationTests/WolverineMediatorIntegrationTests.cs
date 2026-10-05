@@ -1,3 +1,5 @@
+using Confluent.Kafka;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -366,10 +368,14 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             "unitOfWork.rollback");
     }
 
-    [Theory(DisplayName = "Kafka broker receives event after outbox flush with typed or conventional registration")]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task KafkaBrokerShouldReceiveEventAfterOutboxFlushAndHandleItOnce(bool useConventions)
+    [Theory(DisplayName = "Kafka broker receives event after outbox flush with default, Classic or Consumer group protocol")]
+    [InlineData(false, null)]
+    [InlineData(true, null)]
+    [InlineData(false, "Classic")]
+    [InlineData(true, "Classic")]
+    [InlineData(false, "Consumer")]
+    [InlineData(true, "Consumer")]
+    public async Task KafkaBrokerShouldReceiveEventAfterOutboxFlushAndHandleItOnce(bool useConventions, string? groupProtocol)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var kafka = new KafkaBuilder("apache/kafka-native:4.0.0")
@@ -388,7 +394,8 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             ($"{producerSection}:TopicName", topicName),
             ($"{consumerSection}:TopicName", topicName),
             ($"{consumerSection}:ConsumerGroupId", consumerGroupId),
-            ($"{consumerSection}:AutoOffsetReset", "Earliest"));
+            ($"{consumerSection}:AutoOffsetReset", "Earliest"),
+            ($"{consumerSection}:GroupProtocol", groupProtocol));
         await using var app = await fixture.CreateApplicationAsync(
             configuration,
             kafkaOptions =>
@@ -422,6 +429,14 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
 
         await AssertHandledExactlyOnceAsync(app, id, cancellationToken);
         app.Journal.Entries.ShouldContain("handler.kafkaEvent");
+
+        using var admin = new AdminClientBuilder(new AdminClientConfig
+        {
+            BootstrapServers = kafka.GetBootstrapAddress()
+        }).Build();
+        var groups = await admin.DescribeConsumerGroupsAsync([consumerGroupId]);
+        var group = groups.ConsumerGroupDescriptions.ShouldHaveSingleItem();
+        group.GroupType.ShouldBe(groupProtocol == "Consumer" ? ConsumerGroupType.Consumer : ConsumerGroupType.Classic);
     }
 
     private static async Task PublishThroughOutboxAsync<TEvent>(
