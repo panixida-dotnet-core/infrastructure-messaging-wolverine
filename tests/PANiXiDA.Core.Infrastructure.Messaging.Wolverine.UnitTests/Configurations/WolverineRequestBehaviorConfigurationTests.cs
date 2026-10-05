@@ -12,13 +12,11 @@ public sealed class WolverineRequestBehaviorConfigurationTests
     [InlineData(true)]
     public void QueryPipelineShouldExcludeCommandBehaviors(bool useModules)
     {
-        // Arrange
         var configuration = useModules
             ? WolverineRequestBehaviorConfiguration.CreateModularDefault()
             : WolverineRequestBehaviorConfiguration.CreateDefault();
         var registry = configuration.Build();
 
-        // Act
         var before = RequestMiddlewareDescriptor.Resolve(
             typeof(TestQuery), typeof(Result<TestQueryView>),
             typeof(IBeforeRequestBehavior<,>), registry.BeforeMiddlewareTypes);
@@ -29,7 +27,6 @@ public sealed class WolverineRequestBehaviorConfigurationTests
             typeof(TestQuery), typeof(Result<TestQueryView>),
             typeof(IFinallyRequestBehavior<,>), registry.FinallyMiddlewareTypes);
 
-        // Assert
         Type[] expectedBefore = useModules
             ? [typeof(ActivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>>),
                 typeof(ValidationBehavior<TestQuery, Result<TestQueryView>>)]
@@ -47,18 +44,15 @@ public sealed class WolverineRequestBehaviorConfigurationTests
     [InlineData(true)]
     public void CommandPipelineShouldRetainPublicationAndOutboxBehaviors(bool useModules)
     {
-        // Arrange
         var configuration = useModules
             ? WolverineRequestBehaviorConfiguration.CreateModularDefault()
             : WolverineRequestBehaviorConfiguration.CreateDefault();
         var registry = configuration.Build();
 
-        // Act
         var after = RequestMiddlewareDescriptor.Resolve(
             typeof(TestCommand), typeof(Result),
             typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes);
 
-        // Assert
         after.Select(behavior => behavior.Type).ShouldBe(
         [
             typeof(PublishDomainEventsBehavior<TestCommand, Result>),
