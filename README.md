@@ -289,7 +289,7 @@ Kafka consumers use durable inbox and map incoming topic messages to the configu
 
 ## Request Behaviors
 
-The default request behavior pipeline is:
+The default command behavior pipeline is:
 
 ```text
 before:  ValidationBehavior
