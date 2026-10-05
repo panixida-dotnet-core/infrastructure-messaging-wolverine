@@ -24,6 +24,8 @@ public class DbContextOutboxProxy<TDbContext> : DispatchProxy
 
     public Exception? DispatchException { get; set; }
 
+    public Exception? SynchronousPublishException { get; set; }
+
     public static IDbContextOutbox<TDbContext> Create(out DbContextOutboxProxy<TDbContext> proxy)
     {
         var outbox = DispatchProxy.Create<IDbContextOutbox<TDbContext>, DbContextOutboxProxy<TDbContext>>();
@@ -41,6 +43,11 @@ public class DbContextOutboxProxy<TDbContext> : DispatchProxy
             PublishCallCount++;
             LastPublishedMessage = args?[0];
             LastDeliveryOptions = args?[1] as DeliveryOptions;
+
+            if (SynchronousPublishException is not null)
+            {
+                throw SynchronousPublishException;
+            }
 
             return DispatchException is null ? ValueTask.CompletedTask : new ValueTask(Task.FromException(DispatchException));
         }

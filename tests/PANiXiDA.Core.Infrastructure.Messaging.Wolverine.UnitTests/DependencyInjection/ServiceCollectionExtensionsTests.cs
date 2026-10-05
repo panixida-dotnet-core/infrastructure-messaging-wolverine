@@ -205,6 +205,63 @@ public sealed class ServiceCollectionExtensionsTests
         exception.Message.ShouldContain("keyed module outbox dispatcher");
     }
 
+    [Theory(DisplayName = "Modular event bus propagates synchronous and asynchronous publication failures")]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task ModularEventBusShouldPropagatePublicationFailures(bool hasActiveModule, bool throwsSynchronously)
+    {
+        var services = new ServiceCollection();
+        var moduleConfiguration = new WolverineModuleConfiguration()
+            .AddModule<TestDbContext>(typeof(TestCommand).Assembly);
+        var outbox = DbContextOutboxProxy<TestDbContext>.Create(out var outboxProxy);
+        var messageContext = MessageContextProxy.Create(out var contextProxy);
+        var failure = new InvalidOperationException("Publication failed.");
+        if (throwsSynchronously)
+        {
+            outboxProxy.SynchronousPublishException = failure;
+            contextProxy.SynchronousPublishException = failure;
+        }
+        else
+        {
+            outboxProxy.DispatchException = failure;
+            contextProxy.DispatchException = failure;
+        }
+
+        services.AddWolverineMediator(moduleConfiguration.Build());
+        services.AddKeyedSingleton<IOutboxDispatcher>(typeof(TestDbContext), new EfCoreOutboxDispatcher<TestDbContext>(outbox));
+        services.AddScoped(_ => messageContext);
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var moduleContext = scope.ServiceProvider.GetRequiredService<WolverineModuleExecutionContext>();
+        if (hasActiveModule)
+        {
+            moduleContext.Enter(typeof(TestCommand));
+        }
+
+        var eventBus = scope.ServiceProvider.GetRequiredService<IEventBus>();
+        var domainEvent = new TestDomainEvent(Guid.NewGuid());
+
+        InvalidOperationException exception;
+        if (throwsSynchronously)
+        {
+            exception = Should.Throw<InvalidOperationException>(() =>
+            {
+                _ = eventBus.PublishAsync(domainEvent, TestContext.Current.CancellationToken);
+            });
+        }
+        else
+        {
+            var task = eventBus.PublishAsync(domainEvent, TestContext.Current.CancellationToken);
+            exception = await Should.ThrowAsync<InvalidOperationException>(() => task);
+        }
+
+        exception.ShouldBeSameAs(failure);
+        outboxProxy.PublishCallCount.ShouldBe(hasActiveModule ? 1 : 0);
+        contextProxy.PublishCallCount.ShouldBe(hasActiveModule ? 0 : 1);
+    }
+
     [Fact(DisplayName = "Modular event bus uses the native message context and leaves flushing to Wolverine")]
     public async Task ModularEventBusShouldUseActiveWolverineMessageContextOutsideMediatorRequests()
     {

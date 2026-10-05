@@ -10,6 +10,10 @@ public class MessageContextProxy : DispatchProxy
 
     public int PublishCallCount { get; private set; }
 
+    public Exception? DispatchException { get; set; }
+
+    public Exception? SynchronousPublishException { get; set; }
+
     public static IMessageContext Create(out MessageContextProxy proxy)
     {
         var messageContext =
@@ -28,7 +32,12 @@ public class MessageContextProxy : DispatchProxy
             PublishCallCount++;
             LastPublishedMessage = args?[0];
 
-            return ValueTask.CompletedTask;
+            if (SynchronousPublishException is not null)
+            {
+                throw SynchronousPublishException;
+            }
+
+            return DispatchException is null ? ValueTask.CompletedTask : new ValueTask(Task.FromException(DispatchException));
         }
 
         throw new NotSupportedException(
