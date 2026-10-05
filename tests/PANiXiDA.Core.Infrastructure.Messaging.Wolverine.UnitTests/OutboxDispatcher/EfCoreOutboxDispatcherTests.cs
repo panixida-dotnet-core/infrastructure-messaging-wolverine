@@ -23,6 +23,43 @@ public sealed class EfCoreOutboxDispatcherTests
         proxy.LastPublishedMessage.ShouldBeSameAs(domainEvent);
     }
 
+    [Theory(DisplayName = "PublishAsync propagates synchronous and asynchronous outbox failures")]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PublishAsyncShouldPropagateOutboxFailures(bool throwsSynchronously)
+    {
+        var outbox = DbContextOutboxProxy<TestDbContext>.Create(out var proxy);
+        var dispatcher = new EfCoreOutboxDispatcher<TestDbContext>(outbox);
+        var domainEvent = new TestDomainEvent(Guid.NewGuid());
+        var failure = new InvalidOperationException("Outbox failed.");
+        if (throwsSynchronously)
+        {
+            proxy.SynchronousPublishException = failure;
+        }
+        else
+        {
+            proxy.DispatchException = failure;
+        }
+
+        InvalidOperationException exception;
+        if (throwsSynchronously)
+        {
+            exception = Should.Throw<InvalidOperationException>(() =>
+            {
+                _ = dispatcher.PublishAsync(domainEvent, TestContext.Current.CancellationToken);
+            });
+        }
+        else
+        {
+            var task = dispatcher.PublishAsync(domainEvent, TestContext.Current.CancellationToken);
+            exception = await Should.ThrowAsync<InvalidOperationException>(() => task);
+        }
+
+        exception.ShouldBeSameAs(failure);
+        proxy.PublishCallCount.ShouldBe(1);
+        proxy.LastPublishedMessage.ShouldBeSameAs(domainEvent);
+    }
+
     [Theory(DisplayName = "Dispatcher preserves message identity and delivery options without saving or flushing")]
     [InlineData(true)]
     [InlineData(false)]

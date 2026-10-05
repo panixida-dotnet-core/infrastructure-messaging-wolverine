@@ -10,21 +10,20 @@ internal sealed class WolverineModuleOutboxDispatcher(
     WolverineModuleExecutionContext moduleContext,
     IServiceProvider serviceProvider) : IOutboxDispatcher
 {
-    public async Task PublishAsync<TEvent>(
+    public Task PublishAsync<TEvent>(
         TEvent @event,
         CancellationToken cancellationToken = default)
         where TEvent : IDomainEvent
     {
         if (moduleContext.TryGetOutboxDispatcher(out var outboxDispatcher))
         {
-            await outboxDispatcher.PublishAsync(@event, cancellationToken);
-            return;
+            return outboxDispatcher.PublishAsync(@event, cancellationToken);
         }
 
         var messageContext = serviceProvider
             .GetRequiredService<IMessageContext>();
 
-        await messageContext.PublishAsync(@event);
+        return messageContext.PublishAsync(@event).AsTask();
     }
 
     public Task PublishAsync<TEvent>(TEvent @event, DeliveryOptions options, CancellationToken cancellationToken)
