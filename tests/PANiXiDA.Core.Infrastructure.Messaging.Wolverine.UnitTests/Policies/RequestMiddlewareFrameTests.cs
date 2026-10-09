@@ -39,8 +39,8 @@ public sealed class RequestMiddlewareFrameTests
         var handlerContract = typeof(PANiXiDA.Core.Application.Messaging.Mediator.Handlers.IRequestHandler<TestCommand, Result>);
         handler.Aliases.Add(handlerContract, handlerType);
         var registry = RequestMiddlewareRegistry.Create(builder => builder
-            .AddBefore(typeof(ClosedCommandBeforeBehavior))
-            .AddAfter(typeof(ClosedCommandAfterBehavior))
+            .AddBefore<ClosedCommandBeforeBehavior>()
+            .AddAfter<ClosedCommandAfterBehavior>()
             .AddFinally(typeof(TestFinallyBehavior<,>)));
         var frame = new RequestMiddlewareHandlerCall(typeof(TestCommand), handler, registry);
         _ = frame.FindVariables(new TestMethodVariables()).ToArray();
