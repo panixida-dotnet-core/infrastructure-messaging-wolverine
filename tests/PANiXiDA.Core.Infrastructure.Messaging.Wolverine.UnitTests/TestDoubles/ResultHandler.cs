@@ -1,7 +1,12 @@
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles;
 
-public static class ResultHandler
+public sealed class ResultHandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.IRequestHandler<TestCommand, Result>
 {
+    public Task<Result> HandleAsync(TestCommand request, CancellationToken cancellationToken)
+    {
+        return Task.FromResult(Handle(request));
+    }
+
     public static Result Handle(TestCommand command)
     {
         _ = command;

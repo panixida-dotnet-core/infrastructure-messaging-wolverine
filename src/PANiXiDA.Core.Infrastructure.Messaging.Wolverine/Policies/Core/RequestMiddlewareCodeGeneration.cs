@@ -11,7 +11,8 @@ internal static class RequestMiddlewareCodeGeneration
         Type requestType,
         Type resultType,
         Type behaviorInterfaceType,
-        out Type closedMiddlewareType)
+        out Type closedMiddlewareType,
+        Type? handlerType = null)
     {
         if (!middlewareType.IsGenericTypeDefinition && middlewareType.ContainsGenericParameters)
         {
@@ -19,14 +20,15 @@ internal static class RequestMiddlewareCodeGeneration
             return false;
         }
 
-        if (middlewareType.IsGenericTypeDefinition && middlewareType.GetGenericArguments().Length != 2)
+        var parameterCount = behaviorInterfaceType.GetGenericArguments().Length;
+        if (middlewareType.IsGenericTypeDefinition && middlewareType.GetGenericArguments().Length != parameterCount)
         {
             throw new InvalidOperationException(
-                $"Open generic middleware '{middlewareType.FullName}' must have exactly 2 generic parameters.");
+                $"Open generic middleware '{middlewareType.FullName}' must have exactly {parameterCount} generic parameters.");
         }
 
         return RequestBehaviorMetadata.TryResolve(
-            middlewareType, requestType, resultType, behaviorInterfaceType, out closedMiddlewareType);
+            middlewareType, requestType, resultType, behaviorInterfaceType, out closedMiddlewareType, handlerType);
     }
 
     internal static IReadOnlyList<Type> ResolveConstructor(Type middlewareType)

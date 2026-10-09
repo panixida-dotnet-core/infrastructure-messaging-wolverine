@@ -15,6 +15,7 @@ public sealed class RequestMiddlewareFrameTests
         var frame = BeforeRequestMiddlewareFrame.TryCreate(
             typeof(TestCommand),
             typeof(Result),
+            typeof(TestRequestHandler<TestCommand, Result>),
             [typeof(ClosedCommandBeforeBehavior)])
             ?? throw new InvalidOperationException("Before frame was not created.");
 
@@ -53,6 +54,7 @@ public sealed class RequestMiddlewareFrameTests
         var frame = BeforeRequestMiddlewareFrame.TryCreate(
             typeof(OtherCommand),
             typeof(Result),
+            typeof(TestRequestHandler<OtherCommand, Result>),
             [typeof(ClosedCommandBeforeBehavior)]);
 
         frame.ShouldBeNull();

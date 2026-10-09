@@ -1,6 +1,6 @@
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Behaviors;
 
-public sealed class BehaviorWithMultiplePublicConstructors : IBeforeRequestBehavior<TestCommand, Result>
+public sealed class BehaviorWithMultiplePublicConstructors : IBeforeRequestBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>
 {
     public BehaviorWithMultiplePublicConstructors()
     {

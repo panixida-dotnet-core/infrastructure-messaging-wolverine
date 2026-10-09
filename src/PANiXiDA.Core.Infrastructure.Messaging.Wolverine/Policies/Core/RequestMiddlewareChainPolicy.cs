@@ -35,7 +35,7 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
     private void ApplyToChain(HandlerChain chain, Variable resultVariable)
     {
         AddFinallyMiddleware(chain, resultVariable);
-        AddBeforeMiddleware(chain, resultVariable.VariableType);
+        AddBeforeMiddleware(chain, resultVariable);
         AddAfterMiddleware(chain, resultVariable);
     }
 
@@ -52,11 +52,13 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
         }
     }
 
-    private void AddBeforeMiddleware(HandlerChain chain, Type resultType)
+    private void AddBeforeMiddleware(HandlerChain chain, Variable resultVariable)
     {
+        var handlerType = chain.Handlers.Single(handler => handler.Creates.Contains(resultVariable)).HandlerType;
         var frame = BeforeRequestMiddlewareFrame.TryCreate(
             chain.MessageType,
-            resultType,
+            resultVariable.VariableType,
+            handlerType,
             registry.BeforeMiddlewareTypes);
 
         if (frame is not null)

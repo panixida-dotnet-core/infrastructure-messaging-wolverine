@@ -28,14 +28,16 @@ internal sealed class RequestMiddlewareDescriptor(Type type)
         Type requestType,
         Type resultType,
         Type behaviorInterfaceType,
-        IReadOnlyList<Type> middlewareTypes)
+        IReadOnlyList<Type> middlewareTypes,
+        Type? handlerType = null)
     {
         return [.. middlewareTypes
             .Select(middlewareType => TryCreate(
                 requestType,
                 resultType,
                 behaviorInterfaceType,
-                middlewareType))
+                middlewareType,
+                handlerType))
             .OfType<RequestMiddlewareDescriptor>()];
     }
 
@@ -54,14 +56,16 @@ internal sealed class RequestMiddlewareDescriptor(Type type)
         Type requestType,
         Type resultType,
         Type behaviorInterfaceType,
-        Type middlewareType)
+        Type middlewareType,
+        Type? handlerType)
     {
         if (!RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
                 middlewareType,
                 requestType,
                 resultType,
                 behaviorInterfaceType,
-                out var closedMiddlewareType))
+                out var closedMiddlewareType,
+                handlerType))
         {
             return null;
         }

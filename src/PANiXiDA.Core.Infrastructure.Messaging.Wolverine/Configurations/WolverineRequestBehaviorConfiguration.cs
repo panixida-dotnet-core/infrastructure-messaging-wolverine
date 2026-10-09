@@ -12,7 +12,7 @@ public sealed class WolverineRequestBehaviorConfiguration
     internal WolverineRequestBehaviorConfiguration()
     {
         Before = new WolverineRequestBehaviorStageConfiguration(
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         After = new WolverineRequestBehaviorStageConfiguration(
@@ -43,8 +43,9 @@ public sealed class WolverineRequestBehaviorConfiguration
     {
         var configuration = new WolverineRequestBehaviorConfiguration();
 
-        configuration.Before.Add(typeof(ValidationBehavior<,>));
-        configuration.Before.Add(typeof(BeginTransactionBehavior<,>));
+        configuration.Before.Add(typeof(AuthorizationBehavior<,,>));
+        configuration.Before.Add(typeof(ValidationBehavior<,,>));
+        configuration.Before.Add(typeof(BeginTransactionBehavior<,,>));
 
         configuration.After.Add(typeof(PublishDomainEventsBehavior<,>));
         configuration.After.Add(typeof(PersistOutgoingMessagesBehavior<,>));
@@ -60,9 +61,10 @@ public sealed class WolverineRequestBehaviorConfiguration
     {
         var configuration = new WolverineRequestBehaviorConfiguration();
 
-        configuration.Before.Add(typeof(ActivateWolverineModuleBehavior<,>));
-        configuration.Before.Add(typeof(ValidationBehavior<,>));
-        configuration.Before.Add(typeof(BeginTransactionBehavior<,>));
+        configuration.Before.Add(typeof(ActivateWolverineModuleBehavior<,,>));
+        configuration.Before.Add(typeof(AuthorizationBehavior<,,>));
+        configuration.Before.Add(typeof(ValidationBehavior<,,>));
+        configuration.Before.Add(typeof(BeginTransactionBehavior<,,>));
 
         configuration.After.Add(typeof(PublishDomainEventsBehavior<,>));
         configuration.After.Add(typeof(PersistOutgoingMessagesBehavior<,>));

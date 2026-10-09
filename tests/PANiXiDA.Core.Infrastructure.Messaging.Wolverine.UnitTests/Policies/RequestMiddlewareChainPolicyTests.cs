@@ -20,8 +20,8 @@ public sealed class RequestMiddlewareChainPolicyTests
         {
             builder
                 .AddBefore(
-                    typeof(TestBeforeBehavior<,>),
-                    typeof(SecondBeforeBehavior<,>))
+                    typeof(TestBeforeBehavior<,,>),
+                    typeof(SecondBeforeBehavior<,,>))
                 .AddAfter(
                     typeof(TestAfterBehavior<,>),
                     typeof(SecondAfterBehavior<,>))
@@ -49,7 +49,7 @@ public sealed class RequestMiddlewareChainPolicyTests
     {
         var registry = RequestMiddlewareRegistry.Create(builder =>
         {
-            builder.AddBefore(typeof(TestBeforeBehavior<,>));
+            builder.AddBefore(typeof(TestBeforeBehavior<,,>));
         });
         var policy = new RequestMiddlewareChainPolicy(registry);
         var chain = new HandlerChain(typeof(TestCommand), new HandlerGraph());

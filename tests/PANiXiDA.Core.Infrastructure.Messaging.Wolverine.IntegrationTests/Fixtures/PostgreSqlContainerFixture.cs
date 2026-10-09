@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+using PANiXiDA.Core.Application.Authentication.Abstractions;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.DependencyInjection;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Database;
@@ -73,6 +74,7 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
             .ConfigureServices(services =>
             {
                 services.AddSingleton(journal);
+                services.AddSingleton<ICurrentUser, IntegrationCurrentUser>();
 
                 services.AddDbContextWithWolverineIntegration<IntegrationDbContext>(
                     options => options.UseNpgsql(connectionString));

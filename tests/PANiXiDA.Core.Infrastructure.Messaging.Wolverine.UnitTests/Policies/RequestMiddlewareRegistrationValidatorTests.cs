@@ -8,7 +8,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     public void ValidateBehaviorRegistrationShouldRejectInvalidExpectedInterfaceType()
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
-            typeof(TestBeforeBehavior<,>),
+            typeof(TestBeforeBehavior<,,>),
             typeof(IDisposable),
             "Before");
 
@@ -22,7 +22,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     public void ValidateBehaviorRegistrationShouldRejectNonInterfaceExpectedType()
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
-            typeof(TestBeforeBehavior<,>),
+            typeof(TestBeforeBehavior<,,>),
             typeof(string),
             "Before");
 
@@ -36,8 +36,8 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     public void ValidateBehaviorRegistrationShouldRejectAbstractMiddleware()
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
-            typeof(AbstractBeforeBehavior<,>),
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(AbstractBeforeBehavior<,,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         var exception = Should.Throw<InvalidOperationException>(act);
@@ -50,8 +50,8 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     public void ValidateBehaviorRegistrationShouldRejectInterfaceMiddleware()
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
-            typeof(IBeforeBehaviorContract<,>),
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(IBeforeBehaviorContract<,,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         var exception = Should.Throw<InvalidOperationException>(act);
@@ -69,7 +69,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
 
         void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             middlewareType,
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         var exception = Should.Throw<InvalidOperationException>(act);
@@ -82,14 +82,14 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     public void ValidateBehaviorRegistrationShouldRejectOpenGenericMiddlewareWithInvalidParameterCount()
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
-            typeof(ThreeParameterBeforeBehavior<,,>),
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(FourParameterBeforeBehavior<,,,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         var exception = Should.Throw<InvalidOperationException>(act);
 
         exception.Message.ShouldStartWith("Before middleware '");
-        exception.Message.ShouldEndWith("' must have exactly 2 generic parameters.");
+        exception.Message.ShouldEndWith("' must have exactly 3 generic parameters.");
     }
 
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects middleware without a single public constructor")]
@@ -97,7 +97,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(BehaviorWithMultiplePublicConstructors),
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         var exception = Should.Throw<InvalidOperationException>(act);
@@ -111,7 +111,7 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             typeof(PlainMiddleware),
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         var exception = Should.Throw<InvalidOperationException>(act);
@@ -125,8 +125,8 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     public void ValidateBehaviorRegistrationShouldRejectOpenGenericMiddlewareWithoutExpectedContract()
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
-            typeof(PlainGenericMiddleware<,>),
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(PlainGenericMiddleware<,,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         var exception = Should.Throw<InvalidOperationException>(act);
@@ -140,8 +140,8 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     public void ValidateBehaviorRegistrationShouldAcceptValidOpenGenericMiddleware()
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
-            typeof(TestBeforeBehavior<,>),
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(TestBeforeBehavior<,,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         Should.NotThrow(act);
@@ -151,8 +151,8 @@ public sealed class RequestMiddlewareRegistrationValidatorTests
     public void ValidateBehaviorRegistrationShouldAcceptValidClosedMiddleware()
     {
         static void act() => RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
-            typeof(TestBeforeBehavior<TestCommand, Result>),
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(TestBeforeBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         Should.NotThrow(act);

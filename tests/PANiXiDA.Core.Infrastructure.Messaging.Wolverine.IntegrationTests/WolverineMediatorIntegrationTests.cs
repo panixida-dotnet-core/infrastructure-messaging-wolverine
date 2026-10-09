@@ -3,6 +3,7 @@ using Confluent.Kafka;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
+using PANiXiDA.Core.Application.Authentication.Abstractions;
 using PANiXiDA.Core.Application.Messaging.Mediator.Behaviors;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Behaviors;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Configurations;
@@ -31,6 +32,88 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
 public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture fixture)
     : IClassFixture<PostgreSqlContainerFixture>
 {
+    [Theory(DisplayName = "Authorization rejects commands before validation, transactions, and handler execution")]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public async Task AuthorizationShouldRejectCommandBeforeOtherBehaviors(
+        bool useModules,
+        bool authenticated,
+        bool hasAllPermissions)
+    {
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: useModules,
+            configureRequestBehaviors: behaviors => behaviors.Before.InsertBefore(
+                typeof(IntegrationBeforeBehavior<,,>), typeof(ValidationBehavior<,,>)));
+        var user = app.Host.Services.GetRequiredService<ICurrentUser>().ShouldBeOfType<IntegrationCurrentUser>();
+        user.IsAuthenticated = authenticated;
+        if (hasAllPermissions)
+        {
+            user.Permissions.Add("records.create");
+        }
+
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, token) => mediator.SendAsync(new AuthorizedCommand(), token),
+            TestContext.Current.CancellationToken);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Errors.Single().Type.ShouldBe(authenticated ? ErrorType.Forbidden : ErrorType.Unauthorized);
+        app.Journal.Entries.ShouldNotContain("behavior.before");
+        app.Journal.Entries.ShouldNotContain("unitOfWork.begin");
+        app.Journal.Entries.ShouldNotContain("handler.authorized");
+    }
+
+    [Theory(DisplayName = "Authorized commands execute the transaction pipeline when all and any permissions match")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AuthorizationShouldAllowCommandWithRequiredPermissions(bool useModules)
+    {
+        await using var app = await fixture.CreateApplicationAsync(useModuleRouting: useModules);
+        var user = app.Host.Services.GetRequiredService<ICurrentUser>().ShouldBeOfType<IntegrationCurrentUser>();
+        user.IsAuthenticated = true;
+        user.Permissions.UnionWith(["records.create", "records.edit"]);
+
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, token) => mediator.SendAsync(new AuthorizedCommand(), token),
+            TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBeTrue();
+        ShouldContainInOrder(app.Journal.Entries, "unitOfWork.begin", "handler.authorized", "unitOfWork.commit");
+    }
+
+    [Theory(DisplayName = "Authentication-only query handlers preserve generic results and never open transactions")]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task AuthorizationShouldProtectGenericQueryResult(bool useModules, bool authenticated)
+    {
+        await using var app = await fixture.CreateApplicationAsync(useModuleRouting: useModules);
+        var user = app.Host.Services.GetRequiredService<ICurrentUser>().ShouldBeOfType<IntegrationCurrentUser>();
+        user.IsAuthenticated = authenticated;
+
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, token) => mediator.QueryAsync(new AuthorizedQuery(), token),
+            TestContext.Current.CancellationToken);
+
+        result.IsSuccess.ShouldBe(authenticated);
+        if (authenticated)
+        {
+            result.Value.ShouldBe("authorized");
+            app.Journal.Entries.ShouldContain("handler.authorized-query");
+        }
+        else
+        {
+            result.Errors.Single().Type.ShouldBe(ErrorType.Unauthorized);
+            app.Journal.Entries.ShouldNotContain("handler.authorized-query");
+        }
+
+        app.Journal.Entries.ShouldNotContain("unitOfWork.begin");
+    }
+
     [Fact(DisplayName = "Mediator configures Wolverine application assembly from entry assembly")]
     public async Task MediatorShouldConfigureWolverineApplicationAssemblyFromEntryAssembly()
     {
@@ -221,8 +304,8 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             configureRequestBehaviors: behaviors =>
             {
                 behaviors.Before.InsertAfter(
-                    typeof(IntegrationBeforeBehavior<,>),
-                    typeof(BeginTransactionBehavior<,>));
+                    typeof(IntegrationBeforeBehavior<,,>),
+                    typeof(BeginTransactionBehavior<,,>));
             });
         var cancellationToken = TestContext.Current.CancellationToken;
         var id = Guid.NewGuid();

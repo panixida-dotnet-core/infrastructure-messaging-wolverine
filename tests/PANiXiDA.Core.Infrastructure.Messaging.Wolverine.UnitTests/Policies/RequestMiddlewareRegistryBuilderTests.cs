@@ -9,16 +9,16 @@ public sealed class RequestMiddlewareRegistryBuilderTests
     {
         var registry = RequestMiddlewareRegistry.Create(builder =>
         {
-            builder.AddBefore(typeof(TestBeforeBehavior<,>));
-            builder.AddBefore(typeof(SecondBeforeBehavior<,>));
+            builder.AddBefore(typeof(TestBeforeBehavior<,,>));
+            builder.AddBefore(typeof(SecondBeforeBehavior<,,>));
             builder.AddAfter(typeof(TestAfterBehavior<,>));
             builder.AddFinally(typeof(TestFinallyBehavior<,>));
         });
 
         registry.BeforeMiddlewareTypes.ShouldBe(
         [
-            typeof(TestBeforeBehavior<,>),
-            typeof(SecondBeforeBehavior<,>)
+            typeof(TestBeforeBehavior<,,>),
+            typeof(SecondBeforeBehavior<,,>)
         ]);
         registry.AfterMiddlewareTypes.ShouldBe([typeof(TestAfterBehavior<,>)]);
         registry.FinallyMiddlewareTypes.ShouldBe([typeof(TestFinallyBehavior<,>)]);
@@ -29,12 +29,12 @@ public sealed class RequestMiddlewareRegistryBuilderTests
     {
         var registry = RequestMiddlewareRegistryBuilder
             .Create()
-            .AddBefore<TestBeforeBehavior<TestCommand, Result>>()
+            .AddBefore<TestBeforeBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>>()
             .AddAfter<TestAfterBehavior<TestCommand, Result>>()
             .AddFinally<TestFinallyBehavior<TestCommand, Result>>()
             .Build();
 
-        registry.BeforeMiddlewareTypes.ShouldBe([typeof(TestBeforeBehavior<TestCommand, Result>)]);
+        registry.BeforeMiddlewareTypes.ShouldBe([typeof(TestBeforeBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>)]);
         registry.AfterMiddlewareTypes.ShouldBe([typeof(TestAfterBehavior<TestCommand, Result>)]);
         registry.FinallyMiddlewareTypes.ShouldBe([typeof(TestFinallyBehavior<TestCommand, Result>)]);
     }
@@ -46,8 +46,8 @@ public sealed class RequestMiddlewareRegistryBuilderTests
 
         var registry = builder
             .AddBefore(
-                typeof(TestBeforeBehavior<,>),
-                typeof(SecondBeforeBehavior<,>))
+                typeof(TestBeforeBehavior<,,>),
+                typeof(SecondBeforeBehavior<,,>))
             .AddAfter(
                 typeof(TestAfterBehavior<,>),
                 typeof(SecondAfterBehavior<,>))

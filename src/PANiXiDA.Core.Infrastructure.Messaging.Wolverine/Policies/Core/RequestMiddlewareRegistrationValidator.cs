@@ -15,12 +15,12 @@ internal static class RequestMiddlewareRegistrationValidator
                 $"Expected behavior interface '{expectedBehaviorInterfaceType.FullName}' must be an open generic interface.");
         }
 
-        ValidateIsConcreteOrOpenGeneric(behaviorType, stageName);
+        ValidateIsConcreteOrOpenGeneric(behaviorType, expectedBehaviorInterfaceType.GetGenericArguments().Length, stageName);
         ValidateConstructor(behaviorType);
         ValidateImplementsExpectedBehaviorInterface(behaviorType, expectedBehaviorInterfaceType, stageName);
     }
 
-    private static void ValidateIsConcreteOrOpenGeneric(Type behaviorType, string stageName)
+    private static void ValidateIsConcreteOrOpenGeneric(Type behaviorType, int parameterCount, string stageName)
     {
         if (behaviorType.IsInterface)
         {
@@ -43,10 +43,10 @@ internal static class RequestMiddlewareRegistrationValidator
         if (behaviorType.IsGenericTypeDefinition)
         {
             var genericArguments = behaviorType.GetGenericArguments();
-            if (genericArguments.Length != 2)
+            if (genericArguments.Length != parameterCount)
             {
                 throw new InvalidOperationException(
-                    $"{stageName} middleware '{behaviorType.FullName}' must have exactly 2 generic parameters.");
+                    $"{stageName} middleware '{behaviorType.FullName}' must have exactly {parameterCount} generic parameters.");
             }
         }
     }

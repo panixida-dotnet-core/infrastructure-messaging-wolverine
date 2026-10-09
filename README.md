@@ -44,7 +44,7 @@ Use the latest 4.2.x version:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="4.2.*" />
+  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="5.0.*" />
 </ItemGroup>
 ```
 
@@ -297,6 +297,7 @@ Kafka consumers use durable inbox and map incoming topic messages to the configu
 The default command behavior pipeline is:
 
 ```text
+before:  AuthorizationBehavior (handlers implementing IRequireAuthorization)
 before:  ValidationBehavior
 before:  BeginTransactionBehavior
 after:   PublishDomainEventsBehavior
@@ -306,7 +307,23 @@ after:   FlushOutgoingMessagesBehavior
 finally: CleanupTransactionBehavior
 ```
 
-The modular overload activates module routing before validation, keeps the application `CleanupTransactionBehavior`, and releases module routing after cleanup. The application-facing pipeline continues to depend only on the PANiXiDA `IUnitOfWork` and `IEventBus` abstractions.
+The modular overload activates module routing before authorization and releases it after transaction cleanup.
+
+Version 5 uses Application 5. Before behaviors implement
+`IBeforeRequestBehavior<TRequest, TResult, THandler>`; after/finally behaviors keep
+two type parameters. Request handlers must implement `IRequestHandler<TRequest, TResult>`
+(including `ICommandHandler` and `IQueryHandler`). The generator binds before behaviors
+to the actual handler type, including its generic constraints. Rebuild consumers to
+regenerate metadata and add the handler parameter to custom before behaviors.
+
+Implement `IRequireAuthorization` from `PANiXiDA.Core.Application.Authentication.Abstractions`
+on a handler to require authentication. Its static `AllPermissions` requires every listed
+permission; nonempty `AnyPermissions` requires at least one. Empty collections require
+authentication only. Unmarked handlers skip authorization and do not need `ICurrentUser`.
+Register a trusted `ICurrentUser` implementation for protected handlers; the HTTP package
+provides one for HTTP requests, while background consumers must supply their own.
+Unauthorized/Forbidden results stop processing before validation, transactions, and the
+handler. Queries use authorization and validation without command transaction/outbox behaviors.
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 
@@ -337,8 +354,8 @@ builder.Host.UseWolverineMediator<AppDbContext>(
     behaviors =>
     {
         behaviors.Before.InsertAfter(
-            typeof(AuthorizeRequestBehavior<,>),
-            typeof(ValidationBehavior<,>));
+            typeof(AuditRequestStartBehavior<,,>),
+            typeof(AuthorizationBehavior<,,>));
 
         behaviors.After.InsertBefore(
             typeof(AuditRequestResultBehavior<,>),

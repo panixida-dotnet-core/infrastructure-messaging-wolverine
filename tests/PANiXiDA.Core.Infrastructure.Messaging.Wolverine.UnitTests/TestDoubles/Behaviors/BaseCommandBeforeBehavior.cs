@@ -1,6 +1,6 @@
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Behaviors;
 
-public sealed class BaseCommandBeforeBehavior : IBeforeRequestBehavior<BaseCommand, Result>
+public sealed class BaseCommandBeforeBehavior : IBeforeRequestBehavior<BaseCommand, Result, TestRequestHandler<BaseCommand, Result>>
 {
     public Task<Result> BeforeAsync(
         BaseCommand request,

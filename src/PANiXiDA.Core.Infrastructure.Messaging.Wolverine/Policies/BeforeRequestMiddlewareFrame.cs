@@ -15,13 +15,15 @@ internal sealed class BeforeRequestMiddlewareFrame(
     internal static BeforeRequestMiddlewareFrame? TryCreate(
         Type requestType,
         Type resultType,
+        Type handlerType,
         IReadOnlyList<Type> middlewareTypes)
     {
         var descriptors = RequestMiddlewareDescriptor.Resolve(
             requestType,
             resultType,
-            typeof(IBeforeRequestBehavior<,>),
-            middlewareTypes);
+            typeof(IBeforeRequestBehavior<,,>),
+            middlewareTypes,
+            handlerType);
 
         if (descriptors.Length == 0)
         {
@@ -67,7 +69,7 @@ internal sealed class BeforeRequestMiddlewareFrame(
         writer.WriteLine(
             $"var {middlewareVariableName} = new {middlewareTypeName}({middleware.ConstructorArguments});");
         writer.WriteLine(
-            $"var {beforeResultVariableName} = await {middlewareVariableName}.{nameof(IBeforeRequestBehavior<,>.BeforeAsync)}({requestVariable.Usage}, {cancellationVariable.Usage}).ConfigureAwait(false);");
+            $"var {beforeResultVariableName} = await {middlewareVariableName}.{nameof(IBeforeRequestBehavior<,,>.BeforeAsync)}({requestVariable.Usage}, {cancellationVariable.Usage}).ConfigureAwait(false);");
 
         writer.Write(
             $"BLOCK:if ({beforeResultVariableName}.{nameof(Result.IsFailure)})");
