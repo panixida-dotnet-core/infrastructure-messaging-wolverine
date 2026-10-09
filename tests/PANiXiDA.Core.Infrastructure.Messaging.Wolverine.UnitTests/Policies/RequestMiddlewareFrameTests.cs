@@ -31,6 +31,34 @@ public sealed class RequestMiddlewareFrameTests
         VerifyOptionalNextFrame(frame);
     }
 
+    [Fact(DisplayName = "Handler call retains aliases and emits all request middleware around the handler")]
+    public void HandlerCallShouldRetainAliasesAndGenerateMiddleware()
+    {
+        var handlerType = typeof(TestRequestHandler<TestCommand, Result>);
+        var handler = new MethodCall(handlerType, "HandleAsync");
+        var handlerContract = typeof(PANiXiDA.Core.Application.Messaging.Mediator.Handlers.IRequestHandler<TestCommand, Result>);
+        handler.Aliases.Add(handlerContract, handlerType);
+        var registry = RequestMiddlewareRegistry.Create(builder => builder
+            .AddBefore(typeof(ClosedCommandBeforeBehavior))
+            .AddAfter(typeof(ClosedCommandAfterBehavior))
+            .AddFinally(typeof(TestFinallyBehavior<,>)));
+        var frame = new RequestMiddlewareHandlerCall(typeof(TestCommand), handler, registry);
+        _ = frame.FindVariables(new TestMethodVariables()).ToArray();
+        using var writer = new SourceWriter();
+
+        frame.GenerateCode(GeneratedMethod.ForNoArg("Handle"), writer);
+
+        frame.Aliases[handlerContract].ShouldBe(handlerType);
+        var code = writer.Code();
+        code.ShouldContain("BeforeAsync");
+        code.ShouldContain("AfterAsync");
+        code.ShouldContain("FinallyAsync");
+        code.IndexOf("BeforeAsync", StringComparison.Ordinal).ShouldBeLessThan(code.IndexOf("HandleAsync", StringComparison.Ordinal));
+        code.IndexOf("HandleAsync", StringComparison.Ordinal).ShouldBeLessThan(code.IndexOf("AfterAsync", StringComparison.Ordinal));
+        code.IndexOf("AfterAsync", StringComparison.Ordinal).ShouldBeLessThan(code.IndexOf("FinallyAsync", StringComparison.Ordinal));
+        code.ShouldNotContain("EnqueueCascadingAsync");
+    }
+
     [Fact(DisplayName = "Before frame generates its optional next frame")]
     public void BeforeFrameShouldGenerateOptionalNextFrame()
     {

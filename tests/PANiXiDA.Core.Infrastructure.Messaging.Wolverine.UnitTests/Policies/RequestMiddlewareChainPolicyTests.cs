@@ -98,6 +98,29 @@ public sealed class RequestMiddlewareChainPolicyTests
         exception.Message.ShouldContain("' has more than one Result return variable.");
     }
 
+    [Fact(DisplayName = "Apply rejects extra handlers even when only one returns a result")]
+    public void ApplyShouldRejectAdditionalHandler()
+    {
+        var policy = new RequestMiddlewareChainPolicy(RequestMiddlewareRegistry.Empty);
+        var chain = CreateHandlerChain(nameof(ResultHandler.Handle));
+        AddHandlerCall(chain, nameof(ResultHandler.Observe));
+
+        var exception = Should.Throw<InvalidOperationException>(() => policy.Apply([chain], null!, null!));
+
+        exception.Message.ShouldContain("must have exactly one handler returning Result or Result<T>");
+    }
+
+    [Fact(DisplayName = "Apply rejects a result returned as part of a tuple")]
+    public void ApplyShouldRejectTupleResult()
+    {
+        var policy = new RequestMiddlewareChainPolicy(RequestMiddlewareRegistry.Empty);
+        var chain = CreateHandlerChain(nameof(ResultHandler.HandleWithAdditionalResult));
+
+        var exception = Should.Throw<InvalidOperationException>(() => policy.Apply([chain], null!, null!));
+
+        exception.Message.ShouldContain("must have exactly one handler returning Result or Result<T>");
+    }
+
     private static void AddHandlerCall(
         HandlerChain chain,
         string methodName)

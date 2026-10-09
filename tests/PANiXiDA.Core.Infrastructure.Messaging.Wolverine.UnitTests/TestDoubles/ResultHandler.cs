@@ -18,4 +18,14 @@ public sealed class ResultHandler : PANiXiDA.Core.Application.Messaging.Mediator
     {
         return Handle(command);
     }
+
+    public static void Observe(TestCommand command)
+    {
+        _ = command;
+    }
+
+    public static (Result Result, string Value) HandleWithAdditionalResult(TestCommand command)
+    {
+        return (Handle(command), "additional-result");
+    }
 }
