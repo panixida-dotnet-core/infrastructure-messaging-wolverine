@@ -324,8 +324,11 @@ provides one for HTTP requests, while background consumers must supply their own
 Unauthorized/Forbidden results stop processing before validation, transactions, and the
 handler. Queries use authorization and validation without command transaction/outbox behaviors.
 
-A failed before behavior skips the remaining before behaviors, the handler, and after
-behaviors. Finally behaviors still run with a null result.
+A failed before behavior skips the remaining before behaviors and the handler.
+After behaviors still run with the failure result, and Finally receives that same result.
+If processing throws, Finally receives the exception and the last produced result
+(or null if no result was produced). Finally behaviors run in registration order,
+including when an earlier Finally behavior throws.
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 

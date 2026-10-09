@@ -30,7 +30,7 @@ public sealed class WolverineRequestBehaviorConfiguration
     public WolverineRequestBehaviorStageConfiguration Before { get; }
 
     /// <summary>
-    /// Gets the configuration for behaviors executed after successful handler execution.
+    /// Gets the configuration for behaviors executed after a handler or before behavior produces a result.
     /// </summary>
     public WolverineRequestBehaviorStageConfiguration After { get; }
 

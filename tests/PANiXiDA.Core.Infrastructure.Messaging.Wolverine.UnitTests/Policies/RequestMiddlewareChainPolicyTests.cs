@@ -2,7 +2,6 @@ using System.Reflection;
 
 using JasperFx.CodeGeneration.Frames;
 
-using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles;
 
@@ -13,8 +12,8 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class RequestMiddlewareChainPolicyTests
 {
-    [Fact(DisplayName = "Apply creates one frame for each request middleware stage")]
-    public void ApplyShouldCreateOneFrameForEachRequestMiddlewareStage()
+    [Fact(DisplayName = "Apply wraps the handler once for all request middleware stages")]
+    public void ApplyShouldWrapHandlerOnceForAllRequestMiddlewareStages()
     {
         var registry = RequestMiddlewareRegistry.Create(builder =>
         {
@@ -34,14 +33,13 @@ public sealed class RequestMiddlewareChainPolicyTests
 
         policy.Apply([chain], null!, null!);
 
-        chain.Middleware
-            .Select(frame => frame.GetType())
-            .ShouldBe(
-            [
-                typeof(FinallyRequestMiddlewareFrame),
-                typeof(BeforeRequestMiddlewareFrame),
-                typeof(AfterRequestMiddlewareFrame)
-            ]);
+        var handler = chain.Handlers.Single().ShouldBeOfType<RequestMiddlewareHandlerCall>();
+        handler.CanReturnTask().ShouldBeFalse();
+        chain.Middleware.ShouldBeEmpty();
+
+        policy.Apply([chain], null!, null!);
+
+        chain.Handlers.Single().ShouldBeSameAs(handler);
     }
 
     [Fact(DisplayName = "Apply skips request handler chain without Result return variable")]

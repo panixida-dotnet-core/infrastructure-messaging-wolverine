@@ -4,17 +4,39 @@ using JasperFx.CodeGeneration.Model;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class RequestMiddlewareFrameTests
 {
+    [Fact(DisplayName = "Handler call produces a shared result and continues once without middleware")]
+    public void HandlerCallShouldContinueWithoutMiddleware()
+    {
+        var frame = new RequestMiddlewareHandlerCall(
+            typeof(TestCommand),
+            new MethodCall(typeof(ResultHandler), nameof(ResultHandler.Handle)),
+            RequestMiddlewareRegistry.Empty);
+        var method = GeneratedMethod.ForNoArg("Handle");
+        _ = frame.FindVariables(new TestMethodVariables()).ToArray();
+        using var writer = new SourceWriter();
+
+        frame.GenerateCode(method, writer);
+
+        var code = writer.Code();
+        code.ShouldContain($"{frame.ReturnVariable!.Usage} = default!;");
+        code.ShouldContain($"if ({frame.ReturnVariable.Usage} is null)");
+        code.ShouldContain($"{frame.ReturnVariable.Usage} =");
+        code.ShouldNotContain("finally");
+        VerifyOptionalNextFrame(frame);
+    }
+
     [Fact(DisplayName = "Before frame generates its optional next frame")]
     public void BeforeFrameShouldGenerateOptionalNextFrame()
     {
         var frame = BeforeRequestMiddlewareFrame.TryCreate(
             typeof(TestCommand),
-            typeof(Result),
+            new Variable(typeof(Result), "result"),
             typeof(TestRequestHandler<TestCommand, Result>),
             [typeof(ClosedCommandBeforeBehavior)])
             ?? throw new InvalidOperationException("Before frame was not created.");
@@ -53,7 +75,7 @@ public sealed class RequestMiddlewareFrameTests
     {
         var frame = BeforeRequestMiddlewareFrame.TryCreate(
             typeof(OtherCommand),
-            typeof(Result),
+            new Variable(typeof(Result), "result"),
             typeof(TestRequestHandler<OtherCommand, Result>),
             [typeof(ClosedCommandBeforeBehavior)]);
 
@@ -73,7 +95,7 @@ public sealed class RequestMiddlewareFrameTests
         frame.ShouldBeNull();
     }
 
-    private static void VerifyOptionalNextFrame(RequestMiddlewareFrameBase frame)
+    private static void VerifyOptionalNextFrame(Frame frame)
     {
         var method = GeneratedMethod.ForNoArg("Handle");
         _ = frame.FindVariables(new TestMethodVariables()).ToArray();

@@ -32,6 +32,66 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
 public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture fixture)
     : IClassFixture<PostgreSqlContainerFixture>
 {
+    [Theory(DisplayName = "Rejected requests pass the same failure to After and Finally without invoking the handler")]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RejectedRequestsShouldRunAfterAndFinally(bool useModules, bool useGenericResult)
+    {
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: useModules,
+            configureRequestBehaviors: behaviors =>
+            {
+                behaviors.Before.InsertBefore(typeof(IntegrationBeforeBehavior<,,>), typeof(ValidationBehavior<,,>));
+                behaviors.After.Add(typeof(ObserveAfterBehavior<,>));
+                behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>));
+            });
+
+        Result result = useGenericResult
+            ? await app.ExecuteWithMediatorAsync(
+                (mediator, token) => mediator.QueryAsync(new AuthorizedQuery(), token),
+                TestContext.Current.CancellationToken)
+            : await app.ExecuteWithMediatorAsync(
+                (mediator, token) => mediator.SendAsync(new AuthorizedCommand(), token),
+                TestContext.Current.CancellationToken);
+
+        result.Errors.Single().Type.ShouldBe(ErrorType.Unauthorized);
+        app.Journal.AfterResult.ShouldBeSameAs(result);
+        app.Journal.FinallyResult.ShouldBeSameAs(result);
+        app.Journal.FinallyException.ShouldBeNull();
+        ShouldContainInOrder(app.Journal.Entries, "behavior.after", "behavior.finally");
+        app.Journal.Entries.ShouldNotContain("behavior.before");
+        app.Journal.Entries.ShouldNotContain("unitOfWork.begin");
+        app.Journal.Entries.ShouldNotContain("unitOfWork.commit");
+        app.Journal.Entries.ShouldNotContain("handler.authorized");
+        app.Journal.Entries.ShouldNotContain("handler.authorized-query");
+    }
+
+    [Theory(DisplayName = "All Finally behaviors execute in registration order even when one throws")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FinallyShouldContinueAfterCleanupFailure(bool useModules)
+    {
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: useModules,
+            configureRequestBehaviors: behaviors =>
+            {
+                behaviors.After.Add(typeof(ObserveAfterBehavior<,>));
+                behaviors.Finally.InsertBefore(typeof(ThrowFinallyBehavior<,>), typeof(CleanupTransactionBehavior<,>));
+                behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>));
+            });
+
+        var exception = await Should.ThrowAsync<Exception>(() => app.ExecuteWithMediatorAsync(
+            (mediator, token) => mediator.SendAsync(new ReturnFailureCommand(Guid.NewGuid(), "cleanup-failure"), token),
+            TestContext.Current.CancellationToken));
+
+        (exception is PlannedCommandException || exception.InnerException is PlannedCommandException).ShouldBeTrue();
+        app.Journal.FinallyResult.ShouldBeSameAs(app.Journal.AfterResult);
+        app.Journal.FinallyResult.ShouldNotBeNull().IsFailure.ShouldBeTrue();
+        ShouldContainInOrder(app.Journal.Entries, "behavior.throwFinally", "unitOfWork.rollback", "behavior.finally");
+    }
+
     [Theory(DisplayName = "Authorization rejects commands before validation, transactions, and handler execution")]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
@@ -71,7 +131,13 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
     [InlineData(true)]
     public async Task AuthorizationShouldAllowCommandWithRequiredPermissions(bool useModules)
     {
-        await using var app = await fixture.CreateApplicationAsync(useModuleRouting: useModules);
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: useModules,
+            configureRequestBehaviors: behaviors =>
+            {
+                behaviors.After.Add(typeof(ObserveAfterBehavior<,>));
+                behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>));
+            });
         var user = app.Host.Services.GetRequiredService<ICurrentUser>().ShouldBeOfType<IntegrationCurrentUser>();
         user.IsAuthenticated = true;
         user.Permissions.UnionWith(["records.create", "records.edit"]);
@@ -81,7 +147,35 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             TestContext.Current.CancellationToken);
 
         result.IsSuccess.ShouldBeTrue();
+        app.Journal.AfterResult.ShouldBeSameAs(result);
+        app.Journal.FinallyResult.ShouldBeSameAs(result);
+        app.Journal.FinallyException.ShouldBeNull();
         ShouldContainInOrder(app.Journal.Entries, "unitOfWork.begin", "handler.authorized", "unitOfWork.commit");
+    }
+
+    [Theory(DisplayName = "Finally receives the rejection result when After throws")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FinallyShouldReceiveFailureWhenAfterThrows(bool useModules)
+    {
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: useModules,
+            configureRequestBehaviors: behaviors =>
+            {
+                behaviors.After.Add(typeof(ObserveAfterBehavior<,>));
+                behaviors.After.Add(typeof(FailBeforeOutboxFlushBehavior<,>));
+                behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>));
+            });
+
+        await Should.ThrowAsync<Exception>(() => app.ExecuteWithMediatorAsync(
+            (mediator, token) => mediator.SendAsync(new AuthorizedCommand(), token),
+            TestContext.Current.CancellationToken));
+
+        app.Journal.FinallyResult.ShouldBeSameAs(app.Journal.AfterResult);
+        app.Journal.FinallyResult.ShouldNotBeNull().Errors.Single().Type.ShouldBe(ErrorType.Unauthorized);
+        app.Journal.FinallyException.ShouldBeOfType<PlannedCommandException>();
+        ShouldContainInOrder(app.Journal.Entries, "behavior.after", "behavior.failBeforeFlush", "behavior.finally");
+        app.Journal.Entries.ShouldNotContain("handler.authorized");
     }
 
     [Theory(DisplayName = "Authentication-only query handlers preserve generic results and never open transactions")]
@@ -360,7 +454,6 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
     [InlineData(true)]
     public async Task PublishedEventShouldSurviveRestartWhenFlushIsInterrupted(bool useModules)
     {
-        // Arrange
         var id = Guid.NewGuid();
         var command = new CreateIntegrationRecordAndPublishEventCommand(id, "recover-after-commit");
 
@@ -370,12 +463,10 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
                 typeof(FlushOutgoingMessagesBehavior<,>)),
             useModuleRouting: useModules))
         {
-            // Act: interrupt the pipeline after commit, before it can send buffered messages.
             var exception = await Should.ThrowAsync<Exception>(() => app.ExecuteWithMediatorAsync(
                 (mediator, token) => mediator.SendAsync(command, token),
                 TestContext.Current.CancellationToken));
 
-            // Assert: a separate connection sees both the committed business data and durable message.
             (exception is PlannedCommandException || exception.InnerException is PlannedCommandException)
                 .ShouldBeTrue();
             ShouldContainInOrder(app.Journal.Entries, "unitOfWork.commit", "behavior.failBeforeFlush");
@@ -384,7 +475,6 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             (await app.CountRowsAsync(WolverineStorageConstants.IncomingEnvelopesTable)).ShouldBe(1);
         }
 
-        // A fresh host must recover the event from PostgreSQL without another publish or flush call.
         await using var restarted = await fixture.CreateApplicationAsync(
             useModuleRouting: useModules, resetDatabase: false);
 
@@ -424,7 +514,12 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
     public async Task OutboxAndHandlerChangesShouldRollbackInSingleTransactionWhenCommandThrows()
     {
         await using var app = await fixture.CreateApplicationAsync(
-            useModuleRouting: true);
+            useModuleRouting: true,
+            configureRequestBehaviors: behaviors =>
+            {
+                behaviors.After.Add(typeof(ObserveAfterBehavior<,>));
+                behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>));
+            });
         var cancellationToken = TestContext.Current.CancellationToken;
         var id = Guid.NewGuid();
 
@@ -442,6 +537,10 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         (exception is PlannedCommandException ||
             exception.InnerException is PlannedCommandException)
             .ShouldBeTrue();
+        app.Journal.Entries.ShouldNotContain("behavior.after");
+        app.Journal.Entries.ShouldContain("behavior.finally");
+        app.Journal.FinallyResult.ShouldBeNull();
+        app.Journal.FinallyException.ShouldBeOfType<PlannedCommandException>();
         (await app.CountRecordsAsync(id)).ShouldBe(0);
         (await app.CountHandledEventsAsync(id)).ShouldBe(0);
         ShouldContainInOrder(
