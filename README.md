@@ -40,11 +40,11 @@ Full Native AOT support is not currently provided.
 
 ### Installation
 
-Use the latest 4.2.x version:
+Reference the package with its analyzer assets enabled:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="4.2.*" />
+  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="5.0.*" />
 </ItemGroup>
 ```
 
@@ -110,7 +110,7 @@ The module persistence registration must expose keyed `IUnitOfWork` services und
 
 Before a successful command commits, `PersistOutgoingMessagesBehavior` saves the active module's DbContext, including tracked message envelopes and business changes. It runs after domain event publication and before `CommitTransactionBehavior`; `FlushOutgoingMessagesBehavior` releases messages only after commit. Custom request pipelines must preserve this order. `IUnitOfWork.CommitTransactionAsync()` itself only completes the transaction.
 
-Custom `IOutboxDispatcher` implementations must implement `SaveChangesAsync(CancellationToken cancellationToken)` when upgrading. Persist pending messages before commit, or explicitly return a completed task if they were already persisted in the current transaction. No default implementation is provided by the interface.
+Custom `IOutboxDispatcher` implementations must implement `SaveChangesAsync(CancellationToken cancellationToken)`. Persist pending messages before commit, or return a completed task if they were already persisted in the current transaction.
 
 They must also implement `SendAsync` and the `PublishAsync` overload accepting Wolverine `DeliveryOptions`. Preserve those options and add messages to the same transactional outbox without committing or flushing it.
 
@@ -185,7 +185,7 @@ For a command with an occurrence-time constructor, use `AddRecurringCommand<MyCo
 during host construction. Keep `Name` stable and unique within the application.
 
 An optional `parentSectionName` selects another parent section. The typed `AddRecurringCommand<TOption, TCommand>(factory)`
-overload still binds the section named after `TOption`. Both APIs work with modules and Kafka.
+overload binds the section named after `TOption`. Both APIs work with modules and Kafka.
 The first enabled schedule requires updating Wolverine's message-store schema. See [Wolverine recurring messages](https://wolverinefx.net/guide/messaging/recurring.html).
 
 ## Kafka Topics
@@ -234,7 +234,7 @@ builder.Host.UseWolverineMediator<AppDbContext>(
 ```
 
 `GroupProtocol: Consumer` enables KIP-848 incremental rebalancing and requires Kafka 4.0 or later.
-Set it explicitly per consumer; omitting it preserves existing behavior, with `Classic` as the client default.
+Set it explicitly per consumer; the client defaults to `Classic` when it is omitted.
 With `Consumer`, heartbeat intervals, session timeouts, and partition assignment are controlled by the broker.
 
 Producers use the durable outbox; consumers use the durable inbox. Events without a Kafka producer remain in-process.
@@ -246,8 +246,8 @@ options.AddProducer<UserCreated>("External:Producers");
 options.AddConsumer<UserCreated>("External:Consumers");
 ```
 
-The existing `AddKafkaBroker<TOption>()`, `AddKafkaProducer<TOption, TEvent>()`, and
-`AddKafkaConsumer<TOption, TEvent>()` methods remain available and bind sections named after their option types.
+`AddKafkaBroker<TOption>()`, `AddKafkaProducer<TOption, TEvent>()`, and
+`AddKafkaConsumer<TOption, TEvent>()` bind sections named after their option types.
 
 ## EF Core Storage
 
@@ -297,6 +297,7 @@ Kafka consumers use durable inbox and map incoming topic messages to the configu
 The default command behavior pipeline is:
 
 ```text
+before:  AuthorizationBehavior (handlers implementing IRequireAuthorization)
 before:  ValidationBehavior
 before:  BeginTransactionBehavior
 after:   PublishDomainEventsBehavior
@@ -306,7 +307,28 @@ after:   FlushOutgoingMessagesBehavior
 finally: CleanupTransactionBehavior
 ```
 
-The modular overload activates module routing before validation, keeps the application `CleanupTransactionBehavior`, and releases module routing after cleanup. The application-facing pipeline continues to depend only on the PANiXiDA `IUnitOfWork` and `IEventBus` abstractions.
+The modular overload activates module routing before authorization and releases it after transaction cleanup.
+
+Request handlers implement `IRequestHandler<TRequest, TResult>` (including
+`ICommandHandler` and `IQueryHandler`). Custom before behaviors implement
+`IBeforeRequestBehavior<TRequest, TResult, THandler>`; after/finally behaviors use
+two type parameters. The generator binds before behaviors to the actual handler type
+and honors their generic constraints.
+
+Implement `IRequireAuthorization` from `PANiXiDA.Core.Application.Authentication.Abstractions`
+on a handler to require authentication. Its static `AllPermissions` requires every listed
+permission; nonempty `AnyPermissions` requires at least one. Empty collections require
+authentication only. Unmarked handlers skip authorization and do not need `ICurrentUser`.
+Register a trusted `ICurrentUser` implementation for protected handlers; the HTTP package
+provides one for HTTP requests, while background consumers must supply their own.
+Unauthorized/Forbidden results stop processing before validation, transactions, and the
+handler. Queries use authorization and validation without command transaction/outbox behaviors.
+
+A failed before behavior skips the remaining before behaviors and the handler.
+After behaviors still run with the failure result, and Finally receives that same result.
+If processing throws, Finally receives the exception and the last produced result
+(or null if no result was produced). Finally behaviors run in registration order,
+including when an earlier Finally behavior throws.
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 
@@ -337,8 +359,8 @@ builder.Host.UseWolverineMediator<AppDbContext>(
     behaviors =>
     {
         behaviors.Before.InsertAfter(
-            typeof(AuthorizeRequestBehavior<,>),
-            typeof(ValidationBehavior<,>));
+            typeof(AuditRequestStartBehavior<,,>),
+            typeof(AuthorizationBehavior<,,>));
 
         behaviors.After.InsertBefore(
             typeof(AuditRequestResultBehavior<,>),

@@ -4,17 +4,68 @@ using JasperFx.CodeGeneration.Model;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class RequestMiddlewareFrameTests
 {
+    [Fact(DisplayName = "Handler call produces a shared result and continues once without middleware")]
+    public void HandlerCallShouldContinueWithoutMiddleware()
+    {
+        var frame = new RequestMiddlewareHandlerCall(
+            typeof(TestCommand),
+            new MethodCall(typeof(ResultHandler), nameof(ResultHandler.Handle)),
+            RequestMiddlewareRegistry.Empty);
+        var method = GeneratedMethod.ForNoArg("Handle");
+        _ = frame.FindVariables(new TestMethodVariables()).ToArray();
+        using var writer = new SourceWriter();
+
+        frame.GenerateCode(method, writer);
+
+        var code = writer.Code();
+        code.ShouldContain($"{frame.ReturnVariable!.Usage} = default!;");
+        code.ShouldContain($"if ({frame.ReturnVariable.Usage} is null)");
+        code.ShouldContain($"{frame.ReturnVariable.Usage} =");
+        code.ShouldNotContain("finally");
+        VerifyOptionalNextFrame(frame);
+    }
+
+    [Fact(DisplayName = "Handler call retains aliases and emits all request middleware around the handler")]
+    public void HandlerCallShouldRetainAliasesAndGenerateMiddleware()
+    {
+        var handlerType = typeof(TestRequestHandler<TestCommand, Result>);
+        var handler = new MethodCall(handlerType, "HandleAsync");
+        var handlerContract = typeof(IRequestHandler<TestCommand, Result>);
+        handler.Aliases.Add(handlerContract, handlerType);
+        var registry = RequestMiddlewareRegistry.Create(builder => builder
+            .AddBefore<ClosedCommandBeforeBehavior>()
+            .AddAfter<ClosedCommandAfterBehavior>()
+            .AddFinally(typeof(TestFinallyBehavior<,>)));
+        var frame = new RequestMiddlewareHandlerCall(typeof(TestCommand), handler, registry);
+        _ = frame.FindVariables(new TestMethodVariables()).ToArray();
+        using var writer = new SourceWriter();
+
+        frame.GenerateCode(GeneratedMethod.ForNoArg("Handle"), writer);
+
+        frame.Aliases[handlerContract].ShouldBe(handlerType);
+        var code = writer.Code();
+        code.ShouldContain("BeforeAsync");
+        code.ShouldContain("AfterAsync");
+        code.ShouldContain("FinallyAsync");
+        code.IndexOf("BeforeAsync", StringComparison.Ordinal).ShouldBeLessThan(code.IndexOf("HandleAsync", StringComparison.Ordinal));
+        code.IndexOf("HandleAsync", StringComparison.Ordinal).ShouldBeLessThan(code.IndexOf("AfterAsync", StringComparison.Ordinal));
+        code.IndexOf("AfterAsync", StringComparison.Ordinal).ShouldBeLessThan(code.IndexOf("FinallyAsync", StringComparison.Ordinal));
+        code.ShouldNotContain("EnqueueCascadingAsync");
+    }
+
     [Fact(DisplayName = "Before frame generates its optional next frame")]
     public void BeforeFrameShouldGenerateOptionalNextFrame()
     {
         var frame = BeforeRequestMiddlewareFrame.TryCreate(
             typeof(TestCommand),
-            typeof(Result),
+            new Variable(typeof(Result), "result"),
+            typeof(TestRequestHandler<TestCommand, Result>),
             [typeof(ClosedCommandBeforeBehavior)])
             ?? throw new InvalidOperationException("Before frame was not created.");
 
@@ -52,7 +103,8 @@ public sealed class RequestMiddlewareFrameTests
     {
         var frame = BeforeRequestMiddlewareFrame.TryCreate(
             typeof(OtherCommand),
-            typeof(Result),
+            new Variable(typeof(Result), "result"),
+            typeof(TestRequestHandler<OtherCommand, Result>),
             [typeof(ClosedCommandBeforeBehavior)]);
 
         frame.ShouldBeNull();
@@ -71,7 +123,7 @@ public sealed class RequestMiddlewareFrameTests
         frame.ShouldBeNull();
     }
 
-    private static void VerifyOptionalNextFrame(RequestMiddlewareFrameBase frame)
+    private static void VerifyOptionalNextFrame(Frame frame)
     {
         var method = GeneratedMethod.ForNoArg("Handle");
         _ = frame.FindVariables(new TestMethodVariables()).ToArray();

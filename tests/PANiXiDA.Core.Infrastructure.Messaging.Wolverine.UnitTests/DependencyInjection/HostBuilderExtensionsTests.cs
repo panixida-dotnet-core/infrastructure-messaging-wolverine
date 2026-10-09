@@ -125,7 +125,7 @@ public sealed class HostBuilderExtensionsTests
             {
                 behaviors.Before.InsertAfter(
                     typeof(ClosedCommandBeforeBehavior),
-                    typeof(BeginTransactionBehavior<,>));
+                    typeof(BeginTransactionBehavior<,,>));
             },
             typeof(HostBuilderExtensionsTests).Assembly);
 

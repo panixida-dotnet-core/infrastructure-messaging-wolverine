@@ -19,7 +19,7 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
     private const string ResultName = "PANiXiDA.Core.ResultPattern.Result";
     private static readonly string[] contractNames =
     [
-        ContractNamespace + "IBeforeRequestBehavior`2",
+        ContractNamespace + "IBeforeRequestBehavior`3",
         ContractNamespace + "IAfterRequestBehavior`2",
         ContractNamespace + "IFinallyRequestBehavior`2"
     ];
@@ -103,7 +103,7 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
             AddBehavior(registrations, behavior, contracts);
         }
 
-        AddBindings(compilation, registrations, behaviors, contracts, pairs, token);
+        AddBindings(compilation, registrations, behaviors, contracts, pairs, types, token);
         if (registrations.Count == 0)
         {
             return string.Empty;
@@ -212,8 +212,17 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         INamedTypeSymbol[] behaviors,
         INamedTypeSymbol[] contracts,
         HashSet<(INamedTypeSymbol Request, INamedTypeSymbol Result)> pairs,
+        HashSet<INamedTypeSymbol> types,
         CancellationToken token)
     {
+        var handlerContract = compilation.GetTypeByMetadataName(
+            "PANiXiDA.Core.Application.Messaging.Mediator.Handlers.IRequestHandler`2");
+        var handlers = types.Where(type => !HasTypeParameter(type) && !type.IsAbstract &&
+            type.AllInterfaces.Any(contract =>
+                SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, handlerContract)))
+            .OrderBy(TypeName, StringComparer.Ordinal)
+            .ToArray();
+
         foreach (var pair in pairs
                      .OrderBy(pair => TypeName(pair.Request), StringComparer.Ordinal)
                      .ThenBy(pair => TypeName(pair.Result), StringComparer.Ordinal))
@@ -224,9 +233,39 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
                 continue;
             }
 
+            var matchingHandlers = handlers.Where(handler => handler.AllInterfaces.Any(item =>
+                SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, handlerContract) &&
+                IsAssignable(compilation, pair.Request, item.TypeArguments[0]) &&
+                SymbolEqualityComparer.Default.Equals(pair.Result, item.TypeArguments[1])))
+                .ToArray();
+
             foreach (var behavior in behaviors)
             {
-                AddBinding(compilation, registrations, behavior, pair, contracts);
+                AddBehaviorBindings(compilation, registrations, behavior, pair, contracts, matchingHandlers);
+            }
+        }
+    }
+
+    private static void AddBehaviorBindings(
+        CSharpCompilation compilation,
+        SortedSet<string> registrations,
+        INamedTypeSymbol behavior,
+        (INamedTypeSymbol Request, INamedTypeSymbol Result) pair,
+        INamedTypeSymbol[] contracts,
+        INamedTypeSymbol[] handlers)
+    {
+        foreach (var contract in contracts.Where(contract => behavior.AllInterfaces.Any(item =>
+                     SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract))))
+        {
+            if (contract.Arity == 2)
+            {
+                AddBinding(compilation, registrations, behavior, pair, contracts, contract, null);
+                continue;
+            }
+
+            foreach (var handler in handlers)
+            {
+                AddBinding(compilation, registrations, behavior, pair, contracts, contract, handler);
             }
         }
     }
@@ -236,23 +275,24 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         SortedSet<string> registrations,
         INamedTypeSymbol behavior,
         (INamedTypeSymbol Request, INamedTypeSymbol Result) pair,
-        INamedTypeSymbol[] contracts)
+        INamedTypeSymbol[] contracts,
+        INamedTypeSymbol contract,
+        INamedTypeSymbol? handler)
     {
-        var closed = Close(compilation, behavior, pair.Request, pair.Result);
-        foreach (var contract in contracts.Where(contract => behavior.AllInterfaces.Any(item =>
-                     SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract))))
+        INamedTypeSymbol[] arguments = handler is null ? [pair.Request, pair.Result] : [pair.Request, pair.Result, handler];
+        var closed = Close(compilation, behavior, arguments);
+        var supported = closed is not null && closed.AllInterfaces.Any(item =>
+            SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract) &&
+            IsAssignable(compilation, pair.Request, item.TypeArguments[0]) &&
+            IsAssignable(compilation, pair.Result, item.TypeArguments[1]) &&
+            (handler is null || SymbolEqualityComparer.Default.Equals(handler, item.TypeArguments[2])));
+        if (supported)
         {
-            var supported = closed is not null && closed.AllInterfaces.Any(item =>
-                SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract) &&
-                IsAssignable(compilation, pair.Request, item.TypeArguments[0]) &&
-                IsAssignable(compilation, pair.Result, item.TypeArguments[1]));
-            if (supported)
-            {
-                AddBehavior(registrations, closed!, contracts);
-            }
+            AddBehavior(registrations, closed!, contracts);
+        }
 
-            var closedArgument = supported ? $"typeof({TypeName(closed!)})" : "null";
-            var registration = new StringBuilder()
+        var closedArgument = supported ? $"typeof({TypeName(closed!)})" : "null";
+        var registration = new StringBuilder()
                 .Append("RegisterBinding(typeof(")
                 .Append(TypeName(behavior))
                 .Append("), typeof(")
@@ -262,10 +302,13 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
                 .Append("), typeof(")
                 .Append(TypeName(contract))
                 .Append("), ")
-                .Append(closedArgument)
-                .Append(");");
-            registrations.Add(registration.ToString());
+                .Append(closedArgument);
+        if (handler is not null)
+        {
+            registration.Append(", typeof(").Append(TypeName(handler)).Append(')');
         }
+
+        registrations.Add(registration.Append(");").ToString());
     }
 
     private static void AddBehavior(
@@ -300,8 +343,7 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
     private static INamedTypeSymbol? Close(
         CSharpCompilation compilation,
         INamedTypeSymbol behavior,
-        INamedTypeSymbol request,
-        INamedTypeSymbol result)
+        INamedTypeSymbol[] arguments)
     {
         if (!behavior.IsGenericType)
         {
@@ -314,13 +356,12 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         }
 
         var definition = behavior.OriginalDefinition;
-        if (definition.Arity != 2)
+        if (definition.Arity != arguments.Length)
         {
             return null;
         }
 
-        INamedTypeSymbol[] arguments = [request, result];
-        for (var i = 0; i < 2; i++)
+        for (var i = 0; i < arguments.Length; i++)
         {
             if (!SatisfiesConstraints(compilation, definition, arguments, i))
             {

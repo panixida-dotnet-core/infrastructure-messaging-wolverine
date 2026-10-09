@@ -1,7 +1,8 @@
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Behaviors;
 
-public sealed class ConstrainedBeforeBehavior<TRequest, TResult> : IBeforeRequestBehavior<TRequest, TResult>
+public sealed class ConstrainedBeforeBehavior<TRequest, TResult, THandler> : IBeforeRequestBehavior<TRequest, TResult, THandler>
     where TRequest : class, IRequest<TResult>
+    where THandler : IRequestHandler<TRequest, TResult>
     where TResult : Result
 {
     public Task<Result> BeforeAsync(

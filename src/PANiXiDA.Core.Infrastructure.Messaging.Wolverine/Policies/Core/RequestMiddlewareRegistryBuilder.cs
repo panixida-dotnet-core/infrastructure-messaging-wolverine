@@ -20,7 +20,7 @@ internal sealed class RequestMiddlewareRegistryBuilder
     {
         RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             behaviorType,
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         beforeMiddlewareTypes.Add(behaviorType);

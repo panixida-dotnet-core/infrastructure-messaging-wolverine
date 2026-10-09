@@ -19,7 +19,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var before = RequestMiddlewareDescriptor.Resolve(
             typeof(TestQuery), typeof(Result<TestQueryView>),
-            typeof(IBeforeRequestBehavior<,>), registry.BeforeMiddlewareTypes);
+            typeof(IBeforeRequestBehavior<,,>), registry.BeforeMiddlewareTypes, typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>));
         var after = RequestMiddlewareDescriptor.Resolve(
             typeof(TestQuery), typeof(Result<TestQueryView>),
             typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes);
@@ -28,9 +28,9 @@ public sealed class WolverineRequestBehaviorConfigurationTests
             typeof(IFinallyRequestBehavior<,>), registry.FinallyMiddlewareTypes);
 
         Type[] expectedBefore = useModules
-            ? [typeof(ActivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>>),
-                typeof(ValidationBehavior<TestQuery, Result<TestQueryView>>)]
-            : [typeof(ValidationBehavior<TestQuery, Result<TestQueryView>>)];
+            ? [typeof(ActivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>, TestRequestHandler<TestQuery, Result<TestQueryView>>>),
+                typeof(ValidationBehavior<TestQuery, Result<TestQueryView>, TestRequestHandler<TestQuery, Result<TestQueryView>>>)]
+            : [typeof(ValidationBehavior<TestQuery, Result<TestQueryView>, TestRequestHandler<TestQuery, Result<TestQueryView>>>)];
         Type[] expectedFinally = useModules
             ? [typeof(DeactivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>>)]
             : [];
@@ -71,8 +71,9 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         registry.BeforeMiddlewareTypes.ShouldBe(
         [
-            typeof(ValidationBehavior<,>),
-            typeof(BeginTransactionBehavior<,>)
+            typeof(AuthorizationBehavior<,,>),
+            typeof(ValidationBehavior<,,>),
+            typeof(BeginTransactionBehavior<,,>)
         ]);
         registry.AfterMiddlewareTypes.ShouldBe(
         [
@@ -93,9 +94,10 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         registry.BeforeMiddlewareTypes.ShouldBe(
         [
-            typeof(ActivateWolverineModuleBehavior<,>),
-            typeof(ValidationBehavior<,>),
-            typeof(BeginTransactionBehavior<,>)
+            typeof(ActivateWolverineModuleBehavior<,,>),
+            typeof(AuthorizationBehavior<,,>),
+            typeof(ValidationBehavior<,,>),
+            typeof(BeginTransactionBehavior<,,>)
         ]);
         registry.AfterMiddlewareTypes.ShouldBe(
         [
@@ -117,8 +119,8 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         var configuration = WolverineRequestBehaviorConfiguration.CreateDefault();
 
         configuration.Before.InsertAfter(
-            typeof(TestBeforeBehavior<,>),
-            typeof(BeginTransactionBehavior<,>));
+            typeof(TestBeforeBehavior<,,>),
+            typeof(BeginTransactionBehavior<,,>));
         configuration.After.InsertBefore(
             typeof(TestAfterBehavior<,>),
             typeof(CommitTransactionBehavior<,>));
@@ -130,9 +132,10 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         registry.BeforeMiddlewareTypes.ShouldBe(
         [
-            typeof(ValidationBehavior<,>),
-            typeof(BeginTransactionBehavior<,>),
-            typeof(TestBeforeBehavior<,>)
+            typeof(AuthorizationBehavior<,,>),
+            typeof(ValidationBehavior<,,>),
+            typeof(BeginTransactionBehavior<,,>),
+            typeof(TestBeforeBehavior<,,>)
         ]);
         registry.AfterMiddlewareTypes.ShouldBe(
         [
@@ -157,8 +160,8 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         void act()
         {
             configuration.Before.InsertBefore(
-                typeof(TestBeforeBehavior<,>),
-                typeof(SecondBeforeBehavior<,>));
+                typeof(TestBeforeBehavior<,,>),
+                typeof(SecondBeforeBehavior<,,>));
         }
 
         var exception = Should.Throw<InvalidOperationException>(act);
@@ -172,23 +175,24 @@ public sealed class WolverineRequestBehaviorConfigurationTests
     {
         var configuration = WolverineRequestBehaviorConfiguration.CreateDefault();
 
-        configuration.Before.Add<TestBeforeBehavior<TestCommand, Result>>();
+        configuration.Before.Add<TestBeforeBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>>();
         configuration.Before.InsertBefore
-            <SecondBeforeBehavior<TestCommand, Result>,
-            TestBeforeBehavior<TestCommand, Result>>();
+            <SecondBeforeBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>,
+            TestBeforeBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>>();
         configuration.Before.InsertAfter
             <ClosedCommandBeforeBehavior,
-            SecondBeforeBehavior<TestCommand, Result>>();
+            SecondBeforeBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>>();
 
         var registry = configuration.Build();
 
         registry.BeforeMiddlewareTypes.ShouldBe(
         [
-            typeof(ValidationBehavior<,>),
-            typeof(BeginTransactionBehavior<,>),
-            typeof(SecondBeforeBehavior<TestCommand, Result>),
+            typeof(AuthorizationBehavior<,,>),
+            typeof(ValidationBehavior<,,>),
+            typeof(BeginTransactionBehavior<,,>),
+            typeof(SecondBeforeBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>),
             typeof(ClosedCommandBeforeBehavior),
-            typeof(TestBeforeBehavior<TestCommand, Result>)
+            typeof(TestBeforeBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>)
         ]);
     }
 }

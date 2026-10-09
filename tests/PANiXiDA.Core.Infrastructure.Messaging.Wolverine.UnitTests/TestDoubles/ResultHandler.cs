@@ -1,7 +1,12 @@
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles;
 
-public static class ResultHandler
+public sealed class ResultHandler : IRequestHandler<TestCommand, Result>
 {
+    public Task<Result> HandleAsync(TestCommand request, CancellationToken cancellationToken)
+    {
+        return Task.FromResult(Handle(request));
+    }
+
     public static Result Handle(TestCommand command)
     {
         _ = command;
@@ -12,5 +17,15 @@ public static class ResultHandler
     public static Result HandleAgain(TestCommand command)
     {
         return Handle(command);
+    }
+
+    public static void Observe(TestCommand command)
+    {
+        _ = command;
+    }
+
+    public static (Result Result, string Value) HandleWithAdditionalResult(TestCommand command)
+    {
+        return (Handle(command), "additional-result");
     }
 }

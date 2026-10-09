@@ -15,15 +15,19 @@ public sealed class RequestMiddlewareCodeGenerationTests
         exception.Message.ShouldStartWith("No generated request behavior metadata exists");
     }
 
-    [Fact(DisplayName = "Missing generated bindings fail explicitly instead of skipping request middleware")]
-    public void TryResolveClosedMiddlewareTypeShouldRejectMissingGeneratedBinding()
+    [Theory(DisplayName = "Missing generated bindings fail explicitly instead of skipping request middleware")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TryResolveClosedMiddlewareTypeShouldRejectMissingGeneratedBinding(bool includeHandler)
     {
-        static void act() => RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-            typeof(TestBeforeBehavior<,>), typeof(UnregisteredRequest), typeof(Result), typeof(IBeforeRequestBehavior<,>), out _);
+        var handlerType = includeHandler ? typeof(TestRequestHandler<TestCommand, Result>) : null;
+        void act() => RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
+            typeof(TestBeforeBehavior<,,>), typeof(UnregisteredRequest), typeof(Result), typeof(IBeforeRequestBehavior<,,>), out _, handlerType);
 
         var exception = Should.Throw<InvalidOperationException>(act);
 
         exception.Message.ShouldStartWith("No generated request behavior binding exists");
+        exception.Message.ShouldContain($"handler '{handlerType?.FullName}'");
     }
 
     private sealed record UnregisteredRequest : ICommand<Result>;
@@ -32,14 +36,14 @@ public sealed class RequestMiddlewareCodeGenerationTests
     public void TryResolveClosedMiddlewareTypeShouldCloseGenericMiddlewareForRequestAndResult()
     {
         var resolved = RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-            typeof(TestBeforeBehavior<,>),
+            typeof(TestBeforeBehavior<,,>),
             typeof(TestCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,>),
-            out var closedMiddlewareType);
+            typeof(IBeforeRequestBehavior<,,>),
+            out var closedMiddlewareType, typeof(TestRequestHandler<TestCommand, Result>));
 
         resolved.ShouldBeTrue();
-        closedMiddlewareType.ShouldBe(typeof(TestBeforeBehavior<TestCommand, Result>));
+        closedMiddlewareType.ShouldBe(typeof(TestBeforeBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>));
     }
 
     [Fact(DisplayName = "TryResolveClosedMiddlewareType returns compatible closed middleware")]
@@ -49,8 +53,8 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(BaseCommandBeforeBehavior),
             typeof(DerivedCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,>),
-            out var closedMiddlewareType);
+            typeof(IBeforeRequestBehavior<,,>),
+            out var closedMiddlewareType, typeof(TestRequestHandler<BaseCommand, Result>));
 
         resolved.ShouldBeTrue();
         closedMiddlewareType.ShouldBe(typeof(BaseCommandBeforeBehavior));
@@ -63,8 +67,8 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(ClosedCommandBeforeBehavior),
             typeof(OtherCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,>),
-            out var closedMiddlewareType);
+            typeof(IBeforeRequestBehavior<,,>),
+            out var closedMiddlewareType, typeof(TestRequestHandler<OtherCommand, Result>));
 
         resolved.ShouldBeFalse();
         closedMiddlewareType.ShouldBeNull();
@@ -81,8 +85,8 @@ public sealed class RequestMiddlewareCodeGenerationTests
             middlewareType,
             typeof(TestCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,>),
-            out var closedMiddlewareType);
+            typeof(IBeforeRequestBehavior<,,>),
+            out var closedMiddlewareType, typeof(TestRequestHandler<TestCommand, Result>));
 
         resolved.ShouldBeFalse();
         closedMiddlewareType.ShouldBeNull();
@@ -94,28 +98,28 @@ public sealed class RequestMiddlewareCodeGenerationTests
         static void act()
         {
             RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-                typeof(ThreeParameterBeforeBehavior<,,>),
+                typeof(FourParameterBeforeBehavior<,,,>),
                 typeof(TestCommand),
                 typeof(Result),
-                typeof(IBeforeRequestBehavior<,>),
+                typeof(IBeforeRequestBehavior<,,>),
                 out _);
         }
 
         var exception = Should.Throw<InvalidOperationException>(act);
 
         exception.Message.ShouldStartWith("Open generic middleware '");
-        exception.Message.ShouldEndWith("' must have exactly 2 generic parameters.");
+        exception.Message.ShouldEndWith("' must have exactly 3 generic parameters.");
     }
 
     [Fact(DisplayName = "TryResolveClosedMiddlewareType returns false when generic constraints do not match")]
     public void TryResolveClosedMiddlewareTypeShouldReturnFalseWhenGenericConstraintsDoNotMatch()
     {
         var resolved = RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-            typeof(ConstrainedBeforeBehavior<,>),
+            typeof(ConstrainedBeforeBehavior<,,>),
             typeof(int),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,>),
-            out var closedMiddlewareType);
+            typeof(IBeforeRequestBehavior<,,>),
+            out var closedMiddlewareType, typeof(TestRequestHandler<TestCommand, Result>));
 
         resolved.ShouldBeFalse();
         closedMiddlewareType.ShouldBeNull();
@@ -125,11 +129,11 @@ public sealed class RequestMiddlewareCodeGenerationTests
     public void TryResolveClosedMiddlewareTypeShouldReturnFalseWhenOpenGenericMiddlewareDoesNotSupportContract()
     {
         var resolved = RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-            typeof(TestAfterBehavior<,>),
+            typeof(TestAfterBehavior<TestCommand, Result>),
             typeof(TestCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,>),
-            out var closedMiddlewareType);
+            typeof(IBeforeRequestBehavior<,,>),
+            out var closedMiddlewareType, typeof(TestRequestHandler<TestCommand, Result>));
 
         resolved.ShouldBeFalse();
         closedMiddlewareType.ShouldBeNull();
@@ -139,11 +143,11 @@ public sealed class RequestMiddlewareCodeGenerationTests
     public void TryResolveClosedMiddlewareTypeShouldIgnoreNonGenericMiddlewareInterfaces()
     {
         var resolved = RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-            typeof(PlainGenericMiddleware<,>),
+            typeof(PlainGenericMiddleware<,,>),
             typeof(TestCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,>),
-            out var closedMiddlewareType);
+            typeof(IBeforeRequestBehavior<,,>),
+            out var closedMiddlewareType, typeof(TestRequestHandler<TestCommand, Result>));
 
         resolved.ShouldBeFalse();
         closedMiddlewareType.ShouldBeNull();
@@ -172,7 +176,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
     }
 
     [Theory(DisplayName = "BuildVariableName builds stable variable names")]
-    [InlineData(typeof(TestBeforeBehavior<,>), "abc123", "testBeforeBehavior_abc123")]
+    [InlineData(typeof(TestBeforeBehavior<,,>), "abc123", "testBeforeBehavior_abc123")]
     [InlineData(typeof(X), "1", "x_1")]
     public void BuildVariableNameShouldUseFriendlyTypeNameAndSuffix(
         Type type,
@@ -207,7 +211,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
     [Fact(DisplayName = "GetCodeTypeName returns a generic parameter name")]
     public void GetCodeTypeNameShouldReturnGenericParameterName()
     {
-        var genericParameter = typeof(TestBeforeBehavior<,>).GetGenericArguments()[0];
+        var genericParameter = typeof(TestBeforeBehavior<,,>).GetGenericArguments()[0];
 
         var typeName = RequestMiddlewareCodeGeneration.GetCodeTypeName(genericParameter);
 

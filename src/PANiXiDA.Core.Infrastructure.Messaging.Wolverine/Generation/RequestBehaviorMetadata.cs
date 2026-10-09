@@ -11,7 +11,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 public static class RequestBehaviorMetadata
 {
     private static readonly ConcurrentDictionary<Type, Behavior> behaviors = new();
-    private static readonly ConcurrentDictionary<(Type Behavior, Type Request, Type Result, Type Contract), Type> bindings = new();
+    private static readonly ConcurrentDictionary<(Type Behavior, Type Request, Type Result, Type Contract, Type? Handler), Type> bindings = new();
 
     /// <summary>
     /// Registers the constructor and supported contracts of a behavior known at compile time.
@@ -28,13 +28,13 @@ public static class RequestBehaviorMetadata
     /// <summary>
     /// Registers a statically closed behavior for a request, result, and pipeline stage, or null for an unsupported combination.
     /// </summary>
-    public static void RegisterBinding(Type behaviorType, Type requestType, Type resultType, Type contractType, Type? closedBehaviorType)
+    public static void RegisterBinding(Type behaviorType, Type requestType, Type resultType, Type contractType, Type? closedBehaviorType, Type? handlerType = null)
     {
         ArgumentNullException.ThrowIfNull(behaviorType);
         ArgumentNullException.ThrowIfNull(requestType);
         ArgumentNullException.ThrowIfNull(resultType);
         ArgumentNullException.ThrowIfNull(contractType);
-        bindings.TryAdd((behaviorType, requestType, resultType, contractType), closedBehaviorType ?? typeof(void));
+        bindings.TryAdd((behaviorType, requestType, resultType, contractType, handlerType), closedBehaviorType ?? typeof(void));
     }
 
     internal static Behavior GetBehavior(Type type)
@@ -47,10 +47,14 @@ public static class RequestBehaviorMetadata
                 $"No generated request behavior metadata exists for '{type.FullName}'. Ensure the Wolverine package source generator is enabled in the project declaring or registering the behavior.");
     }
 
-    internal static bool TryResolve(Type behavior, Type request, Type result, Type contract, out Type closedBehavior)
+    internal static bool TryResolve(Type behavior, Type request, Type result, Type contract, out Type closedBehavior, Type? handler = null)
     {
         RuntimeHelpers.RunModuleConstructor(request.Assembly.ManifestModule.ModuleHandle);
         RuntimeHelpers.RunModuleConstructor(result.Assembly.ManifestModule.ModuleHandle);
+        if (handler is not null)
+        {
+            RuntimeHelpers.RunModuleConstructor(handler.Assembly.ManifestModule.ModuleHandle);
+        }
 
         closedBehavior = null!;
         if (!GetBehavior(behavior).Contracts.Contains(contract) || !typeof(IRequest<Result>).IsAssignableFrom(request))
@@ -58,10 +62,10 @@ public static class RequestBehaviorMetadata
             return false;
         }
 
-        if (!bindings.TryGetValue((behavior, request, result, contract), out var resolved))
+        if (!bindings.TryGetValue((behavior, request, result, contract, handler), out var resolved))
         {
             throw new InvalidOperationException(
-                $"No generated request behavior binding exists for '{behavior.FullName}', '{request.FullName}', and '{result.FullName}'. Ensure the Wolverine package source generator can see the behavior and request types in the host project.");
+                $"No generated request behavior binding exists for '{behavior.FullName}', '{request.FullName}', '{result.FullName}', and handler '{handler?.FullName}'. Ensure the source generator can see these types and the handler implements IRequestHandler<TRequest, TResult>.");
         }
 
         if (resolved == typeof(void))

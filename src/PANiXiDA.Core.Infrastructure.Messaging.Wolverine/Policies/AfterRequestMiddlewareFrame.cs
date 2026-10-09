@@ -58,8 +58,6 @@ internal sealed class AfterRequestMiddlewareFrame(
             RequestMiddlewareCodeGeneration.GetCodeTypeName(middleware.Type);
 
         writer.WriteLine(string.Empty);
-        writer.WriteComment(
-            $"Run {RequestMiddlewareCodeGeneration.GetFriendlyTypeName(middleware.Type)} after handler execution");
         writer.WriteLine(
             $"var {middlewareVariableName} = new {middlewareTypeName}({middleware.ConstructorArguments});");
         writer.WriteLine(

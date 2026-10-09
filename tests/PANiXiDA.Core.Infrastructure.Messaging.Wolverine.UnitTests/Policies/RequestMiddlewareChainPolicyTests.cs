@@ -2,7 +2,6 @@ using System.Reflection;
 
 using JasperFx.CodeGeneration.Frames;
 
-using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles;
 
@@ -13,15 +12,15 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class RequestMiddlewareChainPolicyTests
 {
-    [Fact(DisplayName = "Apply creates one frame for each request middleware stage")]
-    public void ApplyShouldCreateOneFrameForEachRequestMiddlewareStage()
+    [Fact(DisplayName = "Apply wraps the handler once for all request middleware stages")]
+    public void ApplyShouldWrapHandlerOnceForAllRequestMiddlewareStages()
     {
         var registry = RequestMiddlewareRegistry.Create(builder =>
         {
             builder
                 .AddBefore(
-                    typeof(TestBeforeBehavior<,>),
-                    typeof(SecondBeforeBehavior<,>))
+                    typeof(TestBeforeBehavior<,,>),
+                    typeof(SecondBeforeBehavior<,,>))
                 .AddAfter(
                     typeof(TestAfterBehavior<,>),
                     typeof(SecondAfterBehavior<,>))
@@ -34,14 +33,13 @@ public sealed class RequestMiddlewareChainPolicyTests
 
         policy.Apply([chain], null!, null!);
 
-        chain.Middleware
-            .Select(frame => frame.GetType())
-            .ShouldBe(
-            [
-                typeof(FinallyRequestMiddlewareFrame),
-                typeof(BeforeRequestMiddlewareFrame),
-                typeof(AfterRequestMiddlewareFrame)
-            ]);
+        var handler = chain.Handlers.Single().ShouldBeOfType<RequestMiddlewareHandlerCall>();
+        handler.CanReturnTask().ShouldBeFalse();
+        chain.Middleware.ShouldBeEmpty();
+
+        policy.Apply([chain], null!, null!);
+
+        chain.Handlers.Single().ShouldBeSameAs(handler);
     }
 
     [Fact(DisplayName = "Apply skips request handler chain without Result return variable")]
@@ -49,7 +47,7 @@ public sealed class RequestMiddlewareChainPolicyTests
     {
         var registry = RequestMiddlewareRegistry.Create(builder =>
         {
-            builder.AddBefore(typeof(TestBeforeBehavior<,>));
+            builder.AddBefore(typeof(TestBeforeBehavior<,,>));
         });
         var policy = new RequestMiddlewareChainPolicy(registry);
         var chain = new HandlerChain(typeof(TestCommand), new HandlerGraph());
@@ -98,6 +96,29 @@ public sealed class RequestMiddlewareChainPolicyTests
 
         exception.Message.ShouldStartWith("Handler chain '");
         exception.Message.ShouldContain("' has more than one Result return variable.");
+    }
+
+    [Fact(DisplayName = "Apply rejects extra handlers even when only one returns a result")]
+    public void ApplyShouldRejectAdditionalHandler()
+    {
+        var policy = new RequestMiddlewareChainPolicy(RequestMiddlewareRegistry.Empty);
+        var chain = CreateHandlerChain(nameof(ResultHandler.Handle));
+        AddHandlerCall(chain, nameof(ResultHandler.Observe));
+
+        var exception = Should.Throw<InvalidOperationException>(() => policy.Apply([chain], null!, null!));
+
+        exception.Message.ShouldContain("must have exactly one handler returning Result or Result<T>");
+    }
+
+    [Fact(DisplayName = "Apply rejects a result returned as part of a tuple")]
+    public void ApplyShouldRejectTupleResult()
+    {
+        var policy = new RequestMiddlewareChainPolicy(RequestMiddlewareRegistry.Empty);
+        var chain = CreateHandlerChain(nameof(ResultHandler.HandleWithAdditionalResult));
+
+        var exception = Should.Throw<InvalidOperationException>(() => policy.Apply([chain], null!, null!));
+
+        exception.Message.ShouldContain("must have exactly one handler returning Result or Result<T>");
     }
 
     private static void AddHandlerCall(

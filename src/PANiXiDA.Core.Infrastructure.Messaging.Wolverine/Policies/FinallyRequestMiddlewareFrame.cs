@@ -46,22 +46,19 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
         GeneratedMethod method,
         ISourceWriter writer)
     {
-        var resultTypeName =
-            RequestMiddlewareCodeGeneration.GetCodeTypeName(
-                resultVariable.VariableType);
-        var resultLocalName = $"__finallyResult_{uniqueSuffix}";
+        Wrap(writer, () => Next?.GenerateCode(method, writer));
+    }
+
+    internal void Wrap(ISourceWriter writer, Action generateBody)
+    {
         var exceptionLocalName = $"__finallyException_{uniqueSuffix}";
 
         writer.WriteLine(string.Empty);
-        writer.WriteComment("Wrap handler execution with finally middleware");
-        writer.WriteLine(
-            $"{resultTypeName} {resultLocalName} = default!;");
         writer.WriteLine(
             $"global::System.Exception? {exceptionLocalName} = null;");
 
         writer.Write("BLOCK:try");
-        Next?.GenerateCode(method, writer);
-        writer.WriteLine($"{resultLocalName} = {resultVariable.Usage};");
+        generateBody();
         writer.FinishBlock();
 
         writer.Write("BLOCK:catch (global::System.Exception ex)");
@@ -72,7 +69,7 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
         writer.Write("BLOCK:finally");
         WriteMiddleware(
             writer,
-            resultLocalName,
+            resultVariable.Usage,
             exceptionLocalName,
             index: 0);
         writer.FinishBlock();

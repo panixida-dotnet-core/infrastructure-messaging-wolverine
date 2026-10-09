@@ -12,7 +12,7 @@ public sealed class WolverineRequestBehaviorConfiguration
     internal WolverineRequestBehaviorConfiguration()
     {
         Before = new WolverineRequestBehaviorStageConfiguration(
-            typeof(IBeforeRequestBehavior<,>),
+            typeof(IBeforeRequestBehavior<,,>),
             "Before");
 
         After = new WolverineRequestBehaviorStageConfiguration(
@@ -30,7 +30,7 @@ public sealed class WolverineRequestBehaviorConfiguration
     public WolverineRequestBehaviorStageConfiguration Before { get; }
 
     /// <summary>
-    /// Gets the configuration for behaviors executed after successful handler execution.
+    /// Gets the configuration for behaviors executed after a handler or before behavior produces a result.
     /// </summary>
     public WolverineRequestBehaviorStageConfiguration After { get; }
 
@@ -43,8 +43,9 @@ public sealed class WolverineRequestBehaviorConfiguration
     {
         var configuration = new WolverineRequestBehaviorConfiguration();
 
-        configuration.Before.Add(typeof(ValidationBehavior<,>));
-        configuration.Before.Add(typeof(BeginTransactionBehavior<,>));
+        configuration.Before.Add(typeof(AuthorizationBehavior<,,>));
+        configuration.Before.Add(typeof(ValidationBehavior<,,>));
+        configuration.Before.Add(typeof(BeginTransactionBehavior<,,>));
 
         configuration.After.Add(typeof(PublishDomainEventsBehavior<,>));
         configuration.After.Add(typeof(PersistOutgoingMessagesBehavior<,>));
@@ -60,9 +61,10 @@ public sealed class WolverineRequestBehaviorConfiguration
     {
         var configuration = new WolverineRequestBehaviorConfiguration();
 
-        configuration.Before.Add(typeof(ActivateWolverineModuleBehavior<,>));
-        configuration.Before.Add(typeof(ValidationBehavior<,>));
-        configuration.Before.Add(typeof(BeginTransactionBehavior<,>));
+        configuration.Before.Add(typeof(ActivateWolverineModuleBehavior<,,>));
+        configuration.Before.Add(typeof(AuthorizationBehavior<,,>));
+        configuration.Before.Add(typeof(ValidationBehavior<,,>));
+        configuration.Before.Add(typeof(BeginTransactionBehavior<,,>));
 
         configuration.After.Add(typeof(PublishDomainEventsBehavior<,>));
         configuration.After.Add(typeof(PersistOutgoingMessagesBehavior<,>));

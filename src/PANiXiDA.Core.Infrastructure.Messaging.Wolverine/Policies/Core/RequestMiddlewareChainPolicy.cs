@@ -34,47 +34,15 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
 
     private void ApplyToChain(HandlerChain chain, Variable resultVariable)
     {
-        AddFinallyMiddleware(chain, resultVariable);
-        AddBeforeMiddleware(chain, resultVariable.VariableType);
-        AddAfterMiddleware(chain, resultVariable);
-    }
-
-    private void AddFinallyMiddleware(HandlerChain chain, Variable resultVariable)
-    {
-        var frame = FinallyRequestMiddlewareFrame.TryCreate(
-            chain.MessageType,
-            resultVariable,
-            registry.FinallyMiddlewareTypes);
-
-        if (frame is not null)
+        if (chain.Handlers.Count != 1 || chain.Handlers[0].ReturnVariable != resultVariable)
         {
-            chain.Middleware.Add(frame);
+            throw new InvalidOperationException(
+                $"Handler chain '{chain}' must have exactly one handler returning Result or Result<T>.");
         }
-    }
 
-    private void AddBeforeMiddleware(HandlerChain chain, Type resultType)
-    {
-        var frame = BeforeRequestMiddlewareFrame.TryCreate(
-            chain.MessageType,
-            resultType,
-            registry.BeforeMiddlewareTypes);
-
-        if (frame is not null)
+        if (chain.Handlers[0] is not RequestMiddlewareHandlerCall)
         {
-            chain.Middleware.Add(frame);
-        }
-    }
-
-    private void AddAfterMiddleware(HandlerChain chain, Variable resultVariable)
-    {
-        var frame = AfterRequestMiddlewareFrame.TryCreate(
-            chain.MessageType,
-            resultVariable,
-            registry.AfterMiddlewareTypes);
-
-        if (frame is not null)
-        {
-            chain.Middleware.Add(frame);
+            chain.Handlers[0] = new RequestMiddlewareHandlerCall(chain.MessageType, chain.Handlers[0], registry);
         }
     }
 

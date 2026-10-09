@@ -8,6 +8,12 @@ public sealed class IntegrationTestJournal
 
     public IReadOnlyList<string> Entries => [.. entries];
 
+    public Result? AfterResult { get; set; }
+
+    public Result? FinallyResult { get; set; }
+
+    public Exception? FinallyException { get; set; }
+
     public void Add(string entry)
     {
         entries.Enqueue(entry);

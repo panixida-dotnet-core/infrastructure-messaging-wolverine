@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 
+using PANiXiDA.Core.Application.Messaging.Mediator.Handlers;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Behaviors;
@@ -7,13 +8,15 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Behaviors;
 /// <summary>
 /// Activates the module associated with the current mediator request.
 /// </summary>
-/// <typeparam name="TRequest">The request type processed by the pipeline.</typeparam>
-/// <typeparam name="TResult">The request result type.</typeparam>
+/// <typeparam name="TRequest">The request type used to select the owning module.</typeparam>
+/// <typeparam name="TResult">The result type returned by the request.</typeparam>
+/// <typeparam name="THandler">The handler type processing the request.</typeparam>
 /// <param name="serviceProvider">The current request service provider.</param>
-public sealed class ActivateWolverineModuleBehavior<TRequest, TResult>(
-    IServiceProvider serviceProvider) : IBeforeRequestBehavior<TRequest, TResult>
+public sealed class ActivateWolverineModuleBehavior<TRequest, TResult, THandler>(
+    IServiceProvider serviceProvider) : IBeforeRequestBehavior<TRequest, TResult, THandler>
     where TRequest : IRequest<TResult>
     where TResult : Result
+    where THandler : IRequestHandler<TRequest, TResult>
 {
     /// <summary>
     /// Activates module-scoped persistence services for the current request.
