@@ -20,6 +20,7 @@
         <Using Include="PANiXiDA.Core.Application.Messaging.Mediator" />
         <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Behaviors.Abstractions" />
         <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Contracts" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Handlers" />
         <Using Include="PANiXiDA.Core.Application.Persistence" />
         <Using Include="PANiXiDA.Core.Domain.DomainEvents" />
         <Using Include="PANiXiDA.Core.ResultPattern" />

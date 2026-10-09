@@ -36,7 +36,7 @@ public sealed class RequestMiddlewareFrameTests
     {
         var handlerType = typeof(TestRequestHandler<TestCommand, Result>);
         var handler = new MethodCall(handlerType, "HandleAsync");
-        var handlerContract = typeof(PANiXiDA.Core.Application.Messaging.Mediator.Handlers.IRequestHandler<TestCommand, Result>);
+        var handlerContract = typeof(IRequestHandler<TestCommand, Result>);
         handler.Aliases.Add(handlerContract, handlerType);
         var registry = RequestMiddlewareRegistry.Create(builder => builder
             .AddBefore<ClosedCommandBeforeBehavior>()
