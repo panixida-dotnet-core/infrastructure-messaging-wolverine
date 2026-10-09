@@ -15,15 +15,19 @@ public sealed class RequestMiddlewareCodeGenerationTests
         exception.Message.ShouldStartWith("No generated request behavior metadata exists");
     }
 
-    [Fact(DisplayName = "Missing generated bindings fail explicitly instead of skipping request middleware")]
-    public void TryResolveClosedMiddlewareTypeShouldRejectMissingGeneratedBinding()
+    [Theory(DisplayName = "Missing generated bindings fail explicitly instead of skipping request middleware")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TryResolveClosedMiddlewareTypeShouldRejectMissingGeneratedBinding(bool includeHandler)
     {
-        static void act() => RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-            typeof(TestBeforeBehavior<,,>), typeof(UnregisteredRequest), typeof(Result), typeof(IBeforeRequestBehavior<,,>), out _);
+        var handlerType = includeHandler ? typeof(TestRequestHandler<TestCommand, Result>) : null;
+        void act() => RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
+            typeof(TestBeforeBehavior<,,>), typeof(UnregisteredRequest), typeof(Result), typeof(IBeforeRequestBehavior<,,>), out _, handlerType);
 
         var exception = Should.Throw<InvalidOperationException>(act);
 
         exception.Message.ShouldStartWith("No generated request behavior binding exists");
+        exception.Message.ShouldContain($"handler '{handlerType?.FullName}'");
     }
 
     private sealed record UnregisteredRequest : ICommand<Result>;
