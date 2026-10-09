@@ -8,6 +8,9 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Behaviors;
 /// <summary>
 /// Activates the module associated with the current mediator request.
 /// </summary>
+/// <typeparam name="TRequest">The request type used to select the owning module.</typeparam>
+/// <typeparam name="TResult">The result type returned by the request.</typeparam>
+/// <typeparam name="THandler">The handler type processing the request.</typeparam>
 /// <param name="serviceProvider">The current request service provider.</param>
 public sealed class ActivateWolverineModuleBehavior<TRequest, TResult, THandler>(
     IServiceProvider serviceProvider) : IBeforeRequestBehavior<TRequest, TResult, THandler>

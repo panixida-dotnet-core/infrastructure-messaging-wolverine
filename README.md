@@ -40,7 +40,7 @@ Full Native AOT support is not currently provided.
 
 ### Installation
 
-Use the latest 4.2.x version:
+Use the latest 5.0.x version:
 
 ```xml
 <ItemGroup>
