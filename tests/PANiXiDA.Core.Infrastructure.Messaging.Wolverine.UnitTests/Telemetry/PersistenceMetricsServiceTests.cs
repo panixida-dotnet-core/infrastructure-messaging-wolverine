@@ -22,7 +22,21 @@ public sealed class PersistenceMetricsServiceTests
         await harness.Reader.Observed.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
         await harness.Service.StopAsync(token);
 
-        harness.Service.ExecuteTask.ShouldNotBeNull().IsCompleted.ShouldBeTrue();
+        harness.Service.ExecuteTask.ShouldNotBeNull().IsCompletedSuccessfully.ShouldBeTrue();
+    }
+
+    [Fact(DisplayName = "Stopping before host startup completes normally without polling storage")]
+    public async Task PollerShouldStopWhileWaitingForStartup()
+    {
+        using var harness = new MetricsHarness();
+        var token = TestContext.Current.CancellationToken;
+        await harness.Service.StartAsync(token);
+        await harness.Lifetime.Observed.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+
+        await harness.Service.StopAsync(token);
+
+        harness.Reader.Observed.Task.IsCompleted.ShouldBeFalse();
+        harness.Service.ExecuteTask.ShouldNotBeNull().IsCompletedSuccessfully.ShouldBeTrue();
     }
 
     [Fact(DisplayName = "A timed out database read leaves queue state unknown without stopping the host")]
@@ -177,7 +191,15 @@ public sealed class PersistenceMetricsServiceTests
     private sealed class TestLifetime : IHostApplicationLifetime, IDisposable
     {
         private readonly CancellationTokenSource started = new();
-        public CancellationToken ApplicationStarted => started.Token;
+        public TaskCompletionSource Observed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public CancellationToken ApplicationStarted
+        {
+            get
+            {
+                Observed.TrySetResult();
+                return started.Token;
+            }
+        }
         public CancellationToken ApplicationStopping => CancellationToken.None;
         public CancellationToken ApplicationStopped => CancellationToken.None;
         public void StopApplication() { }

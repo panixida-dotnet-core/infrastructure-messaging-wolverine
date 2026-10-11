@@ -36,15 +36,22 @@ internal sealed partial class PersistenceMetricsService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var registration = lifetime.ApplicationStarted.Register(() => started.TrySetResult());
-        await started.Task.WaitAsync(stoppingToken);
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1), clock);
-        do
+        try
         {
-            await PollAsync(stoppingToken);
+            var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var registration = lifetime.ApplicationStarted.Register(() => started.TrySetResult());
+            await started.Task.WaitAsync(stoppingToken);
+            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1), clock);
+            do
+            {
+                await PollAsync(stoppingToken);
+            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
         }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Host shutdown cancels both the startup wait and the polling timer.
+        }
     }
 
     internal async Task PollAsync(CancellationToken cancellationToken)
