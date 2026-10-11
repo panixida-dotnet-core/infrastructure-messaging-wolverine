@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 using Microsoft.Extensions.Configuration;
@@ -147,6 +148,28 @@ public sealed class ComplexOptionBindingTests
         var original = configuration.GetSection("Options").Get<CollectionOptions>()!;
 
         JsonSerializer.Serialize(generated).ShouldBe(JsonSerializer.Serialize(original));
+    }
+
+    [Fact(DisplayName = "Generated dictionary binding preserves the current culture for integer keys")]
+    public void BinderShouldPreserveDictionaryKeyCulture()
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        var culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.NegativeSign = "~";
+        CultureInfo.CurrentCulture = culture;
+        try
+        {
+            var configuration = new ConfigurationManager { ["Options:Dictionary:~1:0"] = "5" };
+
+            var generated = OptionBindingRegistry.GetRequired<CollectionOptions>(configuration, "Options");
+            var original = configuration.GetSection("Options").Get<CollectionOptions>()!;
+
+            generated.Dictionary[-1].ShouldBe(original.Dictionary[-1]);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
     }
 
     [Fact(DisplayName = "Generated binding preserves parameterized constructor transformations and binds collection arguments once")]

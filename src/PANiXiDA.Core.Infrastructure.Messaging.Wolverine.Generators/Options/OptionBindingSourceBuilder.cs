@@ -147,7 +147,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var key = property.GetAttributes().FirstOrDefault(attribute =>
             SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, keyNameAttribute))
             ?.ConstructorArguments.FirstOrDefault().Value as string ?? property.Name;
-        if (string.IsNullOrWhiteSpace(key)) key = property.Name;
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            key = property.Name;
+        }
         var literal = SymbolDisplay.FormatLiteral(key, true);
         var value = "value" + index;
         body.Append($"        {Name(property.Type)} {value} = option.@{property.Name};\n")
@@ -207,9 +210,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             }
 
             var section = "section.GetSection(" + SymbolDisplay.FormatLiteral(parameter.Name, true) + ")";
-            var missing = parameter.HasExplicitDefaultValue
-                ? parameter.ExplicitDefaultValue is null ? "default" : "(" + Name(parameter.Type) + ")" + SymbolDisplay.FormatPrimitive(parameter.ExplicitDefaultValue, quoteStrings: true, useHexadecimalNumbers: false)
-                : $"throw new global::System.InvalidOperationException(\"Missing configuration for constructor parameter '{parameter.Name}' on '{type}'.\")";
+            var missing = MissingParameter(type, parameter);
             arguments.Add($"(global::Microsoft.Extensions.Configuration.ConfigurationExtensions.Exists({section}) ? {Build(parameter.Type)}({section}, default) : {missing})");
         }
 
@@ -219,6 +220,21 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         return "new " + Name(type) + "(" + string.Join(", ", arguments) + ")";
+    }
+
+    private static string MissingParameter(INamedTypeSymbol type, IParameterSymbol parameter)
+    {
+        if (!parameter.HasExplicitDefaultValue)
+        {
+            return $"throw new global::System.InvalidOperationException(\"Missing configuration for constructor parameter '{parameter.Name}' on '{type}'.\")";
+        }
+
+        if (parameter.ExplicitDefaultValue is null)
+        {
+            return "default";
+        }
+
+        return "(" + Name(parameter.Type) + ")" + SymbolDisplay.FormatPrimitive(parameter.ExplicitDefaultValue, quoteStrings: true, useHexadecimalNumbers: false);
     }
 
     private string InvalidConstruction(INamedTypeSymbol type, string method, string message)
@@ -272,12 +288,28 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private static List<string> GetConstraints(ITypeParameterSymbol parameter, Func<ISymbol, string> name)
     {
         var constraints = new List<string>();
-        if (parameter.HasUnmanagedTypeConstraint) constraints.Add("unmanaged");
-        else if (parameter.HasValueTypeConstraint) constraints.Add("struct");
-        else if (parameter.HasReferenceTypeConstraint) constraints.Add("class");
-        else if (parameter.HasNotNullConstraint) constraints.Add("notnull");
+        if (parameter.HasUnmanagedTypeConstraint)
+        {
+            constraints.Add("unmanaged");
+        }
+        else if (parameter.HasValueTypeConstraint)
+        {
+            constraints.Add("struct");
+        }
+        else if (parameter.HasReferenceTypeConstraint)
+        {
+            constraints.Add("class");
+        }
+        else if (parameter.HasNotNullConstraint)
+        {
+            constraints.Add("notnull");
+        }
+
         constraints.AddRange(parameter.ConstraintTypes.Select(type => name(type)));
-        if (parameter.HasConstructorConstraint) constraints.Add("new()");
+        if (parameter.HasConstructorConstraint)
+        {
+            constraints.Add("new()");
+        }
         return constraints;
     }
 
@@ -329,21 +361,38 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             body.Append($"        option ??= {create};\n        var items = ({Collections}ICollection<{elementName}>)option;\n");
         }
 
+        AppendSequenceItems(body, element, copy, readOnlySet);
+    }
+
+    private void AppendSequenceItems(StringBuilder body, ITypeSymbol element, bool copy, bool readOnlySet)
+    {
         var nonNullableArray = copy && element.IsValueType && !IsNullable(element) && CanConvertScalar(element);
-        if (nonNullableArray) body.Append("        var nullElement = false;\n");
+        if (nonNullableArray)
+        {
+            body.Append("        var nullElement = false;\n");
+        }
+
         var rejectNull = nonNullableArray ? "if (child.Value is null && !global::System.Linq.Enumerable.Any(child.GetChildren())) { nullElement = true; continue; }\n                " : string.Empty;
         AppendItems(body, element, rejectNull + $"items.Add({Build(element)}(child, default, parentCollection: true));");
-        if (nonNullableArray) body.Append("        if (nullElement) throw new global::System.InvalidCastException(\"At least one element in the source array could not be cast down to the destination array type.\");\n");
-        body.Append(copy ? "        return items.ToArray();\n" : readOnlySet ? "        return items;\n" : "        return option;\n");
+        if (nonNullableArray)
+        {
+            body.Append("        if (nullElement) throw new global::System.InvalidCastException(\"At least one element in the source array could not be cast down to the destination array type.\");\n");
+        }
+
+        var result = readOnlySet ? "items" : "option";
+        if (copy)
+        {
+            result = "items.ToArray()";
+        }
+
+        body.Append($"        return {result};\n");
     }
 
     private void AppendDictionary(StringBuilder body, INamedTypeSymbol type, INamedTypeSymbol dictionary)
     {
         var key = dictionary.TypeArguments[0];
         var value = dictionary.TypeArguments[1];
-        var keyExpression = key.SpecialType == SpecialType.System_String ? "child.Key" : key.TypeKind == TypeKind.Enum
-            ? $"global::System.Enum.Parse<{Name(key)}>(child.Key, ignoreCase: true)"
-            : $"({Name(key)})global::System.Convert.ChangeType(child.Key, typeof({Name(key)}), global::System.Globalization.CultureInfo.InvariantCulture)";
+        var keyExpression = DictionaryKey(key);
         var readOnly = type.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>";
         var concrete = $"{Collections}Dictionary<{Name(key)}, {Name(value)}>";
         var create = type.TypeKind == TypeKind.Interface ? "new " + concrete + "()" : Construction(type, methods[type]);
@@ -360,6 +409,21 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         AppendItems(body, value, $"var key = {keyExpression};\n                items.TryGetValue(key, out var current);\n                items[key] = {Build(value)}(child, current, parentCollection: true);");
         body.Append(readOnly ? "        return items;\n" : "        return option;\n");
+    }
+
+    private static string DictionaryKey(ITypeSymbol key)
+    {
+        if (key.SpecialType == SpecialType.System_String)
+        {
+            return "child.Key";
+        }
+
+        if (key.TypeKind == TypeKind.Enum)
+        {
+            return $"global::System.Enum.Parse<{Name(key)}>(child.Key, ignoreCase: true)";
+        }
+
+        return $"({Name(key)})global::System.Convert.ChangeType(child.Key, typeof({Name(key)}), global::System.Globalization.CultureInfo.CurrentCulture)";
     }
 
     private static void AppendCollectionLeaf(StringBuilder body, ITypeSymbol type, string creation, string empty)
