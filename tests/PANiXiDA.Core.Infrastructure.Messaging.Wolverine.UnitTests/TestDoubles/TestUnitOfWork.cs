@@ -4,6 +4,10 @@ public sealed class TestUnitOfWork : IUnitOfWork
 {
     public bool HasActiveTransaction { get; set; }
 
+    public Exception? RollbackException { get; init; }
+
+    public Exception? DisposeException { get; init; }
+
     public int BeginTransactionCallCount { get; private set; }
 
     public int CommitTransactionCallCount { get; private set; }
@@ -33,6 +37,11 @@ public sealed class TestUnitOfWork : IUnitOfWork
         RollbackTransactionCallCount++;
         HasActiveTransaction = false;
 
+        if (RollbackException is not null)
+        {
+            throw RollbackException;
+        }
+
         return Task.CompletedTask;
     }
 
@@ -40,6 +49,11 @@ public sealed class TestUnitOfWork : IUnitOfWork
     {
         DisposeTransactionCallCount++;
         HasActiveTransaction = false;
+
+        if (DisposeException is not null)
+        {
+            throw DisposeException;
+        }
 
         return ValueTask.CompletedTask;
     }

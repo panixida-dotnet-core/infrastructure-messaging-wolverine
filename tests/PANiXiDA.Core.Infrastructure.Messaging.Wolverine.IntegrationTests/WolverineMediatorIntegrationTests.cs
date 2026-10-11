@@ -92,6 +92,34 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         ShouldContainInOrder(app.Journal.Entries, "behavior.throwFinally", "unitOfWork.rollback", "behavior.finally");
     }
 
+    [Theory(DisplayName = "Handler and finally failures are preserved while the transaction is rolled back")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FinallyShouldPreserveHandlerAndCleanupFailures(bool useModules)
+    {
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: useModules,
+            configureRequestBehaviors: behaviors =>
+            {
+                behaviors.Finally.InsertBefore(typeof(ThrowFinallyBehavior<,>), typeof(CleanupTransactionBehavior<,>));
+                behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>));
+            });
+        var id = Guid.NewGuid();
+
+        var exception = await Record.ExceptionAsync(() => app.ExecuteWithMediatorAsync(
+            (mediator, token) => mediator.SendAsync(
+                new CreateIntegrationRecordAndFailAfterPublishCommand(id, "cleanup-failure"), token),
+            TestContext.Current.CancellationToken));
+
+        var aggregate = (exception as AggregateException ?? exception?.InnerException as AggregateException).ShouldNotBeNull();
+        aggregate.InnerExceptions.Count.ShouldBe(2);
+        aggregate.InnerExceptions[0].ShouldBeSameAs(app.Journal.FinallyException);
+        aggregate.InnerExceptions[1].ShouldBeOfType<PlannedCommandException>();
+        aggregate.InnerExceptions[1].ShouldNotBeSameAs(app.Journal.FinallyException);
+        ShouldContainInOrder(app.Journal.Entries, "behavior.throwFinally", "unitOfWork.rollback", "behavior.finally");
+        (await app.CountRecordsAsync(id)).ShouldBe(0);
+    }
+
     [Theory(DisplayName = "Authorization rejects commands before validation, transactions, and handler execution")]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]

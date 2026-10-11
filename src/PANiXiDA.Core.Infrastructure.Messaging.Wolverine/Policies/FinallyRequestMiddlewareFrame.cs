@@ -52,10 +52,14 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
     internal void Wrap(ISourceWriter writer, Action generateBody)
     {
         var exceptionLocalName = $"__finallyException_{uniqueSuffix}";
+        var exceptionDispatchName = $"__finallyExceptionDispatch_{uniqueSuffix}";
+        var cleanupExceptionsName = $"__cleanupExceptions_{uniqueSuffix}";
 
         writer.WriteLine(string.Empty);
         writer.WriteLine(
             $"global::System.Exception? {exceptionLocalName} = null;");
+        writer.WriteLine(
+            $"global::System.Runtime.ExceptionServices.ExceptionDispatchInfo? {exceptionDispatchName} = null;");
 
         writer.Write("BLOCK:try");
         generateBody();
@@ -63,49 +67,61 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
 
         writer.Write("BLOCK:catch (global::System.Exception ex)");
         writer.WriteLine($"{exceptionLocalName} = ex;");
+        writer.WriteLine($"{exceptionDispatchName} = global::System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex);");
         writer.WriteLine("throw;");
         writer.FinishBlock();
 
         writer.Write("BLOCK:finally");
-        WriteMiddleware(
-            writer,
-            resultVariable.Usage,
-            exceptionLocalName,
-            index: 0);
+        writer.WriteLine($"global::System.Collections.Generic.List<global::System.Exception>? {cleanupExceptionsName} = null;");
+        foreach (var middleware in middlewareDescriptors)
+        {
+            writer.Write("BLOCK:try");
+            WriteInvocation(writer, middleware, resultVariable.Usage, exceptionLocalName);
+            writer.FinishBlock();
+
+            var cleanupExceptionName = $"__cleanupException_{uniqueSuffix}";
+            writer.Write($"BLOCK:catch (global::System.Exception {cleanupExceptionName})");
+            writer.Write($"BLOCK:if (!global::System.Object.ReferenceEquals({cleanupExceptionName}, {exceptionLocalName}))");
+            writer.WriteLine($"{cleanupExceptionsName} ??= new();");
+            writer.WriteLine($"{cleanupExceptionsName}.Add({cleanupExceptionName});");
+            writer.FinishBlock();
+            writer.FinishBlock();
+        }
+
+        WriteRethrow(writer, exceptionLocalName, exceptionDispatchName, cleanupExceptionsName);
         writer.FinishBlock();
     }
 
-    private void WriteMiddleware(
+    private void WriteRethrow(
         ISourceWriter writer,
-        string resultLocalName,
         string exceptionLocalName,
-        int index)
+        string exceptionDispatchName,
+        string cleanupExceptionsName)
     {
-        var middleware = middlewareDescriptors[index];
-
-        if (index < middlewareDescriptors.Count - 1)
-        {
-            writer.Write("BLOCK:try");
-        }
-
-        WriteInvocation(
-            writer,
-            middleware,
-            resultLocalName,
-            exceptionLocalName);
-
-        if (index >= middlewareDescriptors.Count - 1)
-        {
-            return;
-        }
-
+        writer.Write("BLOCK:try");
+        writer.WriteComment("Restore the processing stack before propagating or aggregating cleanup failures.");
+        writer.WriteLine($"{exceptionDispatchName}?.Throw();");
         writer.FinishBlock();
+
         writer.Write("BLOCK:finally");
-        WriteMiddleware(
-            writer,
-            resultLocalName,
-            exceptionLocalName,
-            index + 1);
+        var containsOriginalName = $"__containsOriginal_{uniqueSuffix}";
+        writer.Write($"BLOCK:if ({cleanupExceptionsName} is not null)");
+        writer.Write($"BLOCK:if ({exceptionLocalName} is not null)");
+        writer.WriteComment("Cleanup may already include the original exception in an aggregate.");
+        writer.WriteLine($"bool {containsOriginalName}(global::System.Exception candidate) =>");
+        writer.WriteLine($"    global::System.Object.ReferenceEquals(candidate, {exceptionLocalName}) ||");
+        writer.WriteLine("    candidate is global::System.AggregateException aggregate &&");
+        writer.WriteLine($"    global::System.Linq.Enumerable.Any(aggregate.InnerExceptions, {containsOriginalName});");
+        writer.Write($"BLOCK:if (!global::System.Linq.Enumerable.Any({cleanupExceptionsName}, {containsOriginalName}))");
+        writer.WriteLine($"{cleanupExceptionsName}.Insert(0, {exceptionLocalName});");
+        writer.FinishBlock();
+        writer.FinishBlock();
+
+        writer.Write($"BLOCK:if ({cleanupExceptionsName}.Count > 1)");
+        writer.WriteLine($"throw new global::System.AggregateException(\"Multiple errors occurred while completing the request.\", {cleanupExceptionsName});");
+        writer.FinishBlock();
+        writer.WriteLine($"global::System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw({cleanupExceptionsName}[0]);");
+        writer.FinishBlock();
         writer.FinishBlock();
     }
 

@@ -330,6 +330,16 @@ If processing throws, Finally receives the exception and the last produced resul
 (or null if no result was produced). Finally behaviors run in registration order,
 including when an earlier Finally behavior throws.
 
+Failures from processing and Finally behaviors are preserved. A single exception is
+rethrown unchanged, including its stack trace and cancellation semantics. Multiple
+failures are reported in an `AggregateException`. Existing aggregates remain intact;
+the original processing exception is not added again if cleanup rethrows it or a
+cleanup aggregate already contains it. Separate cleanup failures are retained even
+when behaviors throw the same exception instance. Every Finally behavior receives
+the original processing exception, not failures from preceding Finally behaviors.
+Constructor failures are collected as well, and do not prevent subsequent Finally
+behaviors from running.
+
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 
 The bundled source generator prepares request behavior metadata and scoped
