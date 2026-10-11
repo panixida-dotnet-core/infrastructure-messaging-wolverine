@@ -206,7 +206,28 @@ public sealed class OptionBindingGeneratorTests
         diagnostics.ShouldBeEmpty();
         source.ShouldContain("UnsafeAccessor");
         source.ShouldNotContain("ConfigurationBinder.Get");
-        source.ShouldNotContain("System.Reflection");
+        source.Replace("global::System.Reflection.TargetInvocationException", string.Empty).ShouldNotContain("System.Reflection");
+    }
+
+    [Theory(DisplayName = "Option generator compiles scalar and complex constructor parameter checks")]
+    [InlineData("int")]
+    [InlineData("int?")]
+    [InlineData("Point")]
+    [InlineData("Point?")]
+    [InlineData("Point[]")]
+    public void GeneratorShouldCompileConstructorParameters(string type)
+    {
+        var compilation = CreateCompilation($$"""
+            public sealed class Settings({{type}} value) : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public {{type}} Value { get; } = value;
+            }
+            public readonly record struct Point(int X);
+            """);
+
+        var (_, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
     }
 
     [Fact(DisplayName = "Option generator preserves constraints and nested generic parameter positions in init accessors")]

@@ -257,6 +257,10 @@ attributes and existing mutable collections are preserved. Getter-only objects a
 Scalar binding includes `CultureInfo`, `Version`, `Half`, `Int128`, `UInt128` and type-level `TypeConverter` attributes,
 including inherited attributes. A converter on the options type can bind a scalar configuration section directly.
 Null `byte[]` entries in collections and dictionaries retain their positions and keys, matching .NET 10 configuration binding.
+Constructor and setter failures retain the exception wrappers exposed by the previous binder, including `init` setters.
+Dictionary keys support strings, enums and the eight integer types from `sbyte`/`byte` through `long`/`ulong`.
+`ISet<T>` and `IReadOnlySet<T>` bind string and enum elements; other element types remain unchanged.
+Concrete collections such as `HashSet<int>` continue to bind normally.
 Custom converters are constructed directly and must be accessible, with a public parameterless or `System.Type` constructor.
 Their implementations must also support trimming and Native AOT when publishing a native application.
 Models must be accessible to generated code; unsupported shapes produce `PANWOLVSG002` instead of a reflection fallback.

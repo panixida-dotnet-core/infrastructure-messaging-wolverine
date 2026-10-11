@@ -188,11 +188,11 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             var reference = property.ContainingType.IsValueType ? "ref " : string.Empty;
             var setter = AppendAccessor(property.SetMethod, method + "Set" + index);
-            body.Append($"            {setter}({reference}option, {value});\n");
+            AppendInvocation(body, $"{setter}({reference}option, {value});", indent: "            ");
         }
         else
         {
-            body.Append($"            option.@{property.Name} = {value};\n");
+            AppendInvocation(body, $"option.@{property.Name} = {value};", indent: "            ");
         }
 
         body.Append("        }\n");
@@ -218,6 +218,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         var properties = OptionBindingGenerator.GetProperties(type).ToArray();
         var arguments = new List<string>();
+        var signature = new List<string>();
         foreach (var parameter in constructor.Parameters)
         {
             var property = properties.FirstOrDefault(candidate => string.Equals(candidate.Name, parameter.Name, StringComparison.OrdinalIgnoreCase));
@@ -227,16 +228,56 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             }
 
             var section = "section.GetSection(" + SymbolDisplay.FormatLiteral(parameter.Name, true) + ")";
-            var missing = MissingParameter(type, parameter);
-            arguments.Add($"(global::Microsoft.Extensions.Configuration.ConfigurationExtensions.Exists({section}) ? {Build(parameter.Type)}({section}, default) : {missing})");
+            arguments.Add(AppendParameter(type, parameter, method + "Parameter" + arguments.Count) + "(" + section + ")");
+            signature.Add(Name(parameter.Type) + " argument" + signature.Count);
         }
 
-        if (properties.Any(property => property.IsRequired))
+        var invocation = properties.Any(property => property.IsRequired)
+            ? AppendAccessor(constructor, method + "Create")
+            : "new " + Name(type);
+        var body = new StringBuilder();
+        var parameterNames = Enumerable.Range(0, arguments.Count).Select(index => "argument" + index);
+        AppendInvocation(body, $"return {invocation}({string.Join(", ", parameterNames)});",
+            activationType: arguments.Count == 0 ? Name(type) : null);
+        source.Append($"    private static {Name(type)} {method}Construct({string.Join(", ", signature)})\n    {{\n")
+            .Append(body).Append("    }\n");
+
+        return method + "Construct(" + string.Join(", ", arguments) + ")";
+    }
+
+    private string AppendParameter(INamedTypeSymbol type, IParameterSymbol parameter, string method)
+    {
+        var parameterType = parameter.Type;
+        var missing = MissingParameter(type, parameter);
+        var missingStatement = parameter.HasExplicitDefaultValue ? "return " + missing : missing;
+        var body = new StringBuilder($"        if (!global::Microsoft.Extensions.Configuration.ConfigurationExtensions.Exists(section)) {missingStatement};\n");
+        var conversion = ScalarConversionCondition(parameterType);
+        if (conversion != "true")
         {
-            return AppendAccessor(constructor, method + "Create") + "(" + string.Join(", ", arguments) + ")";
+            var nullableEmpty = IsNullable(parameterType) ? " && section.Value != string.Empty" : string.Empty;
+            body.Append($"        if (section.Value is not null{nullableEmpty} && !{AnyChildren} && !({conversion}))\n")
+                .Append($"            throw new global::System.ArgumentException($\"Object of type 'System.String' cannot be converted to type '{{typeof({Name(parameterType)})}}'.\");\n");
         }
 
-        return "new " + Name(type) + "(" + string.Join(", ", arguments) + ")";
+        body.Append($"        var value = {Build(parameterType)}(section, default);\n");
+        body.Append(parameterType.IsReferenceType || IsNullable(parameterType)
+            ? $"        return value is null ? {missing} : value;\n"
+            : "        return value;\n");
+        source.Append($"    private static {Name(parameterType)} {method}({Section} section)\n    {{\n")
+            .Append(body).Append("    }\n");
+        return method;
+    }
+
+    private static void AppendInvocation(StringBuilder body, string statement, string? activationType = null, string indent = "        ")
+    {
+        var exception = "new global::System.Reflection.TargetInvocationException(exception)";
+        if (activationType is not null)
+        {
+            exception = $"new global::System.InvalidOperationException($\"Failed to create instance of type '{{typeof({activationType})}}'.\", {exception})";
+        }
+
+        body.Append($"{indent}try\n{indent}{{\n{indent}    {statement}\n{indent}}}\n")
+            .Append($"{indent}catch (global::System.Exception exception)\n{indent}{{\n{indent}    throw {exception};\n{indent}}}\n");
     }
 
     private static string MissingParameter(INamedTypeSymbol type, IParameterSymbol parameter)
@@ -336,6 +377,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var set = named is not null && (FindInterface(named, "System.Collections.Generic.ISet<T>") is not null ||
             FindInterface(named, "System.Collections.Generic.IReadOnlySet<T>") is not null);
         var readOnlySet = named?.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.IReadOnlySet<T>";
+        var setInterface = named?.OriginalDefinition.ToDisplayString() is "System.Collections.Generic.ISet<T>" or "System.Collections.Generic.IReadOnlySet<T>";
+        if (setInterface && element.SpecialType != SpecialType.System_String && element.TypeKind != TypeKind.Enum)
+        {
+            body.Append("        return option;\n");
+            return;
+        }
+
         var collection = named is not null && FindInterface(named, "System.Collections.Generic.ICollection<T>") is not null;
         if (!copy && !set && !collection)
         {
@@ -413,6 +461,12 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var value = dictionary.TypeArguments[1];
         var keyExpression = DictionaryKey(key);
         var readOnly = type.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>";
+        if (keyExpression is null && type.TypeKind == TypeKind.Interface)
+        {
+            body.Append("        return option;\n");
+            return;
+        }
+
         var concrete = $"{Collections}Dictionary<{Name(key)}, {Name(value)}>";
         var create = type.TypeKind == TypeKind.Interface ? "new " + concrete + "()" : Construction(type, methods[type]);
         AppendCollectionLeaf(body, type, create, "option");
@@ -426,11 +480,14 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
                 .Append($"        var items = ({Collections}IDictionary<{Name(key)}, {Name(value)}>)option;\n");
         }
 
-        AppendItems(body, value, $"var key = {keyExpression};\n                items.TryGetValue(key, out var current);\n                items[key] = {Build(value)}(child, current, parentCollection: true);");
+        if (keyExpression is not null)
+        {
+            AppendItems(body, value, $"var key = {keyExpression};\n                items.TryGetValue(key, out var current);\n                items[key] = {Build(value)}(child, current, parentCollection: true);");
+        }
         body.Append(readOnly ? "        return items;\n" : "        return option;\n");
     }
 
-    private static string DictionaryKey(ITypeSymbol key)
+    private static string? DictionaryKey(ITypeSymbol key)
     {
         if (key.SpecialType == SpecialType.System_String)
         {
@@ -442,7 +499,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return $"global::System.Enum.Parse<{Name(key)}>(child.Key, ignoreCase: true)";
         }
 
-        return $"({Name(key)})global::System.Convert.ChangeType(child.Key, typeof({Name(key)}), global::System.Globalization.CultureInfo.CurrentCulture)";
+        return key.SpecialType is SpecialType.System_SByte or SpecialType.System_Byte or SpecialType.System_Int16 or
+            SpecialType.System_UInt16 or SpecialType.System_Int32 or SpecialType.System_UInt32 or SpecialType.System_Int64 or SpecialType.System_UInt64
+            ? $"({Name(key)})global::System.Convert.ChangeType(child.Key, typeof({Name(key)}), global::System.Globalization.CultureInfo.CurrentCulture)"
+            : null;
     }
 
     private static void AppendCollectionLeaf(StringBuilder body, ITypeSymbol type, string creation, string empty)
