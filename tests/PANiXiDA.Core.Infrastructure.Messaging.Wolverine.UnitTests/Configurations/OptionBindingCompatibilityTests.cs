@@ -151,7 +151,7 @@ public sealed class OptionBindingCompatibilityTests
         var generated = OptionBindingRegistry.GetRequired<BinaryOptions>(configuration, "Options");
 
         generated.Initialized.ShouldBe(original.Initialized);
-        generated.Initialized.ShouldBe(new byte[] { 1, 2, 3 });
+        generated.Initialized.ShouldBe([1, 2, 3]);
     }
 
     [Theory(DisplayName = "Generated binding resolves configuration aliases containing multiple path segments")]
