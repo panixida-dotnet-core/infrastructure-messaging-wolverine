@@ -39,6 +39,24 @@ public sealed class PersistenceMetricsServiceTests
         harness.Service.ExecuteTask.ShouldNotBeNull().IsCompletedSuccessfully.ShouldBeTrue();
     }
 
+    [Fact(DisplayName = "The poller refreshes persistence metrics on the next timer tick")]
+    public async Task PollerShouldRefreshOnSchedule()
+    {
+        using var harness = new MetricsHarness();
+        var token = TestContext.Current.CancellationToken;
+        harness.Lifetime.Start();
+        await harness.Service.StartAsync(token);
+        await harness.Reader.Observed.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+        harness.Reader.Result = new(3, 60, 0, 0, []);
+
+        harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        await harness.Reader.ObservedAgain.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+        await harness.Service.StopAsync(token);
+
+        harness.Collect()["wolverine.persistence.dead_letters"].ShouldBe(3);
+        harness.Service.ExecuteTask.ShouldNotBeNull().IsCompletedSuccessfully.ShouldBeTrue();
+    }
+
     [Fact(DisplayName = "A timed out database read leaves queue state unknown without stopping the host")]
     public async Task PollerShouldContainReadTimeouts()
     {
@@ -168,14 +186,21 @@ public sealed class PersistenceMetricsServiceTests
 
     private sealed class FakeReader : IPersistenceMetricsReader
     {
+        private int reads;
         public PersistenceMetricsSnapshot Result { get; set; } = new(0, 0, 0, 0, []);
         public Exception? Error { get; set; }
         public TaskCompletionSource Observed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ObservedAgain { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<PersistenceMetricsSnapshot> ReadAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Observed.TrySetResult();
+            if (Interlocked.Increment(ref reads) > 1)
+            {
+                ObservedAgain.TrySetResult();
+            }
+
             return Error is { } error ? Task.FromException<PersistenceMetricsSnapshot>(error) : Task.FromResult(Result);
         }
     }
@@ -183,9 +208,24 @@ public sealed class PersistenceMetricsServiceTests
     private sealed class ManualClock : TimeProvider
     {
         private long timestamp;
+        private ManualTimer? timer;
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override long GetTimestamp() => timestamp;
-        public void Advance(TimeSpan duration) => timestamp += duration.Ticks;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+            => timer = new ManualTimer(callback, state);
+        public void Advance(TimeSpan duration)
+        {
+            timestamp += duration.Ticks;
+            timer?.Tick();
+        }
+
+        private sealed class ManualTimer(TimerCallback callback, object? state) : ITimer
+        {
+            public void Tick() => callback(state);
+            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 
     private sealed class TestLifetime : IHostApplicationLifetime, IDisposable
