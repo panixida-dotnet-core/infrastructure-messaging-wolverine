@@ -253,10 +253,12 @@ options.AddConsumer<UserCreated>("External:Consumers");
 The bundled generator discovers accessible concrete options in the current and referenced assemblies. Existing registration calls
 and configuration keys stay unchanged. It binds scalar values, nested objects, records, arrays, lists, sets and dictionaries,
 including public `init` setters and `required` properties. Constructor defaults, inherited properties, `ConfigurationKeyName`
-attributes and existing mutable collections are preserved. Getter-only objects and mutable collections are populated in place.
+attributes (including paths such as `nested:value`) and existing mutable collections are preserved.
+Getter-only objects and mutable collections are populated in place.
 Scalar binding includes `CultureInfo`, `Version`, `Half`, `Int128`, `UInt128` and type-level `TypeConverter` attributes,
 including inherited attributes. A converter on the options type can bind a scalar configuration section directly.
 Null `byte[]` entries in collections and dictionaries retain their positions and keys, matching .NET 10 configuration binding.
+Base64 scalars and array children append to initialized byte arrays, matching the .NET 10 binder.
 Constructor and setter failures retain the exception wrappers exposed by the previous binder, including `init` setters.
 Dictionary keys support strings, enums and the eight integer types from `sbyte`/`byte` through `long`/`ulong`.
 `ISet<T>` and `IReadOnlySet<T>` bind string and enum elements; other element types remain unchanged.

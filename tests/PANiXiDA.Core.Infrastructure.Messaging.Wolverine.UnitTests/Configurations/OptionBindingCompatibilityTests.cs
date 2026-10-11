@@ -117,6 +117,80 @@ public sealed class OptionBindingCompatibilityTests
         generated.Values[0].ShouldBeNull();
     }
 
+    [Theory(DisplayName = "Generated binding preserves initialized byte arrays when binding Base64 scalars")]
+    [InlineData("AgM=", false)]
+    [InlineData("AgM=", true)]
+    [InlineData("", false)]
+    [InlineData("", true)]
+    public void BinderShouldPreserveInitializedBinaryScalars(string value, bool hasChildren)
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Initialized"] = value,
+            ["Options:Empty"] = value,
+        };
+        if (hasChildren)
+        {
+            configuration["Options:Initialized:0"] = "99";
+        }
+
+        var original = configuration.GetSection("Options").Get<BinaryOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<BinaryOptions>(configuration, "Options");
+
+        generated.Initialized.ShouldBe(original.Initialized);
+        generated.Initialized.ShouldBe(new byte[] { 1 }.Concat(Convert.FromBase64String(value)));
+        generated.Empty.ShouldBe(original.Empty);
+    }
+
+    [Fact(DisplayName = "Generated binding appends array children to initialized byte arrays")]
+    public void BinderShouldAppendBinaryChildren()
+    {
+        var configuration = new ConfigurationManager { ["Options:Initialized:0"] = "2", ["Options:Initialized:1"] = "3" };
+
+        var original = configuration.GetSection("Options").Get<BinaryOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<BinaryOptions>(configuration, "Options");
+
+        generated.Initialized.ShouldBe(original.Initialized);
+        generated.Initialized.ShouldBe(new byte[] { 1, 2, 3 });
+    }
+
+    [Theory(DisplayName = "Generated binding resolves configuration aliases containing multiple path segments")]
+    [InlineData("configured", "42")]
+    [InlineData("", "")]
+    [InlineData(null, null)]
+    public void BinderShouldResolveNestedAliases(string? text, string? number)
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:NESTED:VALUE"] = text,
+            ["Options:Nested:Numbers:Optional"] = number,
+            ["Options:Nested:Payload:Name"] = "configured payload",
+            ["Options:Nested:Items:0"] = "2",
+        };
+
+        var original = configuration.GetSection("Options").Get<AliasedOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<AliasedOptions>(configuration, "Options");
+
+        JsonSerializer.Serialize(generated).ShouldBe(JsonSerializer.Serialize(original));
+        generated.Text.ShouldBe(text);
+        generated.Payload.Name.ShouldBe("configured payload");
+        generated.Items.ShouldBe([1, 2]);
+        generated.Missing.ShouldBe(9);
+    }
+
+    [Fact(DisplayName = "Generated binding preserves conversion errors for multi-segment aliases")]
+    public void BinderShouldPreserveNestedAliasErrors()
+    {
+        var configuration = new ConfigurationManager { ["Options:Nested:Numbers:Optional"] = "invalid" };
+
+        var original = Should.Throw<InvalidOperationException>(() => configuration.GetSection("Options").Get<AliasedOptions>());
+        var generated = Should.Throw<InvalidOperationException>(() =>
+            OptionBindingRegistry.GetRequired<AliasedOptions>(configuration, "Options"));
+
+        generated.Message.ShouldContain("Options:Nested:Numbers:Optional");
+        generated.InnerException.ShouldBeOfType(original.InnerException!.GetType());
+    }
+
     [Fact(DisplayName = "Generated binding preserves standard and custom TypeConverter values")]
     public void BinderShouldPreserveTypeConverterValues()
     {
@@ -270,6 +344,24 @@ public sealed class OptionBindingCompatibilityTests
         public Dictionary<string, byte[]?> Dictionary { get; init; } = [];
         public byte[]? Empty { get; init; } = [];
         public byte[]? Initialized { get; init; } = [1];
+    }
+
+    public sealed class AliasedOptions : KafkaConsumerOption
+    {
+        [ConfigurationKeyName("nested:value")]
+        public string? Text { get; init; } = "initial";
+
+        [ConfigurationKeyName("Nested:Numbers:Optional")]
+        public int? Number { get; init; } = 7;
+
+        [ConfigurationKeyName("Nested:Payload")]
+        public NonConvertingValue Payload { get; } = new();
+
+        [ConfigurationKeyName("Nested:Items")]
+        public List<int> Items { get; init; } = [1];
+
+        [ConfigurationKeyName("Nested:Missing")]
+        public int Missing { get; init; } = 9;
     }
 
     public sealed class ConverterOptions : KafkaConsumerOption

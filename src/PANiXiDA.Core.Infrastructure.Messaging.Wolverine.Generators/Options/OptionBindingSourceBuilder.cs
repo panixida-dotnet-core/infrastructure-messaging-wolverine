@@ -170,9 +170,22 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             key = property.Name;
         }
         var literal = SymbolDisplay.FormatLiteral(key, true);
+        var lookup = $"children.TryGetValue({literal}, out var child{index})";
+        var present = $"children.ContainsKey({literal})";
+        var separator = key.LastIndexOf(':');
+        if (separator >= 0)
+        {
+            var parent = SymbolDisplay.FormatLiteral(key.Substring(0, separator), true);
+            var childKey = SymbolDisplay.FormatLiteral(key.Substring(separator + 1), true);
+            // Enumerating the parent also finds explicitly configured null leaves, unlike Exists().
+            body.Append($"        var child{index} = global::System.Linq.Enumerable.FirstOrDefault(section.GetSection({parent}).GetChildren(), child => global::System.String.Equals(child.Key, {childKey}, global::System.StringComparison.OrdinalIgnoreCase));\n");
+            present = $"child{index} is not null";
+            lookup = present;
+        }
+
         var value = "value" + index;
         body.Append($"        {Name(property.Type)} {value} = option.@{property.Name};\n")
-            .Append($"        if ({(constructorBound ? "!created && " : string.Empty)}children.TryGetValue({literal}, out var child{index}))\n        {{\n")
+            .Append($"        if ({(constructorBound ? "!created && " : string.Empty)}{lookup})\n        {{\n")
             .Append($"            {value} = {Build(property.Type)}(child{index}, {value}, {(writable ? "false" : "true")});\n        }}\n");
         if (!writable)
         {
@@ -181,7 +194,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         if (property.Type.IsReferenceType || IsNullable(property.Type))
         {
-            body.Append($"        if ({value} is not null || children.ContainsKey({literal}))\n");
+            body.Append($"        if ({value} is not null || {present})\n");
         }
 
         body.Append("        {\n");

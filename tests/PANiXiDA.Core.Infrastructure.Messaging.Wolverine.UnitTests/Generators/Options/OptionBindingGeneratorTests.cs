@@ -30,6 +30,26 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldNotContain("Activator");
     }
 
+    [Theory(DisplayName = "Option generator compiles multi-segment configuration aliases")]
+    [InlineData("nested:value")]
+    [InlineData("nested:deeper:value")]
+    public void GeneratorShouldResolveNestedAliases(string alias)
+    {
+        var compilation = CreateCompilation($$"""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                [Microsoft.Extensions.Configuration.ConfigurationKeyName("{{alias}}")]
+                public string Value { get; init; }
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain("section.GetSection(\"" + alias[..alias.LastIndexOf(':')] + "\").GetChildren()");
+        source.ShouldContain("child.Key, \"value\", global::System.StringComparison.OrdinalIgnoreCase");
+    }
+
     [Fact(DisplayName = "Option generator discovers option types from referenced assemblies")]
     public void GeneratorShouldDiscoverReferencedOptions()
     {
