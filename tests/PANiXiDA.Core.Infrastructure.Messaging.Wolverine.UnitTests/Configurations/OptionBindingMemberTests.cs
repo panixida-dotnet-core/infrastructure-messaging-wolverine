@@ -57,6 +57,22 @@ public sealed class OptionBindingMemberTests
         generated.SetterCalls.ShouldBe(original.SetterCalls);
     }
 
+    [Fact(DisplayName = "Generated binding preserves repeated binding of getter-only virtual collections")]
+    public void BinderShouldPreserveGetterOnlyVirtualCollections()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Values:0"] = "1",
+            ["Options:Values:1"] = "2",
+        };
+
+        var original = configuration.GetSection("Options").Get<OverrideCollectionOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<OverrideCollectionOptions>(configuration, "Options");
+
+        original.Values.ShouldBe([1, 2, 1, 2]);
+        generated.Values.ShouldBe(original.Values);
+    }
+
     [Fact(DisplayName = "Generated binding populates properties of concrete enumerable-only models")]
     public void BinderShouldBindEnumerableObjects()
     {
@@ -204,6 +220,16 @@ public sealed class OptionBindingMemberTests
     {
         public EnumerablePayload Payload { get; init; } = new();
         public ReadOnlyEnumerablePayload Pages { get; } = new();
+    }
+
+    public class VirtualCollectionOptions : KafkaConsumerOption
+    {
+        public virtual List<int> Values { get; } = [];
+    }
+
+    public sealed class OverrideCollectionOptions : VirtualCollectionOptions
+    {
+        public override List<int> Values => base.Values;
     }
 
     public class EnumerablePayload : IEnumerable<int>

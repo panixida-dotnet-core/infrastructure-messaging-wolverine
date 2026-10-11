@@ -258,7 +258,8 @@ Getter-only objects and mutable collections are populated in place.
 Initialized base-class and interface members bind the properties of their concrete runtime classes, including `init` setters.
 The generator discovers accessible implementations in the current and referenced assemblies and closed generic types used in source.
 An undiscovered or inaccessible runtime implementation throws `NotSupportedException` with its configuration path instead of silently ignoring properties.
-Hidden non-virtual base properties are bound separately; virtual overrides retain the base property's configuration metadata.
+Hidden non-virtual base properties are bound separately; overrides with virtual setters retain the base property's configuration metadata.
+Getter-only virtual overrides are bound per declaration, so a shared mutable collection receives entries more than once, matching the .NET 10 binder.
 Concrete models implementing only `IEnumerable<T>` or `IReadOnlyCollection<T>` bind their ordinary properties.
 Writable `IConfigurationSection` properties receive child sections even when those paths are absent.
 Scalar binding includes `CultureInfo`, `Version`, `Half`, `Int128`, `UInt128` and type-level `TypeConverter` attributes,
