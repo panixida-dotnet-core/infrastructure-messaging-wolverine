@@ -17,6 +17,8 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
     private const string OptionsNamespace = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.";
     private const string Registry = "global::PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation.OptionBindingRegistry";
 
+    private static readonly string[] OptionTypeNames = ["KafkaBrokerOption", "KafkaProducerOption", "KafkaConsumerOption", "RecurringCommandOption"];
+
     private static readonly DiagnosticDescriptor UnsupportedOption = new(
         "PANWOLVSG002", "Options cannot be bound by the source generator",
         "Options '{0}' cannot be bound without reflection: {1}", "OptionBinding",
@@ -35,7 +37,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
             return;
         }
 
-        var optionTypes = new[] { "KafkaBrokerOption", "KafkaProducerOption", "KafkaConsumerOption", "RecurringCommandOption" }
+        var optionTypes = OptionTypeNames
             .Select(name => compilation.GetTypeByMetadataName(OptionsNamespace + name))
             .Where(type => type is not null).ToArray();
         var keyNameAttribute = compilation.GetTypeByMetadataName("Microsoft.Extensions.Configuration.ConfigurationKeyNameAttribute");

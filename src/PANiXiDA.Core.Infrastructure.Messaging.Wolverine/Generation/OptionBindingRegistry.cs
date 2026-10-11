@@ -20,7 +20,7 @@ public static class OptionBindingRegistry
         where TOption : class
     {
         ArgumentNullException.ThrowIfNull(binder);
-        Interlocked.CompareExchange(ref Binding<TOption>.Binder, binder, null);
+        Binding<TOption>.Register(binder);
     }
 
     /// <summary>
@@ -71,6 +71,13 @@ public static class OptionBindingRegistry
     private static class Binding<TOption>
         where TOption : class
     {
-        internal static Func<IConfigurationSection, TOption>? Binder;
+        private static Func<IConfigurationSection, TOption>? binder;
+
+        internal static Func<IConfigurationSection, TOption>? Binder => binder;
+
+        internal static void Register(Func<IConfigurationSection, TOption> generatedBinder)
+        {
+            Interlocked.CompareExchange(ref binder, generatedBinder, null);
+        }
     }
 }
