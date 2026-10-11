@@ -73,7 +73,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private void AppendComplexBody(StringBuilder body, ITypeSymbol type, string method)
     {
-        if (type.ToDisplayString() == "Microsoft.Extensions.Configuration.IConfigurationSection")
+        if (Name(type) == Section)
         {
             body.Append("        return readOnly ? option : section;\n");
         }
@@ -117,11 +117,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return;
         }
 
-        var sequence = FindInterface(type, "System.Collections.Generic.IEnumerable<T>");
+        var definition = type.OriginalDefinition.ToDisplayString();
+        var copy = definition is "System.Collections.Generic.IEnumerable<T>" or
+            "System.Collections.Generic.IReadOnlyList<T>" or "System.Collections.Generic.IReadOnlyCollection<T>";
+        var sequence = FindInterface(type, type.TypeKind == TypeKind.Interface
+            ? "System.Collections.Generic.IEnumerable<T>" : "System.Collections.Generic.ICollection<T>");
         if (sequence is not null)
         {
-            var copy = type.OriginalDefinition.ToDisplayString() is "System.Collections.Generic.IEnumerable<T>" or
-                "System.Collections.Generic.IReadOnlyList<T>" or "System.Collections.Generic.IReadOnlyCollection<T>";
             AppendSequence(body, type, sequence.TypeArguments[0], copy);
             return;
         }
@@ -148,13 +150,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var index = 0;
         foreach (var property in OptionBindingGenerator.GetProperties(type))
         {
-            AppendProperty(body, property, method, index++, type.IsReferenceType && parameters.Contains(property.Name));
+            AppendProperty(body, type, property, method, index++, type.IsReferenceType && parameters.Contains(property.Name));
         }
 
         body.Append(ReturnOption);
     }
 
-    private void AppendProperty(StringBuilder body, IPropertySymbol property, string method, int index, bool constructorBound)
+    private void AppendProperty(StringBuilder body, INamedTypeSymbol type, IPropertySymbol property, string method, int index, bool constructorBound)
     {
         var writable = property.SetMethod?.DeclaredAccessibility == Accessibility.Public;
         if (!writable && (OptionBindingGenerator.GetConversion(property.Type) is not null || property.Type.IsValueType))
@@ -162,31 +164,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return;
         }
 
-        var key = property.GetAttributes().FirstOrDefault(attribute =>
-            SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, keyNameAttribute))
-            ?.ConstructorArguments.FirstOrDefault().Value as string ?? property.Name;
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            key = property.Name;
-        }
-        var literal = SymbolDisplay.FormatLiteral(key, true);
-        var lookup = $"children.TryGetValue({literal}, out var child{index})";
-        var present = $"children.ContainsKey({literal})";
-        var separator = key.LastIndexOf(':');
-        if (separator >= 0)
-        {
-            var parent = SymbolDisplay.FormatLiteral(key.Substring(0, separator), true);
-            var childKey = SymbolDisplay.FormatLiteral(key.Substring(separator + 1), true);
-            // Enumerating the parent also finds explicitly configured null leaves, unlike Exists().
-            body.Append($"        var child{index} = global::System.Linq.Enumerable.FirstOrDefault(section.GetSection({parent}).GetChildren(), child => global::System.String.Equals(child.Key, {childKey}, global::System.StringComparison.OrdinalIgnoreCase));\n");
-            present = $"child{index} is not null";
-            lookup = present;
-        }
-
+        AppendPropertySection(body, property, index);
+        var getter = AppendGetter(property, method + "Get" + index) + "(option)";
+        var initial = PropertyInitialValue(property.Type, "child" + index, getter);
         var value = "value" + index;
-        body.Append($"        {Name(property.Type)} {value} = option.@{property.Name};\n")
-            .Append($"        if ({(constructorBound ? "!created && " : string.Empty)}{lookup})\n        {{\n")
-            .Append($"            {value} = {Build(property.Type)}(child{index}, {value}, {(writable ? "false" : "true")});\n        }}\n");
+        body.Append($"        {Name(property.Type)} {value} = {(constructorBound ? "!created && " : string.Empty)}hasChild{index}\n")
+            .Append($"            ? {Build(property.Type)}(child{index}, {initial}, {(writable ? "false" : "true")})\n")
+            .Append($"            : {(writable ? getter : "default")};\n");
         if (!writable)
         {
             return;
@@ -194,7 +178,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         if (property.Type.IsReferenceType || IsNullable(property.Type))
         {
-            body.Append($"        if ({value} is not null || {present})\n");
+            body.Append($"        if ({value} is not null || hasChild{index})\n");
         }
 
         body.Append("        {\n");
@@ -206,10 +190,76 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
         else
         {
-            AppendInvocation(body, $"option.@{property.Name} = {value};", indent: "            ");
+            var receiver = SymbolEqualityComparer.Default.Equals(type, property.ContainingType)
+                ? "option" : $"(({Name(property.ContainingType)})option)";
+            AppendInvocation(body, $"{receiver}.@{property.Name} = {value};", indent: "            ");
         }
 
         body.Append("        }\n");
+    }
+
+    private void AppendPropertySection(StringBuilder body, IPropertySymbol property, int index)
+    {
+        var key = property.GetAttributes().FirstOrDefault(attribute =>
+            SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, keyNameAttribute))
+            ?.ConstructorArguments.FirstOrDefault().Value as string ?? property.Name;
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            key = property.Name;
+        }
+        var literal = SymbolDisplay.FormatLiteral(key, true);
+        var lookup = $"children.TryGetValue({literal}, out var child{index})";
+        var separator = key.LastIndexOf(':');
+        if (Name(property.Type) == Section)
+        {
+            body.Append($"        var child{index} = section.GetSection({literal});\n");
+            lookup = "true";
+        }
+        else if (separator >= 0)
+        {
+            var parent = SymbolDisplay.FormatLiteral(key.Substring(0, separator), true);
+            var childKey = SymbolDisplay.FormatLiteral(key.Substring(separator + 1), true);
+            // Enumerating the parent also finds explicitly configured null leaves, unlike Exists().
+            body.Append($"        var child{index} = global::System.Linq.Enumerable.FirstOrDefault(section.GetSection({parent}).GetChildren(), child => global::System.String.Equals(child.Key, {childKey}, global::System.StringComparison.OrdinalIgnoreCase));\n");
+            lookup = $"child{index} is not null";
+        }
+        body.Append($"        var hasChild{index} = {lookup};\n");
+    }
+
+    private string AppendGetter(IPropertySymbol property, string method)
+    {
+        var body = new StringBuilder();
+        AppendInvocation(body, $"return option.@{property.Name};");
+        source.Append($"    private static {Name(property.Type)} {method}({Name(property.ContainingType)} option)\n    {{\n")
+            .Append(body).Append("    }\n");
+        return method;
+    }
+
+    private string PropertyInitialValue(ITypeSymbol type, string child, string getter)
+    {
+        if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
+        {
+            return getter;
+        }
+        if (type.SpecialType == SpecialType.System_Object || type.TypeKind == TypeKind.Dynamic)
+        {
+            return $"{child}.Value is not null || !global::System.Linq.Enumerable.Any({child}.GetChildren()) ? default : {getter}";
+        }
+
+        var conversion = ScalarConversionCondition(type);
+        if (conversion == "true")
+        {
+            return "default";
+        }
+        if (conversion != "false")
+        {
+            return $"({child}.Value is not null || !global::System.Linq.Enumerable.Any({child}.GetChildren())) && ({conversion}) ? default : {getter}";
+        }
+        if (IsNullable(type))
+        {
+            return $"{child}.Value == string.Empty || ({child}.Value is null && !global::System.Linq.Enumerable.Any({child}.GetChildren())) ? default : {getter}";
+        }
+        return getter;
     }
 
     private string Construction(INamedTypeSymbol type, string method)
@@ -572,7 +622,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     {
         return OptionBindingGenerator.GetConversion(type) is not null || type.SpecialType == SpecialType.System_Object || type.TypeKind == TypeKind.Dynamic ||
             type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte } ||
-            type.ToDisplayString() == "Microsoft.Extensions.Configuration.IConfigurationSection";
+            Name(type) == Section;
     }
 
     private static INamedTypeSymbol? FindInterface(INamedTypeSymbol type, string name)

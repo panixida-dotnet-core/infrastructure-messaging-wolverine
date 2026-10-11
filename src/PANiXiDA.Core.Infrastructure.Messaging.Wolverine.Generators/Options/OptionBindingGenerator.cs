@@ -142,12 +142,11 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
 
     internal static IEnumerable<IPropertySymbol> GetProperties(INamedTypeSymbol type)
     {
-        var names = new HashSet<string>(StringComparer.Ordinal);
         for (var current = type; current is not null; current = current.BaseType)
         {
             foreach (var property in current.GetMembers().OfType<IPropertySymbol>())
             {
-                if (names.Add(property.Name) && !property.IsStatic && !property.IsIndexer &&
+                if (property.SetMethod?.IsOverride != true && !property.IsStatic && !property.IsIndexer &&
                     property.GetMethod?.DeclaredAccessibility == Accessibility.Public)
                 {
                     yield return property;

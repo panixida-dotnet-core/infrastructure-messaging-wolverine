@@ -147,6 +147,29 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldNotContain(".Register<global::Container<T>.Settings>");
     }
 
+    [Fact(DisplayName = "Option generator treats concrete enumerable-only models as ordinary objects")]
+    public void GeneratorShouldCompileEnumerableObjects()
+    {
+        var compilation = CreateCompilation("""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public EnumerablePayload Value { get; init; }
+            }
+            public sealed class EnumerablePayload : System.Collections.Generic.IEnumerable<int>
+            {
+                public string Name { get; init; }
+                public System.Collections.Generic.IEnumerator<int> GetEnumerator() => System.Linq.Enumerable.Empty<int>().GetEnumerator();
+                System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain("new global::EnumerablePayload()");
+        source.ShouldContain("children.TryGetValue(\"Name\"");
+    }
+
     [Fact(DisplayName = "Option generator reports unsupported members instead of silently dropping configuration")]
     public void GeneratorShouldReportUnsupportedMembers()
     {
