@@ -23,6 +23,8 @@ var configuration = new ConfigurationManager
     ["Consumer:Rules:0:Attempts"] = "3",
     ["Consumer:Groups:events:0"] = "2",
     ["Consumer:Required:Name"] = "required",
+    ["Consumer:Position:X"] = "9",
+    ["Consumer:Extra"] = "dynamic value",
     ["Schedule:CronExpression"] = "0 3 * * *",
     ["Schedule:Enabled"] = "false",
 };
@@ -37,7 +39,8 @@ if (broker.BootstrapServers != "localhost:9092" || producer.TopicName != "produc
     schedule.Enabled || schedule.CronExpression != "0 3 * * *" || schedule.Name != "default-schedule" ||
     schedule.TimeZoneId != "UTC" || consumer.Defaults?.Name != "inherited" ||
     consumer.Rules.Count != 1 || consumer.Rules[0].Attempts != 3 ||
-    !consumer.Groups["events"].SequenceEqual([1, 2]) || consumer.Required.Name != "required")
+    !consumer.Groups["events"].SequenceEqual([1, 2]) || consumer.Required.Name != "required" ||
+    consumer.Rules[0].Day != DayOfWeek.Friday || consumer.Position.X != 9 || (object)consumer.Extra is not "dynamic value")
 {
     throw new InvalidOperationException("Generated options binding did not preserve configured values and defaults.");
 }
@@ -59,6 +62,8 @@ internal sealed class ConsumerOptions : ConsumerBase<RetrySettings>
     public List<RetrySettings> Rules { get; init; } = [];
     public Dictionary<string, int[]> Groups { get; } = new() { ["events"] = [1] };
     public required RequiredSettings Required { get; init; }
+    public RetryPosition Position { get; init; }
+    public dynamic Extra { get; init; } = "default";
 
     public ConsumerOptions()
     {
@@ -71,7 +76,12 @@ internal class ConsumerBase<T> : KafkaConsumerOption
     public T? Defaults { get; init; }
 }
 
-internal sealed record RetrySettings(string Name, int Attempts = 2);
+internal sealed record RetrySettings(string Name, int Attempts = 2, DayOfWeek Day = DayOfWeek.Friday);
+
+internal struct RetryPosition
+{
+    public required int X { get; init; }
+}
 
 internal sealed class RequiredSettings
 {

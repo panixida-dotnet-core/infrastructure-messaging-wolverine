@@ -45,6 +45,8 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
             #nullable disable
             #pragma warning disable CA2255, CS0618
 
+            [global::System.CodeDom.Compiler.GeneratedCode("PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators", "1.0.0")]
+            [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
             file static class GeneratedWolverineOptionBindings
             {
                 [global::System.Runtime.CompilerServices.ModuleInitializer]

@@ -324,11 +324,11 @@ public sealed class ComplexOptionBindingTests
         public NestedSettings? Next { get; init; }
     }
 
-    public sealed record ImmutableSettings(string Name, int Attempts = 2);
+    public sealed record ImmutableSettings(string Name, int Attempts = 2, DayOfWeek Day = DayOfWeek.Friday);
 
     public struct Position
     {
-        public int X { get; init; }
+        public required int X { get; init; }
         public int Y { get; set; }
     }
 }

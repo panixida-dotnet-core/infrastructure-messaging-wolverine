@@ -182,6 +182,7 @@ public sealed class OptionBindingGeneratorTests
 
     [Theory(DisplayName = "Option generator compiles complex and init-only properties without changing consumer models")]
     [InlineData("object")]
+    [InlineData("dynamic")]
     [InlineData("string[]")]
     [InlineData("byte[]")]
     [InlineData("System.Collections.Generic.List<Payload>")]
@@ -226,6 +227,87 @@ public sealed class OptionBindingGeneratorTests
             {
                 public Container<int>.Payload<int, string, Cloneable> Value { get; init; }
             }
+            """);
+
+        var (_, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+    }
+
+    [Fact(DisplayName = "Option generator supports complex models declared in a separate consumer assembly")]
+    public void GeneratorShouldCompileReferencedComplexModels()
+    {
+        var compilation = CreateCompilation(string.Empty)
+            .AddReferences(MetadataReference.CreateFromFile(typeof(OptionBindingGeneratorTests).Assembly.Location));
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain("ComplexOptionBindingTests.ComplexOptions");
+        source.ShouldContain("ComplexOptionBindingTests.GenericOptions");
+    }
+
+    [Theory(DisplayName = "Option generator diagnoses unsupported property shapes without emitting invalid binders")]
+    [InlineData("System.Span<int>")]
+    [InlineData("int*")]
+    [InlineData("System.Linq.IQueryable<int>")]
+    public void GeneratorShouldDiagnoseUnsupportedPropertyShapes(string type)
+    {
+        var compilation = CreateCompilation($$"""
+            public unsafe sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public {{type}} Value { get => default; set { } }
+            }
+            """).WithOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+
+        var (_, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002");
+    }
+
+    [Fact(DisplayName = "Option generator handles inaccessible member types in incomplete consumer code")]
+    public void GeneratorShouldDiagnoseInaccessiblePropertyTypes()
+    {
+        var compilation = CreateCompilation("""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                private sealed class Hidden;
+                public Hidden Value { get; init; }
+            }
+            """);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new OptionBindingGenerator());
+
+        var result = driver.RunGenerators(compilation, TestContext.Current.CancellationToken).GetRunResult();
+
+        result.Diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002");
+        result.Results.ShouldAllBe(item => item.Exception == null);
+    }
+
+    [Fact(DisplayName = "Option generator preserves constructor failures, optional nulls and blank configuration aliases")]
+    public void GeneratorShouldCompileConstructionBoundaries()
+    {
+        var compilation = CreateCompilation("""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public AbstractPayload Abstract { get; init; }
+                public MissingProperty Missing { get; init; }
+                public RefParameter Reference { get; init; }
+                public OptionalPayload Optional { get; init; }
+                public ReadOnlyValue ReadOnly { get; }
+                public InitializedValue Initialized { get; init; }
+                [Microsoft.Extensions.Configuration.ConfigurationKeyName(" ")]
+                public string Name { get; init; }
+                public System.Collections.Generic.Dictionary<string, Microsoft.Extensions.Configuration.IConfigurationSection> Sections { get; init; }
+                public System.Collections.Generic.List<object> Values { get; init; }
+                public System.Collections.Generic.List<dynamic> DynamicValues { get; init; }
+                public System.Collections.Generic.List<byte[]> Binary { get; init; }
+            }
+            public abstract class AbstractPayload { public string Name { get; set; } }
+            public class MissingProperty(int missing);
+            public class RefParameter { public RefParameter(ref int value) {} public int Value { get; set; } }
+            public record OptionalPayload(string Name = null, System.DayOfWeek Day = System.DayOfWeek.Friday);
+            public struct ReadOnlyValue { public string Name { get; set; } }
+            public struct InitializedValue { public InitializedValue() { Name = "initial"; } public string Name { get; init; } }
             """);
 
         var (_, diagnostics) = Generate(compilation);

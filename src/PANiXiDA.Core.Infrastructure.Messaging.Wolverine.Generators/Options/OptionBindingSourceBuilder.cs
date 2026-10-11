@@ -20,6 +20,11 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     internal string Build(ITypeSymbol type)
     {
+        if (type.TypeKind == TypeKind.Dynamic)
+        {
+            type = compilation.GetSpecialType(SpecialType.System_Object);
+        }
+
         type = type.WithNullableAnnotation(NullableAnnotation.NotAnnotated);
         if (methods.TryGetValue(type, out var existing))
         {
@@ -78,6 +83,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             AppendNamedBody(body, named, method);
         }
+        else
+        {
+            Error = $"type '{type}' is not a supported configuration value";
+        }
     }
 
     private void AppendNamedBody(StringBuilder body, INamedTypeSymbol type, string method)
@@ -99,7 +108,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return;
         }
 
-        var creation = type.IsReferenceType ? Construction(type, method) : "new " + Name(type) + "()";
+        var creation = Construction(type, method);
         body.Append($"        if (!{AnyChildren})\n        {{\n")
             .Append($"            if (parentCollection && !readOnly && {(type.IsReferenceType ? "option is null && " : string.Empty)}global::System.String.IsNullOrEmpty(section.Value)) return {creation};\n")
             .Append("            return option;\n        }\n");
@@ -141,7 +150,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         if (string.IsNullOrWhiteSpace(key)) key = property.Name;
         var literal = SymbolDisplay.FormatLiteral(key, true);
         var value = "value" + index;
-        body.Append($"        var {value} = option.@{property.Name};\n")
+        body.Append($"        {Name(property.Type)} {value} = option.@{property.Name};\n")
             .Append($"        if ({(constructorBound ? "!created && " : string.Empty)}children.TryGetValue({literal}, out var child{index}))\n        {{\n")
             .Append($"            {value} = {Build(property.Type)}(child{index}, {value}, {(writable ? "false" : "true")});\n        }}\n");
         if (!writable)
@@ -182,6 +191,11 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return InvalidConstruction(type, method, $"Type '{type}' needs a public parameterless constructor or a single public constructor with matching properties.");
         }
 
+        if (type.IsValueType && constructor.IsImplicitlyDeclared)
+        {
+            return "default(" + Name(type) + ")";
+        }
+
         var properties = OptionBindingGenerator.GetProperties(type).ToArray();
         var arguments = new List<string>();
         foreach (var parameter in constructor.Parameters)
@@ -194,7 +208,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
             var section = "section.GetSection(" + SymbolDisplay.FormatLiteral(parameter.Name, true) + ")";
             var missing = parameter.HasExplicitDefaultValue
-                ? parameter.ExplicitDefaultValue is null ? "default" : SymbolDisplay.FormatPrimitive(parameter.ExplicitDefaultValue, quoteStrings: true, useHexadecimalNumbers: false)
+                ? parameter.ExplicitDefaultValue is null ? "default" : "(" + Name(parameter.Type) + ")" + SymbolDisplay.FormatPrimitive(parameter.ExplicitDefaultValue, quoteStrings: true, useHexadecimalNumbers: false)
                 : $"throw new global::System.InvalidOperationException(\"Missing configuration for constructor parameter '{parameter.Name}' on '{type}'.\")";
             arguments.Add($"(global::Microsoft.Extensions.Configuration.ConfigurationExtensions.Exists({section}) ? {Build(parameter.Type)}({section}, default) : {missing})");
         }
@@ -372,7 +386,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private static bool CanConvertScalar(ITypeSymbol type)
     {
-        return OptionBindingGenerator.GetConversion(type) is not null || type.SpecialType == SpecialType.System_Object ||
+        return OptionBindingGenerator.GetConversion(type) is not null || type.SpecialType == SpecialType.System_Object || type.TypeKind == TypeKind.Dynamic ||
             type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte } ||
             type.ToDisplayString() == "Microsoft.Extensions.Configuration.IConfigurationSection";
     }
@@ -396,6 +410,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private static string Name(ITypeSymbol type)
     {
-        return type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        return type.TypeKind == TypeKind.Dynamic ? "object" : type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
     }
 }
