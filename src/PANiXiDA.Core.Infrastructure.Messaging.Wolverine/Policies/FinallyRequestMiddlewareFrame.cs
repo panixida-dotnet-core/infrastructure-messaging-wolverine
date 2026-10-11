@@ -52,11 +52,14 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
     internal void Wrap(ISourceWriter writer, Action generateBody)
     {
         var exceptionLocalName = $"__finallyException_{uniqueSuffix}";
+        var exceptionDispatchName = $"__finallyExceptionDispatch_{uniqueSuffix}";
         var cleanupExceptionsName = $"__cleanupExceptions_{uniqueSuffix}";
 
         writer.WriteLine(string.Empty);
         writer.WriteLine(
             $"global::System.Exception? {exceptionLocalName} = null;");
+        writer.WriteLine(
+            $"global::System.Runtime.ExceptionServices.ExceptionDispatchInfo? {exceptionDispatchName} = null;");
 
         writer.Write("BLOCK:try");
         generateBody();
@@ -64,6 +67,7 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
 
         writer.Write("BLOCK:catch (global::System.Exception ex)");
         writer.WriteLine($"{exceptionLocalName} = ex;");
+        writer.WriteLine($"{exceptionDispatchName} = global::System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex);");
         writer.WriteLine("throw;");
         writer.FinishBlock();
 
@@ -77,22 +81,29 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
 
             var cleanupExceptionName = $"__cleanupException_{uniqueSuffix}";
             writer.Write($"BLOCK:catch (global::System.Exception {cleanupExceptionName})");
+            writer.Write($"BLOCK:if (!global::System.Object.ReferenceEquals({cleanupExceptionName}, {exceptionLocalName}))");
             writer.WriteLine($"{cleanupExceptionsName} ??= new();");
-            writer.Write($"BLOCK:if (!global::System.Linq.Enumerable.Any({cleanupExceptionsName}, existing => global::System.Object.ReferenceEquals(existing, {cleanupExceptionName})))");
             writer.WriteLine($"{cleanupExceptionsName}.Add({cleanupExceptionName});");
             writer.FinishBlock();
             writer.FinishBlock();
         }
 
-        WriteRethrow(writer, exceptionLocalName, cleanupExceptionsName);
+        WriteRethrow(writer, exceptionLocalName, exceptionDispatchName, cleanupExceptionsName);
         writer.FinishBlock();
     }
 
     private void WriteRethrow(
         ISourceWriter writer,
         string exceptionLocalName,
+        string exceptionDispatchName,
         string cleanupExceptionsName)
     {
+        writer.Write("BLOCK:try");
+        writer.WriteComment("Restore the processing stack before propagating or aggregating cleanup failures.");
+        writer.WriteLine($"{exceptionDispatchName}?.Throw();");
+        writer.FinishBlock();
+
+        writer.Write("BLOCK:finally");
         var containsOriginalName = $"__containsOriginal_{uniqueSuffix}";
         writer.Write($"BLOCK:if ({cleanupExceptionsName} is not null)");
         writer.Write($"BLOCK:if ({exceptionLocalName} is not null)");
@@ -110,6 +121,7 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
         writer.WriteLine($"throw new global::System.AggregateException(\"Multiple errors occurred while completing the request.\", {cleanupExceptionsName});");
         writer.FinishBlock();
         writer.WriteLine($"global::System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw({cleanupExceptionsName}[0]);");
+        writer.FinishBlock();
         writer.FinishBlock();
     }
 

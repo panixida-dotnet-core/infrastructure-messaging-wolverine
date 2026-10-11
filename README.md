@@ -333,10 +333,12 @@ including when an earlier Finally behavior throws.
 Failures from processing and Finally behaviors are preserved. A single exception is
 rethrown unchanged, including its stack trace and cancellation semantics. Multiple
 failures are reported in an `AggregateException`. Existing aggregates remain intact;
-the original processing exception is not added again if a cleanup aggregate already
-contains it. Every Finally behavior receives the original processing exception, not
-failures from preceding Finally behaviors. Constructor failures are collected as well,
-and do not prevent subsequent Finally behaviors from running.
+the original processing exception is not added again if cleanup rethrows it or a
+cleanup aggregate already contains it. Separate cleanup failures are retained even
+when behaviors throw the same exception instance. Every Finally behavior receives
+the original processing exception, not failures from preceding Finally behaviors.
+Constructor failures are collected as well, and do not prevent subsequent Finally
+behaviors from running.
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 

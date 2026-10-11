@@ -151,6 +151,29 @@ public sealed class FinallyRequestMiddlewareFailureTests
         actual.ShouldBeSameAs(aggregate);
     }
 
+    [Theory(DisplayName = "Generated finally middleware retains repeated cleanup failure occurrences")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PipelineShouldRetainRepeatedCleanupFailures(bool failHandler)
+    {
+        // Arrange
+        var cleanup = new InvalidOperationException("Cleanup failed.");
+        var state = new FailureState
+        {
+            HandlerException = failHandler ? new InvalidOperationException("Handler failed.") : null,
+            FirstException = cleanup,
+            SecondException = cleanup
+        };
+        var expected = new[] { state.HandlerException, cleanup, cleanup }.OfType<Exception>().ToArray();
+
+        // Act
+        var actual = await Record.ExceptionAsync(() => Pipeline.Value(state));
+
+        // Assert
+        AssertFailures(actual, expected);
+        state.Calls.ShouldBe(["first", "second"]);
+    }
+
     [Theory(DisplayName = "Generated finally middleware does not duplicate an unchanged original exception")]
     [InlineData(false)]
     [InlineData(true)]
@@ -170,6 +193,34 @@ public sealed class FinallyRequestMiddlewareFailureTests
 
         // Assert
         actual.ShouldBeSameAs(original);
+        original.StackTrace.ShouldNotBeNull();
+        original.StackTrace.ShouldContain(nameof(FailureState.HandleAsync));
+        original.StackTrace.ShouldNotContain(nameof(FailureState.CleanupAsync));
+    }
+
+    [Theory(DisplayName = "Generated finally middleware retains the processing stack when cleanup aggregates a rethrown original")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PipelineShouldPreserveRethrownOriginalStackInAggregate(bool aggregateOriginal)
+    {
+        // Arrange
+        var original = new InvalidOperationException("Handler failed.");
+        var second = new InvalidOperationException("Second cleanup failed.");
+        var state = new FailureState
+        {
+            HandlerException = original,
+            FirstException = original,
+            SecondException = aggregateOriginal ? new AggregateException(original, second) : second
+        };
+
+        // Act
+        var actual = await Record.ExceptionAsync(() => Pipeline.Value(state));
+
+        // Assert
+        actual.ShouldBeOfType<AggregateException>().Flatten().InnerExceptions.ShouldBe([original, second]);
+        original.StackTrace.ShouldNotBeNull();
+        original.StackTrace.ShouldContain(nameof(FailureState.HandleAsync));
+        original.StackTrace.ShouldNotContain(nameof(FailureState.CleanupAsync));
     }
 
     [Theory(DisplayName = "Generated finally middleware retains Application rollback and disposal failures")]
