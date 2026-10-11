@@ -42,11 +42,11 @@ internal sealed partial class PersistenceMetricsService : BackgroundService
             using var registration = lifetime.ApplicationStarted.Register(() => started.TrySetResult());
             await started.Task.WaitAsync(stoppingToken);
             using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1), clock);
-            do
+            while (true)
             {
                 await PollAsync(stoppingToken);
+                await timer.WaitForNextTickAsync(stoppingToken);
             }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
