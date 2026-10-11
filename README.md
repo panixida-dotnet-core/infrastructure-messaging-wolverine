@@ -250,10 +250,12 @@ options.AddConsumer<UserCreated>("External:Consumers");
 `AddKafkaBroker<TOption>()`, `AddKafkaProducer<TOption, TEvent>()`, and
 `AddKafkaConsumer<TOption, TEvent>()` bind sections named after their option types.
 
-The bundled generator discovers accessible concrete options in the current and referenced assemblies. It preserves constructor defaults,
-inherited properties and `ConfigurationKeyName` attributes. Custom properties must have public setters and scalar types
-(strings, booleans, numbers, enums, date/time values, GUIDs, URIs, and nullable value types).
-Unsupported members produce `PANWOLVSG002` instead of silently falling back to reflection. Keep analyzer assets enabled.
+The bundled generator discovers accessible concrete options in the current and referenced assemblies. Existing registration calls
+and configuration keys stay unchanged. It binds scalar values, nested objects, records, arrays, lists, sets and dictionaries,
+including public `init` setters and `required` properties. Constructor defaults, inherited properties, `ConfigurationKeyName`
+attributes and existing mutable collections are preserved. Getter-only objects and mutable collections are populated in place.
+Models must be accessible to generated code; unsupported shapes produce `PANWOLVSG002` instead of a reflection fallback.
+Keep analyzer assets enabled.
 
 On Linux with the Native AOT toolchain installed, the isolated smoke test checks binding without starting Wolverine, Kafka, or EF Core:
 

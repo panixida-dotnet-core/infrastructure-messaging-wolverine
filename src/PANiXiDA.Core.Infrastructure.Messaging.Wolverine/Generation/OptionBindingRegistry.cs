@@ -41,7 +41,7 @@ public static class OptionBindingRegistry
         catch (Exception exception) when (exception is ArgumentException or FormatException or OverflowException)
         {
             throw new InvalidOperationException(
-                $"Failed to convert configuration value at '{section.Path}' to type '{typeof(TValue)}'.", exception);
+                $"Failed to convert configuration value '{section.Value}' at '{section.Path}' to type '{typeof(TValue)}'.", exception);
         }
     }
 

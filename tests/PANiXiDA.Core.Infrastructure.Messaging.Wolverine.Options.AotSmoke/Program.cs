@@ -18,6 +18,11 @@ var configuration = new ConfigurationManager
     ["Consumer:AutoOffsetReset"] = "earliest",
     ["Consumer:GroupProtocol"] = "Consumer",
     ["Consumer:Attempts"] = "0x10",
+    ["Consumer:Defaults:Name"] = "inherited",
+    ["Consumer:Rules:0:Name"] = "first",
+    ["Consumer:Rules:0:Attempts"] = "3",
+    ["Consumer:Groups:events:0"] = "2",
+    ["Consumer:Required:Name"] = "required",
     ["Schedule:CronExpression"] = "0 3 * * *",
     ["Schedule:Enabled"] = "false",
 };
@@ -30,7 +35,9 @@ if (broker.BootstrapServers != "localhost:9092" || producer.TopicName != "produc
     consumer.TopicName != "consumed-events" || consumer.GroupProtocol != GroupProtocol.Consumer ||
     consumer.AutoOffsetReset != AutoOffsetReset.Earliest || consumer.ConsumerGroupId != "default-group" || consumer.Attempts != 16 ||
     schedule.Enabled || schedule.CronExpression != "0 3 * * *" || schedule.Name != "default-schedule" ||
-    schedule.TimeZoneId != "UTC")
+    schedule.TimeZoneId != "UTC" || consumer.Defaults?.Name != "inherited" ||
+    consumer.Rules.Count != 1 || consumer.Rules[0].Attempts != 3 ||
+    !consumer.Groups["events"].SequenceEqual([1, 2]) || consumer.Required.Name != "required")
 {
     throw new InvalidOperationException("Generated options binding did not preserve configured values and defaults.");
 }
@@ -43,17 +50,32 @@ try
 }
 catch (InvalidOperationException exception) when (exception.Message.Contains("Consumer:GroupProtocol", StringComparison.Ordinal))
 {
-    Console.WriteLine("Native AOT options binding passed: built-in and derived options, defaults, nullable enums and conversion errors.");
+    Console.WriteLine("Native AOT options binding passed: nested objects, collections, required and generic init setters, defaults and conversion errors.");
 }
 
-internal sealed class ConsumerOptions : KafkaConsumerOption
+internal sealed class ConsumerOptions : ConsumerBase<RetrySettings>
 {
-    public int Attempts { get; set; }
+    public int Attempts { get; init; }
+    public List<RetrySettings> Rules { get; init; } = [];
+    public Dictionary<string, int[]> Groups { get; } = new() { ["events"] = [1] };
+    public required RequiredSettings Required { get; init; }
 
     public ConsumerOptions()
     {
         ConsumerGroupId = "default-group";
     }
+}
+
+internal class ConsumerBase<T> : KafkaConsumerOption
+{
+    public T? Defaults { get; init; }
+}
+
+internal sealed record RetrySettings(string Name, int Attempts = 2);
+
+internal sealed class RequiredSettings
+{
+    public required string Name { get; init; }
 }
 
 internal sealed class ScheduleOptions : RecurringCommandOption

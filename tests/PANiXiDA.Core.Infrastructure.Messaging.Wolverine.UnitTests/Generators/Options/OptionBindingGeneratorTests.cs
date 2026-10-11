@@ -133,22 +133,18 @@ public sealed class OptionBindingGeneratorTests
         var compilation = CreateCompilation("""
             public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption
             {
-                public object Extra { get; set; } = new();
+                public int[,] Extra { get; set; } = new int[1, 1];
             }
             """);
 
         var (_, diagnostics) = Generate(compilation);
 
-        diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002" && diagnostic.GetMessage().Contains("Extra"));
+        diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002" && diagnostic.GetMessage().Contains("one-dimensional"));
     }
 
-    [Theory(DisplayName = "Option generator reports inaccessible types and unsupported construction")]
+    [Theory(DisplayName = "Option generator reports inaccessible types")]
     [InlineData("public class Container { private sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption {} }")]
-    [InlineData("public sealed class Settings(int value) : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;")]
-    [InlineData("public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption { public int Value { get; init; } }")]
     [InlineData("file sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;")]
-    [InlineData("public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption { public object Extra { get; } = new(); }")]
-    [InlineData("public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption { public string[] Extra { get; set; } = []; }")]
     public void GeneratorShouldReportUnsupportedOptions(string source)
     {
         var (_, diagnostics) = Generate(CreateCompilation(source));
@@ -184,9 +180,63 @@ public sealed class OptionBindingGeneratorTests
         result.GeneratedTrees.ShouldBeEmpty();
     }
 
+    [Theory(DisplayName = "Option generator compiles complex and init-only properties without changing consumer models")]
+    [InlineData("object")]
+    [InlineData("string[]")]
+    [InlineData("byte[]")]
+    [InlineData("System.Collections.Generic.List<Payload>")]
+    [InlineData("System.Collections.Generic.IReadOnlySet<string>")]
+    [InlineData("System.Collections.Generic.IReadOnlyDictionary<int, Payload>")]
+    [InlineData("Microsoft.Extensions.Configuration.IConfigurationSection")]
+    [InlineData("Payload")]
+    public void GeneratorShouldCompileComplexProperties(string type)
+    {
+        var compilation = CreateCompilation($$"""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public {{type}} Value { get; init; }
+            }
+            public sealed record Payload(string Name, int Count = 2);
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain("UnsafeAccessor");
+        source.ShouldNotContain("ConfigurationBinder.Get");
+        source.ShouldNotContain("System.Reflection");
+    }
+
+    [Fact(DisplayName = "Option generator preserves constraints and nested generic parameter positions in init accessors")]
+    public void GeneratorShouldCompileGenericInitAccessors()
+    {
+        var compilation = CreateCompilation("""
+            public class Container<T> where T : unmanaged
+            {
+                public class Payload<U, V, W> where U : struct where V : notnull where W : class, System.ICloneable, new()
+                {
+                    public T First { get; init; }
+                    public U Second { get; init; }
+                    public V Third { get; init; }
+                    public W Fourth { get; init; }
+                }
+            }
+            public sealed class Cloneable : System.ICloneable { public object Clone() => new Cloneable(); }
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public Container<int>.Payload<int, string, Cloneable> Value { get; init; }
+            }
+            """);
+
+        var (_, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+    }
+
     private static CSharpCompilation CreateCompilation(string source, string name = "GeneratedOptionsTest")
     {
         var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+            .Where(path => path != typeof(OptionBindingGeneratorTests).Assembly.Location)
             .Select(path => MetadataReference.CreateFromFile(path));
         return CSharpCompilation.Create(name, [CSharpSyntaxTree.ParseText(source)], references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
