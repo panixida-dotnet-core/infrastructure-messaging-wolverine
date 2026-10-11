@@ -255,6 +255,9 @@ and configuration keys stay unchanged. It binds scalar values, nested objects, r
 including public `init` setters and `required` properties. Constructor defaults, inherited properties, `ConfigurationKeyName`
 attributes (including paths such as `nested:value`) and existing mutable collections are preserved.
 Getter-only objects and mutable collections are populated in place.
+Initialized base-class and interface members bind the properties of their concrete runtime classes, including `init` setters.
+The generator discovers accessible implementations in the current and referenced assemblies and closed generic types used in source.
+An undiscovered or inaccessible runtime implementation throws `NotSupportedException` with its configuration path instead of silently ignoring properties.
 Hidden non-virtual base properties are bound separately; virtual overrides retain the base property's configuration metadata.
 Concrete models implementing only `IEnumerable<T>` or `IReadOnlyCollection<T>` bind their ordinary properties.
 Writable `IConfigurationSection` properties receive child sections even when those paths are absent.

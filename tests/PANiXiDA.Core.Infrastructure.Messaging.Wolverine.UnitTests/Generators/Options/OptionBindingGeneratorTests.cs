@@ -68,6 +68,33 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldNotContain(".Register<global::HiddenSettings>");
     }
 
+    [Fact(DisplayName = "Option generator discovers runtime implementations in referenced assemblies")]
+    public void GeneratorShouldDiscoverReferencedRuntimeTypes()
+    {
+        var referenced = CreateCompilation("""
+            public interface ISettings;
+            public sealed class Implementation : ISettings
+            {
+                public string Extra { get; init; }
+            }
+            public sealed class ReferencedOptions : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public ISettings Value { get; } = new Implementation();
+            }
+            """, "ReferencedRuntimeTypes");
+        using var stream = new MemoryStream();
+        referenced.Emit(stream, cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
+        var compilation = CreateCompilation("file sealed class LocalImplementation : ISettings;")
+            .AddReferences(MetadataReference.CreateFromImage(stream.ToArray()));
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain("runtimeType == typeof(global::Implementation)");
+        source.ShouldContain("option.@Extra");
+        source.ShouldNotContain("typeof(global::LocalImplementation)");
+    }
+
     [Fact(DisplayName = "Option generator binds closed generic options used by existing registration calls")]
     public void GeneratorShouldDiscoverClosedGenericOptions()
     {

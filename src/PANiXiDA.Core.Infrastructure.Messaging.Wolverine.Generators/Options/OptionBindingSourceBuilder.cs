@@ -5,7 +5,8 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Options;
 
-internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamedTypeSymbol? keyNameAttribute, int optionIndex)
+internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamedTypeSymbol? keyNameAttribute, int optionIndex,
+    IReadOnlyList<INamedTypeSymbol> runtimeTypes)
 {
     private const string Section = "global::Microsoft.Extensions.Configuration.IConfigurationSection";
     private const string Collections = "global::System.Collections.Generic.";
@@ -17,6 +18,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string Accessor = "global::System.Runtime.CompilerServices.UnsafeAccessor";
     private const string AccessorKind = "global::System.Runtime.CompilerServices.UnsafeAccessorKind.";
     private readonly Dictionary<ITypeSymbol, string> methods = new(SymbolEqualityComparer.Default);
+    private readonly Dictionary<INamedTypeSymbol, string> runtimeMethods = new(SymbolEqualityComparer.Default);
     private readonly StringBuilder source = new();
 
     internal string? Error { get; private set; }
@@ -135,6 +137,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         body.Append($"        if (!{AnyChildren})\n        {{\n")
             .Append($"            if (parentCollection && !readOnly && {(type.IsReferenceType ? "option is null && " : string.Empty)}global::System.String.IsNullOrEmpty(section.Value)) return {creation};\n")
             .Append("            return option;\n        }\n");
+        AppendRuntimeDispatch(body, type);
         var constructor = GetConstructor(type);
         var parameters = constructor?.Parameters.Select(parameter => parameter.Name).ToArray() ?? [];
         if (type.IsReferenceType)
@@ -148,6 +151,48 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
                 .Append("            option = ").Append(creation).Append(";\n        }\n");
         }
 
+        AppendProperties(body, type, method, parameters);
+    }
+
+    private void AppendRuntimeDispatch(StringBuilder body, INamedTypeSymbol type)
+    {
+        if (type.IsSealed || type.IsValueType)
+        {
+            return;
+        }
+
+        body.Append("        if (option is not null)\n        {\n            var runtimeType = option.GetType();\n");
+        foreach (var implementation in runtimeTypes.Where(candidate => candidate.TypeKind == TypeKind.Class &&
+                     !candidate.IsFileLocal && compilation.IsSymbolAccessibleWithin(candidate, compilation.Assembly) &&
+                     compilation.ClassifyCommonConversion(candidate, type) is { IsImplicit: true, IsReference: true }))
+        {
+            body.Append($"            if (runtimeType == typeof({Name(implementation)})) return {BuildRuntimeProperties(implementation)}(section, ({Name(implementation)})option);\n");
+        }
+
+        body.Append($"            if (runtimeType != typeof({Name(type)}))\n")
+            .Append("                throw new UnsupportedRuntimeTypeException(runtimeType, section.Path);\n        }\n");
+    }
+
+    private string BuildRuntimeProperties(INamedTypeSymbol type)
+    {
+        if (runtimeMethods.TryGetValue(type, out var existing))
+        {
+            return existing;
+        }
+
+        var method = $"Bind{optionIndex}Runtime{runtimeMethods.Count}";
+        runtimeMethods.Add(type, method);
+        var body = new StringBuilder();
+        // Existing instances use runtime property metadata, but retain the declared type's
+        // conversion/collection rules. Their constructors must not run again.
+        AppendProperties(body, type, method, []);
+        source.Append($"    private static {Name(type)} {method}({Section} section, {Name(type)} option)\n    {{\n")
+            .Append(body).Append(EndMethod);
+        return method;
+    }
+
+    private void AppendProperties(StringBuilder body, INamedTypeSymbol type, string method, string[] parameters)
+    {
         body.Append($"        var children = new {Collections}Dictionary<string, {Section}>(global::System.StringComparer.OrdinalIgnoreCase);\n")
             .Append("        foreach (var child in section.GetChildren()) children[child.Key] = child;\n");
         var index = 0;
@@ -596,7 +641,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             body.Append($"if (!({scalarConversion}) && !global::System.String.IsNullOrEmpty(child.Value) && !global::System.Linq.Enumerable.Any(child.GetChildren())) continue;\n                ");
         }
 
-        body.Append(binding).Append("\n            }\n            catch (global::System.Exception)\n            {\n                // ConfigurationBinder skips invalid collection entries by default.\n            }\n        }\n");
+        body.Append(binding).Append("\n            }\n            catch (global::System.Exception exception) when (exception is not UnsupportedRuntimeTypeException)\n            {\n                // ConfigurationBinder skips invalid collection entries by default.\n            }\n        }\n");
     }
 
     private string ScalarConversionCondition(ITypeSymbol type)

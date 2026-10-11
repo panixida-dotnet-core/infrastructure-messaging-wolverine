@@ -54,18 +54,14 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
                 {
 
             """);
-        var seen = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        var optionIndex = 0;
         var methods = new StringBuilder();
-        foreach (var type in GetCandidates(compilation, context.CancellationToken)
-                     .Where(type => IsOption(type, optionTypes))
-                     .OrderBy(type => type.ToDisplayString(), StringComparer.Ordinal))
+        var candidates = GetCandidates(compilation, context.CancellationToken)
+            .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
+            .OrderBy(type => type.ToDisplayString(), StringComparer.Ordinal).ToArray();
+        foreach (var type in candidates.Where(type => IsOption(type, optionTypes)))
         {
             context.CancellationToken.ThrowIfCancellationRequested();
-            if (!seen.Add(type))
-            {
-                continue;
-            }
-
             if (type.IsFileLocal || !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
             {
                 if (SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, compilation.Assembly))
@@ -77,7 +73,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
                 continue;
             }
 
-            var builder = new OptionBindingSourceBuilder(compilation, keyNameAttribute, seen.Count);
+            var builder = new OptionBindingSourceBuilder(compilation, keyNameAttribute, optionIndex++, candidates);
             var method = builder.Build(type);
             if (builder.Error is not null)
             {
@@ -92,7 +88,11 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
             methods.Append(builder.Source);
         }
 
-        source.Append("    }\n").Append(methods).Append("}\n");
+        source.Append("    }\n").Append("""
+                private sealed class UnsupportedRuntimeTypeException(global::System.Type type, string path)
+                    : global::System.NotSupportedException($"Runtime configuration type '{type}' at '{path}' is not accessible or was not discovered by the options generator.") { }
+
+            """).Append(methods).Append("}\n");
         context.AddSource("OptionBindings.g.cs", source.ToString());
     }
 
@@ -106,14 +106,15 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
 
     private static IEnumerable<INamedTypeSymbol> GetClosedTypes(Compilation compilation, CancellationToken token)
     {
-        // Closed generic options may appear only at a registration call site.
+        // Closed types appear both in registration calls and in initialized polymorphic members.
         foreach (var tree in compilation.SyntaxTrees)
         {
             var model = compilation.GetSemanticModel(tree);
-            var methods = tree.GetRoot(token).DescendantNodes().OfType<GenericNameSyntax>()
-                .Select(name => model.GetSymbolInfo(name, token).Symbol).OfType<IMethodSymbol>();
-            foreach (var type in methods.SelectMany(method => method.TypeArguments).OfType<INamedTypeSymbol>()
-                         .Where(type => !type.IsAbstract && !ContainsTypeParameter(type)))
+            var symbols = tree.GetRoot(token).DescendantNodes().OfType<GenericNameSyntax>()
+                .Select(name => model.GetSymbolInfo(name, token).Symbol).ToArray();
+            var types = symbols.OfType<IMethodSymbol>().SelectMany(method => method.TypeArguments)
+                .OfType<INamedTypeSymbol>().Concat(symbols.OfType<INamedTypeSymbol>());
+            foreach (var type in types.Where(type => !type.IsAbstract && !ContainsTypeParameter(type)))
             {
                 yield return type;
             }
