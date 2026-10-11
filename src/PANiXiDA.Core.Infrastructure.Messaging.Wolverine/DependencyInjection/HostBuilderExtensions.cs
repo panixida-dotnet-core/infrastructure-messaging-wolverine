@@ -3,6 +3,8 @@ using JasperFx.CodeGeneration.Model;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
@@ -10,6 +12,7 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Telemetry;
 
 using System.Reflection;
 
@@ -412,6 +415,8 @@ public static class HostBuilderExtensions
 
         options.UseEntityFrameworkCoreTransactions();
 
+        ConfigurePersistenceMetrics(options);
+
         options.Durability.DeadLetterQueueExpirationEnabled = true;
         options.Durability.DeadLetterQueueExpiration = TimeSpan.FromDays(7);
 
@@ -436,12 +441,22 @@ public static class HostBuilderExtensions
 
         options.UseEntityFrameworkCoreTransactions();
 
+        ConfigurePersistenceMetrics(options);
+
         options.Durability.DeadLetterQueueExpirationEnabled = true;
         options.Durability.DeadLetterQueueExpiration = TimeSpan.FromDays(7);
 
         options.Policies.UseDurableLocalQueues();
         options.Policies.UseDurableInboxOnAllListeners();
         options.Policies.UseDurableOutboxOnAllSendingEndpoints();
+    }
+
+    private static void ConfigurePersistenceMetrics(WolverineOptions options)
+    {
+        options.Services.AddMetrics();
+        options.Services.TryAddSingleton(TimeProvider.System);
+        options.Services.TryAddSingleton<IPersistenceMetricsReader, PostgresqlPersistenceMetricsReader>();
+        options.Services.AddHostedService<PersistenceMetricsService>();
     }
 
     private static void ConfigureRequestMiddlewares(

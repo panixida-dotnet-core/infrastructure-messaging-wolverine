@@ -188,6 +188,40 @@ An optional `parentSectionName` selects another parent section. The typed `AddRe
 overload binds the section named after `TOption`. Both APIs work with modules and Kafka.
 The first enabled schedule requires updating Wolverine's message-store schema. See [Wolverine recurring messages](https://wolverinefx.net/guide/messaging/recurring.html).
 
+## Persistence metrics
+
+Both `UseWolverineMediator` registration styles automatically sample the main PostgreSQL
+message store once a minute after host startup. The `Wolverine:Persistence` meter is
+included by `PANiXiDA.Core.Observability`'s existing `Wolverine*` subscription.
+
+| Instrument | Unit | Meaning |
+| --- | --- | --- |
+| `wolverine.persistence.dead_letters` | `{message}` | Current DLQ rows, including rows marked for replay until they are removed |
+| `wolverine.persistence.dead_letter.oldest_age` | `s` | Age of the oldest DLQ message from its original `sent_at`, not residence time in the DLQ |
+| `wolverine.persistence.scheduled.due` | `{message}` | Scheduled inbox rows whose execution time has arrived |
+| `wolverine.persistence.scheduled.overdue` | `s` | Delay of the oldest due inbox row; future and handled rows are excluded |
+| `wolverine.persistence.recurring.paused` | `{schedule}` | Durable pause state of each currently registered recurring schedule |
+| `wolverine.persistence.recurring.overdue` | `s` | Delay past the recorded next occurrence of an unpaused recurring schedule |
+
+Only recurring metrics have a `schedule.name` dimension, taken from code/configuration.
+There are no message IDs, payloads, exception texts, addresses, or connection details in these
+measurements. Queue reads are SQL aggregates using the existing Wolverine connection pool;
+the poll has a 15-second deadline and queries have a 10-second command timeout.
+No schema changes or message processing are performed by the collector.
+
+An empty measured queue reports zero. Before the first successful poll, after a failure,
+or after two minutes without a new snapshot, observations are omitted, not replaced with zero.
+A DLQ containing unknown send timestamps omits its age. Paused schedules and schedules without
+a recorded next occurrence omit overdue age. Recurring state is not business-job success:
+it only describes publication of the next occurrence. Future recurring occurrences and
+`IScheduler` commands/events share Wolverine's scheduled inbox.
+
+Built-in `wolverine-inbox-count`, `wolverine-outbox-count`, `wolverine-scheduled-count`, and
+the `wolverine-dead-letter-queue` arrival counter remain available. Use `max` across replicas
+for shared-store gauges; sum per-instance counter increases. Do not infer current DLQ size
+from the arrival counter because replay, deletion, and expiration decrease the inventory.
+This collector covers the shared main store configured by this package, not additional tenant stores.
+
 ## Kafka Topics
 
 Register Kafka routes by domain event type. Options are read from `Messaging:Kafka`,

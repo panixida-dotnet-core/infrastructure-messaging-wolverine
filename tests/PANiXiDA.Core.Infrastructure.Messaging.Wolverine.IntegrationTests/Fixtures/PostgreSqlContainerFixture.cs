@@ -20,6 +20,7 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Messag
 using Testcontainers.PostgreSql;
 
 using Wolverine.EntityFrameworkCore;
+using Wolverine;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Fixtures;
 
@@ -47,7 +48,8 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
         Action<WolverineRequestBehaviorConfiguration>? configureRequestBehaviors = null,
         bool useModuleRouting = false,
         bool resetDatabase = true,
-        Action<WolverineScheduleConfiguration>? configureSchedules = null)
+        Action<WolverineScheduleConfiguration>? configureSchedules = null,
+        Action<WolverineOptions>? configureWolverine = null)
     {
         container ??= new PostgreSqlBuilder("postgres:16-alpine")
             .WithDatabase("wolverine_integration_tests")
@@ -180,6 +182,11 @@ public sealed class PostgreSqlContainerFixture : IAsyncLifetime
                 configureKafka,
                 configureRequestBehaviors,
                 typeof(PostgreSqlContainerFixture).Assembly);
+        }
+
+        if (configureWolverine is not null)
+        {
+            hostBuilder.ConfigureServices(services => services.ConfigureWolverine(configureWolverine));
         }
 
         hostBuilder.UseResourceSetupOnStartup(StartupAction.SetupOnly);
