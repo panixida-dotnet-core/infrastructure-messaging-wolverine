@@ -80,11 +80,16 @@ public sealed class OptionBindingGeneratorTests
                 public object First { get; } = new Payload();
                 public dynamic Dynamic { get; } = new GenericPayload<int>();
                 public object Unknown { get; } = new LocalPayload();
+                public object Empty { get; } = new object();
+                public object Missing { get; } = null;
+                public object Scalar { get; } = 42;
+                public object Abstract { get; } = (AbstractPayload)null;
                 public class Factory<T> { public object Create() => new GenericPayload<T>(); }
             }
             public sealed class Payload { public object Child { get; } = new LaterPayload(); }
             public sealed class LaterPayload { public string Name { get; init; } }
             public sealed class GenericPayload<T> { public T Value { get; init; } }
+            public abstract class AbstractPayload;
             file sealed class LocalPayload;
             public class Unrelated
             {
@@ -101,6 +106,7 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldNotContain("typeof(global::LocalPayload)");
         source.ShouldNotContain("typeof(global::GenericPayload<T>)");
         source.ShouldNotContain("typeof(global::UnsupportedPayload)");
+        source.ShouldNotContain("typeof(global::AbstractPayload)");
     }
 
     [Fact(DisplayName = "Option generator discovers runtime implementations in referenced assemblies")]
