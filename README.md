@@ -36,7 +36,8 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - PostgreSQL for Wolverine message storage
 - Kafka only when external event topics are registered
 
-Full Native AOT support is not currently provided.
+Kafka and recurring-command option binding is generated at compile time, including derived `TOption` models; existing registration calls are unchanged.
+Full Native AOT support is not currently provided: the mediator still uses Wolverine runtime compilation and EF Core.
 
 ### Installation
 
@@ -248,6 +249,18 @@ options.AddConsumer<UserCreated>("External:Consumers");
 
 `AddKafkaBroker<TOption>()`, `AddKafkaProducer<TOption, TEvent>()`, and
 `AddKafkaConsumer<TOption, TEvent>()` bind sections named after their option types.
+
+The bundled generator discovers accessible concrete options in the current and referenced assemblies. It preserves constructor defaults,
+inherited properties and `ConfigurationKeyName` attributes. Custom properties must have public setters and scalar types
+(strings, booleans, numbers, enums, date/time values, GUIDs, URIs, and nullable value types).
+Unsupported members produce `PANWOLVSG002` instead of silently falling back to reflection. Keep analyzer assets enabled.
+
+The isolated options Native AOT smoke test checks binding without starting Wolverine, Kafka, or EF Core:
+
+```bash
+dotnet publish tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke -c Release -r linux-x64 -p:PublishAot=true
+./tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke/bin/Release/net10.0/linux-x64/publish/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke
+```
 
 ## EF Core Storage
 
