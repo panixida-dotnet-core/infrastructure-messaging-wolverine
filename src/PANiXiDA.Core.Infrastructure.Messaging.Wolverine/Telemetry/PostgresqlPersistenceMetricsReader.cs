@@ -60,7 +60,7 @@ internal sealed class PostgresqlPersistenceMetricsReader(IWolverineRuntime runti
             .Select(record => new RecurringScheduleMetrics(
                 record.Name,
                 record.Paused,
-                record.Paused ? null : record.NextOccurrence is { } next
+                !record.Paused && record.NextOccurrence is { } next
                     ? Math.Max(0, (observedAt - next).TotalSeconds) : null))
             .ToArray();
 
