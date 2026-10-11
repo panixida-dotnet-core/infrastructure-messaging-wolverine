@@ -20,9 +20,6 @@
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests</_Parameter1>
         </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke</_Parameter1>
-        </AssemblyAttribute>
     </ItemGroup>
 
     <ItemGroup>

@@ -257,13 +257,6 @@ attributes and existing mutable collections are preserved. Getter-only objects a
 Models must be accessible to generated code; unsupported shapes produce `PANWOLVSG002` instead of a reflection fallback.
 Keep analyzer assets enabled.
 
-On Linux with the Native AOT toolchain installed, the isolated smoke test checks binding without starting Wolverine, Kafka, or EF Core:
-
-```bash
-dotnet publish tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke -c Release -r linux-x64
-./tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke/bin/Release/net10.0/linux-x64/publish/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke
-```
-
 ## EF Core Storage
 
 The package enrolls `TDbContext` in Wolverine PostgreSQL message storage. If the application keeps Wolverine envelope tables in EF Core migrations, map them in the DbContext model:
