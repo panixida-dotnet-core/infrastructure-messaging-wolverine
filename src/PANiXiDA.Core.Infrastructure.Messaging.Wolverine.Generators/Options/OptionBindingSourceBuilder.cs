@@ -345,7 +345,8 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
         {
-            body.Append($"        if (section.Value is not null && !readOnly)\n        {{\n            var bytes = {OptionBindingGenerator.Registry}.Parse(section, static value => global::System.Convert.FromBase64String(value));\n")
+            body.Append($"        if (section.Value is null && !{AnyChildren}) return readOnly || option is {{ Length: > 0 }} ? option : null;\n")
+                .Append($"        if (section.Value is not null && !readOnly)\n        {{\n            var bytes = {OptionBindingGenerator.Registry}.Parse(section, static value => global::System.Convert.FromBase64String(value));\n")
                 .Append("            return option is null ? bytes : global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Concat(option, bytes));\n        }\n");
         }
 

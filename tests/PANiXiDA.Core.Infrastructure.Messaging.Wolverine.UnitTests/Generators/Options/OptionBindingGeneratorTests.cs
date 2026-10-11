@@ -157,7 +157,8 @@ public sealed class OptionBindingGeneratorTests
     {
         string[] types = ["string", "bool", "char", "byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong",
             "float", "double", "decimal", "System.DateTime", "System.DateTimeOffset", "System.DateOnly", "System.TimeOnly",
-            "System.TimeSpan", "System.Guid", "System.Uri", "int?", "System.Globalization.CultureInfo"];
+            "System.TimeSpan", "System.Guid", "System.Uri", "int?", "System.Globalization.CultureInfo",
+            "System.Version", "System.Half", "System.Int128", "System.UInt128", "System.Half?", "System.Int128?", "System.UInt128?"];
         var properties = types.Select((type, index) => $"public {type} Value{index} {{ get; set; }}");
         var compilation = CreateCompilation("public sealed class Settings : " +
             "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption { " + string.Join(" ", properties) + " }");

@@ -11,6 +11,112 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingCompatibilityTests
 {
+    [Theory(DisplayName = "Generated binding preserves intrinsic scalar and nullable conversions")]
+    [InlineData("1.5")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void BinderShouldPreserveIntrinsicScalars(string? optional)
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Version"] = "1.2.3.4",
+            ["Options:Half"] = "1.5",
+            ["Options:Signed"] = "170141183460469231731687303715884105727",
+            ["Options:Unsigned"] = "340282366920938463463374607431768211455",
+            ["Options:Optional"] = optional,
+            ["Options:Versions:0"] = "2.3",
+            ["Options:Versions:1"] = "invalid",
+        };
+
+        var original = configuration.GetSection("Options").Get<IntrinsicOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<IntrinsicOptions>(configuration, "Options");
+
+        generated.Version.ShouldBe(original.Version);
+        generated.Half.ShouldBe(original.Half);
+        generated.Signed.ShouldBe(original.Signed);
+        generated.Unsigned.ShouldBe(original.Unsigned);
+        generated.Optional.ShouldBe(original.Optional);
+        generated.Versions.ShouldBe(original.Versions);
+    }
+
+    [Theory(DisplayName = "Generated binding preserves intrinsic scalar conversion errors")]
+    [InlineData("Version")]
+    [InlineData("Half")]
+    [InlineData("Signed")]
+    [InlineData("Unsigned")]
+    public void BinderShouldPreserveIntrinsicScalarErrors(string property)
+    {
+        var configuration = new ConfigurationManager { [$"Options:{property}"] = "invalid" };
+
+        var original = Should.Throw<InvalidOperationException>(() => configuration.GetSection("Options").Get<IntrinsicOptions>());
+        var generated = Should.Throw<InvalidOperationException>(() =>
+            OptionBindingRegistry.GetRequired<IntrinsicOptions>(configuration, "Options"));
+
+        generated.Message.ShouldContain($"Options:{property}");
+        generated.InnerException.ShouldBeOfType(original.InnerException!.GetType());
+    }
+
+    [Theory(DisplayName = "Generated binding accepts scalar option sections with a TypeConverter")]
+    [InlineData("compact-value")]
+    [InlineData("")]
+    public void BinderShouldConvertScalarOptionSections(string value)
+    {
+        var configuration = new ConfigurationManager { ["Options"] = value };
+
+        var original = configuration.GetSection("Options").Get<ScalarOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<ScalarOptions>(configuration, "Options");
+
+        generated.TopicName.ShouldBe(original.TopicName);
+    }
+
+    [Fact(DisplayName = "Generated binding preserves root TypeConverter failures")]
+    public void BinderShouldPreserveScalarOptionErrors()
+    {
+        var configuration = new ConfigurationManager { ["Options"] = "invalid" };
+
+        var original = Should.Throw<InvalidOperationException>(() => configuration.GetSection("Options").Get<ScalarOptions>());
+        var generated = Should.Throw<InvalidOperationException>(() =>
+            OptionBindingRegistry.GetRequired<ScalarOptions>(configuration, "Options"));
+
+        generated.Message.ShouldContain("Options");
+        generated.InnerException.ShouldBeOfType(original.InnerException!.GetType());
+    }
+
+    [Fact(DisplayName = "Generated binding rejects null results from root TypeConverters")]
+    public void BinderShouldRejectNullScalarOptions()
+    {
+        var configuration = new ConfigurationManager { ["Options"] = "null" };
+
+        configuration.GetSection("Options").Get<ScalarOptions>().ShouldBeNull();
+        var generated = Should.Throw<InvalidOperationException>(() =>
+            OptionBindingRegistry.GetRequired<ScalarOptions>(configuration, "Options"));
+
+        generated.Message.ShouldBe($"Configuration section 'Options' could not be bound to '{typeof(ScalarOptions).FullName}'.");
+    }
+
+    [Fact(DisplayName = "Generated binding preserves null byte arrays in collections and dictionaries")]
+    public void BinderShouldPreserveNullByteArrayEntries()
+    {
+        using var json = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("""
+            { "Options": {
+                "Values": [null, "AQI=", "", "invalid"],
+                "Array": [null, "AQI=", ""],
+                "Dictionary": { "null": null, "value": "AQI=", "empty": "" },
+                "Empty": null,
+                "Initialized": null
+            } }
+            """));
+        var configuration = new ConfigurationManager();
+        configuration.AddJsonStream(json);
+
+        var original = configuration.GetSection("Options").Get<BinaryOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<BinaryOptions>(configuration, "Options");
+
+        JsonSerializer.Serialize(generated).ShouldBe(JsonSerializer.Serialize(original));
+        generated.Values.Count.ShouldBe(3);
+        generated.Values[0].ShouldBeNull();
+    }
+
     [Fact(DisplayName = "Generated binding preserves standard and custom TypeConverter values")]
     public void BinderShouldPreserveTypeConverterValues()
     {
@@ -129,6 +235,41 @@ public sealed class OptionBindingCompatibilityTests
 
         JsonSerializer.Serialize(generated).ShouldBe(JsonSerializer.Serialize(original));
         generated.Nested.Name.ShouldBe("configured");
+    }
+
+    public sealed class IntrinsicOptions : KafkaConsumerOption
+    {
+        public Version Version { get; init; } = new(1, 0);
+        public Half Half { get; init; }
+        public Int128 Signed { get; init; }
+        public UInt128 Unsigned { get; init; }
+        public Half? Optional { get; init; } = (Half)7;
+        public List<Version> Versions { get; init; } = [];
+    }
+
+    [TypeConverter(typeof(ScalarOptionsConverter))]
+    public sealed class ScalarOptions : KafkaConsumerOption;
+
+    public sealed class ScalarOptionsConverter : TypeConverter
+    {
+        public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType) => sourceType == typeof(string);
+
+        public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
+            => (string)value switch
+            {
+                "invalid" => throw new NotSupportedException("Unsupported configured options."),
+                "null" => null,
+                var topic => new ScalarOptions { TopicName = topic },
+            };
+    }
+
+    public sealed class BinaryOptions : KafkaConsumerOption
+    {
+        public List<byte[]?> Values { get; init; } = [];
+        public byte[]?[] Array { get; init; } = [];
+        public Dictionary<string, byte[]?> Dictionary { get; init; } = [];
+        public byte[]? Empty { get; init; } = [];
+        public byte[]? Initialized { get; init; } = [1];
     }
 
     public sealed class ConverterOptions : KafkaConsumerOption

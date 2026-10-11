@@ -254,7 +254,9 @@ The bundled generator discovers accessible concrete options in the current and r
 and configuration keys stay unchanged. It binds scalar values, nested objects, records, arrays, lists, sets and dictionaries,
 including public `init` setters and `required` properties. Constructor defaults, inherited properties, `ConfigurationKeyName`
 attributes and existing mutable collections are preserved. Getter-only objects and mutable collections are populated in place.
-Scalar binding includes `CultureInfo` and type-level `TypeConverter` attributes, including inherited attributes.
+Scalar binding includes `CultureInfo`, `Version`, `Half`, `Int128`, `UInt128` and type-level `TypeConverter` attributes,
+including inherited attributes. A converter on the options type can bind a scalar configuration section directly.
+Null `byte[]` entries in collections and dictionaries retain their positions and keys, matching .NET 10 configuration binding.
 Custom converters are constructed directly and must be accessible, with a public parameterless or `System.Type` constructor.
 Their implementations must also support trimming and Native AOT when publishing a native application.
 Models must be accessible to generated code; unsupported shapes produce `PANWOLVSG002` instead of a reflection fallback.
