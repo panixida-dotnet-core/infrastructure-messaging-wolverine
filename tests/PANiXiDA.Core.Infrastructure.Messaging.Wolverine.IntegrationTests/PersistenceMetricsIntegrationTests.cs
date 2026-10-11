@@ -1,12 +1,18 @@
+using JasperFx.Resources;
+
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 using Npgsql;
 
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Database;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Fixtures;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Wolverine;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Telemetry;
 
 using Wolverine;
+using Wolverine.Postgresql;
 using Wolverine.RDBMS;
 using Wolverine.Runtime;
 using Wolverine.Persistence.Durability;
@@ -28,6 +34,37 @@ public sealed class PersistenceMetricsIntegrationTests(PostgreSqlContainerFixtur
         app.Host.Services.GetServices<IHostedService>().OfType<PersistenceMetricsService>().ShouldHaveSingleItem();
         var reader = app.Host.Services.GetRequiredService<IPersistenceMetricsReader>();
         var store = (MessageDatabase<NpgsqlConnection>)app.Host.Services.GetRequiredService<IWolverineRuntime>().Storage;
+        store.SchemaName.ShouldBe(WolverineStorageConstants.Schema);
+        await VerifyPersistedQueueStateAsync(reader, store, token);
+    }
+
+    [Fact(DisplayName = "PostgreSQL metrics use the schema configured on the active message store")]
+    public async Task ReaderShouldUseConfiguredSchema()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var app = await fixture.CreateApplicationAsync(configureWolverine:
+            options => options.Durability.Mode = DurabilityMode.MediatorOnly);
+        using var scope = app.Host.Services.CreateScope();
+        var connectionString = scope.ServiceProvider.GetRequiredService<IntegrationDbContext>()
+            .Database.GetConnectionString().ShouldNotBeNull();
+        using var host = await Host.CreateDefaultBuilder()
+            .UseWolverine(options =>
+            {
+                options.Discovery.DisableConventionalDiscovery();
+                options.Durability.Mode = DurabilityMode.MediatorOnly;
+                options.PersistMessagesWithPostgresql(connectionString, "metrics_store");
+            })
+            .UseResourceSetupOnStartup(StartupAction.SetupOnly)
+            .StartAsync(token);
+        var runtime = host.Services.GetRequiredService<IWolverineRuntime>();
+        var store = (MessageDatabase<NpgsqlConnection>)runtime.Storage;
+        store.SchemaName.ShouldBe("metrics_store");
+        await VerifyPersistedQueueStateAsync(new PostgresqlPersistenceMetricsReader(runtime), store, token);
+    }
+
+    private static async Task VerifyPersistedQueueStateAsync(
+        IPersistenceMetricsReader reader, MessageDatabase<NpgsqlConnection> store, CancellationToken token)
+    {
         using var identifiers = new NpgsqlCommandBuilder();
         var schema = identifiers.QuoteIdentifier(store.SchemaName);
         var empty = await reader.ReadAsync(token);
@@ -37,10 +74,10 @@ public sealed class PersistenceMetricsIntegrationTests(PostgreSqlContainerFixtur
         empty.Schedules.ShouldBeEmpty();
 
         await using var insert = store.CreateCommand($"""
-            insert into {schema}.wolverine_dead_letters (id, body, message_type, received_at, sent_at, replayable)
+            insert into {schema}.{DatabaseConstants.DeadLetterTable} (id, body, message_type, received_at, sent_at, replayable)
             values (gen_random_uuid(), '\x00', 'test', 'local://test', now() - interval '2 hours', false),
                    (gen_random_uuid(), '\x00', 'test', 'local://test', now() - interval '1 hour', true);
-            insert into {schema}.wolverine_incoming_envelopes (id, status, owner_id, body, message_type, received_at, execution_time)
+            insert into {schema}.{DatabaseConstants.IncomingTable} (id, status, owner_id, body, message_type, received_at, execution_time)
             values (gen_random_uuid(), 'Scheduled', 0, '\x00', 'test', 'local://test', now() - interval '10 minutes'),
                    (gen_random_uuid(), 'Scheduled', 0, '\x00', 'test', 'local://test', now() + interval '1 day'),
                    (gen_random_uuid(), 'Handled', 0, '\x00', 'test', 'local://test', now() - interval '1 day');
@@ -53,11 +90,11 @@ public sealed class PersistenceMetricsIntegrationTests(PostgreSqlContainerFixtur
         populated.ScheduledDue.ShouldBe(1);
         populated.ScheduledOverdueSeconds.ShouldNotBeNull().ShouldBeInRange(600, 610);
 
-        await using var unknownDate = store.CreateCommand($"update {schema}.wolverine_dead_letters set sent_at = null;");
+        await using var unknownDate = store.CreateCommand($"update {schema}.{DatabaseConstants.DeadLetterTable} set sent_at = null;");
         await unknownDate.ExecuteNonQueryAsync(token);
         (await reader.ReadAsync(token)).OldestDeadLetterAgeSeconds.ShouldBeNull();
 
-        await using var delete = store.CreateCommand($"delete from {schema}.wolverine_dead_letters; delete from {schema}.wolverine_incoming_envelopes;");
+        await using var delete = store.CreateCommand($"delete from {schema}.{DatabaseConstants.DeadLetterTable}; delete from {schema}.{DatabaseConstants.IncomingTable};");
         await delete.ExecuteNonQueryAsync(token);
         var cleared = await reader.ReadAsync(token);
         cleared.DeadLetters.ShouldBe(0);

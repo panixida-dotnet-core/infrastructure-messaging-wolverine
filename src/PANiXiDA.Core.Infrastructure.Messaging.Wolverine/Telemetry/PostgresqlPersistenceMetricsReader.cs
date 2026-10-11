@@ -20,8 +20,6 @@ internal sealed class PostgresqlPersistenceMetricsReader(IWolverineRuntime runti
     {
         using var identifierBuilder = new NpgsqlCommandBuilder();
         var schema = identifierBuilder.QuoteIdentifier(store.SchemaName);
-        // Aggregates only: never load envelope bodies, exception text, or recipient addresses.
-        // sent_at is the original send time, not the time the envelope entered the DLQ.
         await using var command = store.CreateCommand($"""
             select dlq.total, dlq.oldest_age, scheduled.total, scheduled.overdue, now()
             from (

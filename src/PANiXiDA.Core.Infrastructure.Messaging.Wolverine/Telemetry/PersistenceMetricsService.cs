@@ -36,21 +36,29 @@ internal sealed partial class PersistenceMetricsService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = lifetime.ApplicationStarted.Register(() => started.TrySetResult());
         try
         {
-            var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var registration = lifetime.ApplicationStarted.Register(() => started.TrySetResult());
             await started.Task.WaitAsync(stoppingToken);
-            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1), clock);
-            while (true)
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1), clock);
+        while (true)
+        {
+            try
             {
                 await PollAsync(stoppingToken);
                 await timer.WaitForNextTickAsync(stoppingToken);
             }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Host shutdown cancels both the startup wait and the polling timer.
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 
@@ -71,7 +79,6 @@ internal sealed partial class PersistenceMetricsService : BackgroundService
         catch (Exception exception)
         {
             Volatile.Write(ref snapshot, null);
-            // The exception message can contain connection details or SQL; export only its type.
             LogPollFailure(logger, exception.GetType().Name);
         }
     }
