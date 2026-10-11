@@ -20,7 +20,7 @@ public static class OptionBindingRegistry
         where TOption : class
     {
         ArgumentNullException.ThrowIfNull(binder);
-        Binding<TOption>.Register(binder);
+        Binding<TOption>.RegisterBinder(binder);
     }
 
     /// <summary>
@@ -75,7 +75,7 @@ public static class OptionBindingRegistry
 
         internal static Func<IConfigurationSection, TOption>? Binder => binder;
 
-        internal static void Register(Func<IConfigurationSection, TOption> generatedBinder)
+        internal static void RegisterBinder(Func<IConfigurationSection, TOption> generatedBinder)
         {
             Interlocked.CompareExchange(ref binder, generatedBinder, null);
         }
