@@ -31,7 +31,6 @@ public sealed class FinallyRequestMiddlewareFailureTests
     [InlineData(true, true, true)]
     public async Task PipelineShouldPreserveAllFailures(bool failHandler, bool failFirst, bool failSecond)
     {
-        // Arrange
         var state = new FailureState
         {
             HandlerException = failHandler ? new InvalidOperationException("Handler failed.") : null,
@@ -41,10 +40,8 @@ public sealed class FinallyRequestMiddlewareFailureTests
         var expected = new[] { state.HandlerException, state.FirstException, state.SecondException }
             .OfType<Exception>().ToArray();
 
-        // Act
         var actual = await Record.ExceptionAsync(() => Pipeline.Value(state));
 
-        // Assert
         state.Calls.ShouldBe(["first", "second"]);
         state.ReceivedExceptions.ShouldBe(new[] { state.HandlerException, state.HandlerException });
         AssertFailures(actual, expected);
@@ -60,7 +57,6 @@ public sealed class FinallyRequestMiddlewareFailureTests
     [Fact(DisplayName = "Generated finally middleware continues after a behavior constructor fails")]
     public async Task PipelineShouldContinueAfterConstructorFailure()
     {
-        // Arrange
         var state = new FailureState
         {
             HandlerException = new InvalidOperationException("Handler failed."),
@@ -69,10 +65,8 @@ public sealed class FinallyRequestMiddlewareFailureTests
             FailConstructor = true
         };
 
-        // Act
         var actual = await Record.ExceptionAsync(() => Pipeline.Value(state));
 
-        // Assert
         state.Calls.ShouldBe(["second"]);
         AssertFailures(actual, [state.HandlerException, state.FirstException, state.SecondException]);
     }
@@ -84,7 +78,6 @@ public sealed class FinallyRequestMiddlewareFailureTests
     [InlineData(false, true)]
     public async Task PipelineShouldPreserveCancellation(bool cancelHandler, bool failSecond)
     {
-        // Arrange
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
         var canceled = new OperationCanceledException(cancellation.Token);
@@ -95,11 +88,9 @@ public sealed class FinallyRequestMiddlewareFailureTests
             SecondException = failSecond ? new InvalidOperationException("Second cleanup failed.") : null
         };
 
-        // Act
         var task = Pipeline.Value(state);
         var actual = await Record.ExceptionAsync(() => task);
 
-        // Assert
         AssertFailures(actual, [.. new[] { canceled, state.SecondException }.OfType<Exception>()]);
         task.IsCanceled.ShouldBe(!failSecond);
         task.IsFaulted.ShouldBe(failSecond);
@@ -114,7 +105,6 @@ public sealed class FinallyRequestMiddlewareFailureTests
     [InlineData(true, true)]
     public async Task PipelineShouldRetainAggregatedOriginalFailure(bool aggregateOriginal, bool failSecond)
     {
-        // Arrange
         Exception original = new InvalidOperationException("Handler failed.");
         if (aggregateOriginal)
         {
@@ -129,10 +119,8 @@ public sealed class FinallyRequestMiddlewareFailureTests
             SecondException = failSecond ? new InvalidOperationException("Second cleanup failed.") : null
         };
 
-        // Act
         var actual = await Record.ExceptionAsync(() => Pipeline.Value(state));
 
-        // Assert
         AssertFailures(actual, [.. new[] { cleanup, state.SecondException }.OfType<Exception>()]);
         state.ReceivedExceptions.ShouldBe(new[] { original, original });
     }
@@ -140,14 +128,11 @@ public sealed class FinallyRequestMiddlewareFailureTests
     [Fact(DisplayName = "Generated finally middleware preserves an existing aggregate when it is the only failure")]
     public async Task PipelineShouldPreserveSingleAggregate()
     {
-        // Arrange
         var aggregate = new AggregateException(new InvalidOperationException("Cleanup failed."));
         var state = new FailureState { FirstException = aggregate };
 
-        // Act
         var actual = await Record.ExceptionAsync(() => Pipeline.Value(state));
 
-        // Assert
         actual.ShouldBeSameAs(aggregate);
     }
 
@@ -156,7 +141,6 @@ public sealed class FinallyRequestMiddlewareFailureTests
     [InlineData(true)]
     public async Task PipelineShouldRetainRepeatedCleanupFailures(bool failHandler)
     {
-        // Arrange
         var cleanup = new InvalidOperationException("Cleanup failed.");
         var state = new FailureState
         {
@@ -166,10 +150,8 @@ public sealed class FinallyRequestMiddlewareFailureTests
         };
         var expected = new[] { state.HandlerException, cleanup, cleanup }.OfType<Exception>().ToArray();
 
-        // Act
         var actual = await Record.ExceptionAsync(() => Pipeline.Value(state));
 
-        // Assert
         AssertFailures(actual, expected);
         state.Calls.ShouldBe(["first", "second"]);
     }
@@ -179,7 +161,6 @@ public sealed class FinallyRequestMiddlewareFailureTests
     [InlineData(true)]
     public async Task PipelineShouldPreserveRethrownOriginal(bool rethrowAgain)
     {
-        // Arrange
         var original = new InvalidOperationException("Handler failed.");
         var state = new FailureState
         {
@@ -188,10 +169,8 @@ public sealed class FinallyRequestMiddlewareFailureTests
             SecondException = rethrowAgain ? original : null
         };
 
-        // Act
         var actual = await Record.ExceptionAsync(() => Pipeline.Value(state));
 
-        // Assert
         actual.ShouldBeSameAs(original);
         original.StackTrace.ShouldNotBeNull();
         original.StackTrace.ShouldContain(nameof(FailureState.HandleAsync));
@@ -203,7 +182,6 @@ public sealed class FinallyRequestMiddlewareFailureTests
     [InlineData(true)]
     public async Task PipelineShouldPreserveRethrownOriginalStackInAggregate(bool aggregateOriginal)
     {
-        // Arrange
         var original = new InvalidOperationException("Handler failed.");
         var second = new InvalidOperationException("Second cleanup failed.");
         var state = new FailureState
@@ -213,10 +191,8 @@ public sealed class FinallyRequestMiddlewareFailureTests
             SecondException = aggregateOriginal ? new AggregateException(original, second) : second
         };
 
-        // Act
         var actual = await Record.ExceptionAsync(() => Pipeline.Value(state));
 
-        // Assert
         actual.ShouldBeOfType<AggregateException>().Flatten().InnerExceptions.ShouldBe([original, second]);
         original.StackTrace.ShouldNotBeNull();
         original.StackTrace.ShouldContain(nameof(FailureState.HandleAsync));
@@ -228,7 +204,6 @@ public sealed class FinallyRequestMiddlewareFailureTests
     [InlineData(true)]
     public async Task PipelineShouldPreserveTransactionCleanupFailures(bool failSecond)
     {
-        // Arrange
         var unitOfWork = new TestUnitOfWork
         {
             HasActiveTransaction = true,
@@ -244,10 +219,8 @@ public sealed class FinallyRequestMiddlewareFailureTests
         var expected = new[] { state.HandlerException, unitOfWork.RollbackException, unitOfWork.DisposeException, state.SecondException }
             .OfType<Exception>().ToArray();
 
-        // Act
         var actual = await Record.ExceptionAsync(() => TransactionPipeline.Value(state));
 
-        // Assert
         actual.ShouldBeOfType<AggregateException>().Flatten().InnerExceptions.ShouldBe(expected, ignoreOrder: true);
         unitOfWork.RollbackTransactionCallCount.ShouldBe(1);
         unitOfWork.DisposeTransactionCallCount.ShouldBe(1);

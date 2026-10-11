@@ -97,7 +97,6 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
     [InlineData(true)]
     public async Task FinallyShouldPreserveHandlerAndCleanupFailures(bool useModules)
     {
-        // Arrange
         await using var app = await fixture.CreateApplicationAsync(
             useModuleRouting: useModules,
             configureRequestBehaviors: behaviors =>
@@ -107,13 +106,11 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             });
         var id = Guid.NewGuid();
 
-        // Act
         var exception = await Record.ExceptionAsync(() => app.ExecuteWithMediatorAsync(
             (mediator, token) => mediator.SendAsync(
                 new CreateIntegrationRecordAndFailAfterPublishCommand(id, "cleanup-failure"), token),
             TestContext.Current.CancellationToken));
 
-        // Assert
         var aggregate = (exception as AggregateException ?? exception?.InnerException as AggregateException).ShouldNotBeNull();
         aggregate.InnerExceptions.Count.ShouldBe(2);
         aggregate.InnerExceptions[0].ShouldBeSameAs(app.Journal.FinallyException);
