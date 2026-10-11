@@ -10,6 +10,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string Section = "global::Microsoft.Extensions.Configuration.IConfigurationSection";
     private const string Collections = "global::System.Collections.Generic.";
     private const string AnyChildren = "global::System.Linq.Enumerable.Any(section.GetChildren())";
+    private const string ReturnOption = "        return option;\n";
     private const string Accessor = "global::System.Runtime.CompilerServices.UnsafeAccessor";
     private const string AccessorKind = "global::System.Runtime.CompilerServices.UnsafeAccessorKind.";
     private readonly Dictionary<ITypeSymbol, string> methods = new(SymbolEqualityComparer.Default);
@@ -150,7 +151,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             AppendProperty(body, property, method, index++, type.IsReferenceType && parameters.Contains(property.Name));
         }
 
-        body.Append("        return option;\n");
+        body.Append(ReturnOption);
     }
 
     private void AppendProperty(StringBuilder body, IPropertySymbol property, string method, int index, bool constructorBound)
@@ -380,7 +381,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var setInterface = named?.OriginalDefinition.ToDisplayString() is "System.Collections.Generic.ISet<T>" or "System.Collections.Generic.IReadOnlySet<T>";
         if (setInterface && element.SpecialType != SpecialType.System_String && element.TypeKind != TypeKind.Enum)
         {
-            body.Append("        return option;\n");
+            body.Append(ReturnOption);
             return;
         }
 
@@ -463,7 +464,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var readOnly = type.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>";
         if (keyExpression is null && type.TypeKind == TypeKind.Interface)
         {
-            body.Append("        return option;\n");
+            body.Append(ReturnOption);
             return;
         }
 
@@ -484,7 +485,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             AppendItems(body, value, $"var key = {keyExpression};\n                items.TryGetValue(key, out var current);\n                items[key] = {Build(value)}(child, current, parentCollection: true);");
         }
-        body.Append(readOnly ? "        return items;\n" : "        return option;\n");
+        body.Append(readOnly ? "        return items;\n" : ReturnOption);
     }
 
     private static string? DictionaryKey(ITypeSymbol key)

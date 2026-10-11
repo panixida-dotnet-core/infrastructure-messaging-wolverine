@@ -122,7 +122,7 @@ public sealed class OptionBindingFailureTests
         JsonSerializer.Serialize(generated).ShouldBe(JsonSerializer.Serialize(original));
     }
 
-    private static void AssertSameFailure<T>(IConfiguration configuration) where T : class
+    private static void AssertSameFailure<T>(ConfigurationManager configuration) where T : class
     {
         var original = Record.Exception(() => configuration.GetSection("Options").Get<T>());
         var generated = Record.Exception(() => OptionBindingRegistry.GetRequired<T>(configuration, "Options"));
@@ -191,12 +191,12 @@ public sealed class OptionBindingFailureTests
 
     public sealed class ThrowingSetterOptions : KafkaConsumerOption
     {
-        public string Name { get => "initial"; set => throw new FormatException(value); }
+        public string Name { get => TopicName; set => throw new FormatException(value); }
     }
 
     public sealed class ThrowingInitOptions : KafkaConsumerOption
     {
-        public string Name { get => "initial"; init => throw new FormatException(value); }
+        public string Name { get => TopicName; init => throw new FormatException(value); }
     }
 
     public sealed class RestrictedOptions : KafkaConsumerOption
