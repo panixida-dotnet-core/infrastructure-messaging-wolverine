@@ -129,6 +129,7 @@ public sealed class PolymorphicOptionBindingTests
     public class PlainSettings
     {
         public string Name { get; init; } = "initial";
+        public new string GetType() => "hidden";
     }
 
     [TypeConverter(typeof(ThrowingConverter))]

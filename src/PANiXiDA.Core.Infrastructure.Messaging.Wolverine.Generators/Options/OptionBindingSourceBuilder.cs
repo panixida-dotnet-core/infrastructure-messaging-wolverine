@@ -161,7 +161,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return;
         }
 
-        body.Append("        if (option is not null)\n        {\n            var runtimeType = option.GetType();\n");
+        body.Append("        if (option is not null)\n        {\n            var runtimeType = ((object)option).GetType();\n");
         foreach (var implementation in runtimeTypes.Where(candidate => candidate.TypeKind == TypeKind.Class &&
                      !candidate.IsFileLocal && compilation.IsSymbolAccessibleWithin(candidate, compilation.Assembly) &&
                      compilation.ClassifyCommonConversion(candidate, type) is { IsImplicit: true, IsReference: true }))
