@@ -200,6 +200,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
                 "System.DateTimeOffset" => "DateTimeOffsetConverter",
                 "System.DateOnly" => "DateOnlyConverter",
                 "System.TimeOnly" => "TimeOnlyConverter",
+                "System.Globalization.CultureInfo" => "CultureInfoConverter",
                 _ => null,
             },
         };

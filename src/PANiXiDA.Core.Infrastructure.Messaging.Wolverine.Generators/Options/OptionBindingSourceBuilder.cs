@@ -50,13 +50,29 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private void AppendBody(StringBuilder body, ITypeSymbol type, string method)
     {
-        var conversion = OptionBindingGenerator.GetConversion(type);
+        var converter = GetCustomConverter(type);
+        var conversion = converter is null ? OptionBindingGenerator.GetConversion(type) : null;
         if (conversion is not null)
         {
             var nullTest = IsNullable(type) ? "global::System.String.IsNullOrEmpty(section.Value)" : "section.Value is null";
             body.Append($"        if (readOnly) return option;\n        return {nullTest} ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, static value => {conversion});\n");
+            return;
         }
-        else if (type.ToDisplayString() == "Microsoft.Extensions.Configuration.IConfigurationSection")
+
+        if (converter is not null)
+        {
+            var nullTest = IsNullable(type) ? "global::System.String.IsNullOrEmpty(section.Value)" : "section.Value is null";
+            body.Append($"        if (section.Value is not null || !{AnyChildren})\n        {{\n            global::System.ComponentModel.TypeConverter converter = {converter};\n")
+                .Append("            if (converter.CanConvertFrom(typeof(string)))\n            {\n                if (readOnly) return option;\n")
+                .Append($"                return {nullTest} ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, value => ({Name(type)})converter.ConvertFromInvariantString(value)!);\n            }}\n        }}\n");
+        }
+
+        AppendComplexBody(body, type, method);
+    }
+
+    private void AppendComplexBody(StringBuilder body, ITypeSymbol type, string method)
+    {
+        if (type.ToDisplayString() == "Microsoft.Extensions.Configuration.IConfigurationSection")
         {
             body.Append("        return readOnly ? option : section;\n");
         }
@@ -67,7 +83,8 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         else if (IsNullable(type))
         {
             var underlying = ((INamedTypeSymbol)type).TypeArguments[0];
-            body.Append($"        if (readOnly) return option;\n        if (!{AnyChildren}) return default;\n        return {Build(underlying)}(section, option.GetValueOrDefault());\n");
+            body.Append($"        if (readOnly) return option;\n        if (section.Value == string.Empty) return default;\n")
+                .Append($"        if (!{AnyChildren}) return section.Value is null ? default : option;\n        return {Build(underlying)}(section, option.GetValueOrDefault());\n");
         }
         else if (type is IArrayTypeSymbol array)
         {
@@ -366,13 +383,14 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private void AppendSequenceItems(StringBuilder body, ITypeSymbol element, bool copy, bool readOnlySet)
     {
-        var nonNullableArray = copy && element.IsValueType && !IsNullable(element) && CanConvertScalar(element);
+        var scalarConversion = ScalarConversionCondition(element);
+        var nonNullableArray = copy && element.IsValueType && !IsNullable(element) && scalarConversion != "false";
         if (nonNullableArray)
         {
             body.Append("        var nullElement = false;\n");
         }
 
-        var rejectNull = nonNullableArray ? "if (child.Value is null && !global::System.Linq.Enumerable.Any(child.GetChildren())) { nullElement = true; continue; }\n                " : string.Empty;
+        var rejectNull = nonNullableArray ? $"if ({scalarConversion} && child.Value is null && !global::System.Linq.Enumerable.Any(child.GetChildren())) {{ nullElement = true; continue; }}\n                " : string.Empty;
         AppendItems(body, element, rejectNull + $"items.Add({Build(element)}(child, default, parentCollection: true));");
         if (nonNullableArray)
         {
@@ -441,11 +459,38 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         body.Append($"            }}\n            return {empty};\n        }}\n");
     }
 
-    private static void AppendItems(StringBuilder body, ITypeSymbol element, string binding)
+    private void AppendItems(StringBuilder body, ITypeSymbol element, string binding)
     {
-        body.Append("        foreach (var child in section.GetChildren())\n        {\n            try\n            {\n                ")
-            .Append(CanConvertScalar(element) ? string.Empty : "if (!global::System.String.IsNullOrEmpty(child.Value) && !global::System.Linq.Enumerable.Any(child.GetChildren())) continue;\n                ")
-            .Append(binding).Append("\n            }\n            catch (global::System.Exception)\n            {\n                // ConfigurationBinder skips invalid collection entries by default.\n            }\n        }\n");
+        body.Append("        foreach (var child in section.GetChildren())\n        {\n            try\n            {\n                ");
+        var scalarConversion = ScalarConversionCondition(element);
+        if (scalarConversion != "true")
+        {
+            body.Append($"if (!({scalarConversion}) && !global::System.String.IsNullOrEmpty(child.Value) && !global::System.Linq.Enumerable.Any(child.GetChildren())) continue;\n                ");
+        }
+
+        body.Append(binding).Append("\n            }\n            catch (global::System.Exception)\n            {\n                // ConfigurationBinder skips invalid collection entries by default.\n            }\n        }\n");
+    }
+
+    private string ScalarConversionCondition(ITypeSymbol type)
+    {
+        var converter = GetCustomConverter(type);
+        if (converter is not null)
+        {
+            return $"((global::System.ComponentModel.TypeConverter){converter}).CanConvertFrom(typeof(string))";
+        }
+
+        return CanConvertScalar(type) ? "true" : "false";
+    }
+
+    private string? GetCustomConverter(ITypeSymbol type)
+    {
+        var converter = OptionTypeConverter.GetConstruction(type, compilation, out var error);
+        if (error is not null)
+        {
+            Error = error;
+        }
+
+        return converter;
     }
 
     private static bool CanConvertScalar(ITypeSymbol type)

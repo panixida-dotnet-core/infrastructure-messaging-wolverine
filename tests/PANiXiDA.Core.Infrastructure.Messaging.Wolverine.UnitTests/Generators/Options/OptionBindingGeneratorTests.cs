@@ -157,7 +157,7 @@ public sealed class OptionBindingGeneratorTests
     {
         string[] types = ["string", "bool", "char", "byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong",
             "float", "double", "decimal", "System.DateTime", "System.DateTimeOffset", "System.DateOnly", "System.TimeOnly",
-            "System.TimeSpan", "System.Guid", "System.Uri", "int?"];
+            "System.TimeSpan", "System.Guid", "System.Uri", "int?", "System.Globalization.CultureInfo"];
         var properties = types.Select((type, index) => $"public {type} Value{index} {{ get; set; }}");
         var compilation = CreateCompilation("public sealed class Settings : " +
             "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption { " + string.Join(" ", properties) + " }");
@@ -313,6 +313,97 @@ public sealed class OptionBindingGeneratorTests
         var (_, diagnostics) = Generate(compilation);
 
         diagnostics.ShouldBeEmpty();
+    }
+
+    [Theory(DisplayName = "Option generator resolves named and closed generic converters without reflection")]
+    [InlineData("\"ValueConverter\"")]
+    [InlineData("\"ValueConverter, GeneratedOptionsTest\"")]
+    [InlineData("typeof(ValueConverter)")]
+    [InlineData("typeof(GenericConverter<string>)")]
+    public void GeneratorShouldResolveCustomConverters(string converter)
+    {
+        var compilation = CreateCompilation($$"""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public Payload Value { get; init; }
+            }
+            [System.ComponentModel.TypeConverter({{converter}})]
+            public class Payload { public string Name { get; set; } }
+            public class ValueConverter : System.ComponentModel.TypeConverter;
+            public class GenericConverter<T> : System.ComponentModel.TypeConverter;
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".CanConvertFrom(typeof(string))");
+        source.ShouldNotContain("TypeDescriptor");
+    }
+
+    [Theory(DisplayName = "Option generator ignores empty TypeConverter attributes")]
+    [InlineData("System.ComponentModel.TypeConverter")]
+    [InlineData("System.ComponentModel.TypeConverter(\"\")")]
+    public void GeneratorShouldIgnoreEmptyConverterAttributes(string attribute)
+    {
+        var compilation = CreateCompilation($$"""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public Payload Value { get; init; }
+            }
+            [{{attribute}}]
+            public class Payload { public string Name { get; set; } }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldNotContain(".CanConvertFrom");
+    }
+
+    [Theory(DisplayName = "Option generator diagnoses converters that cannot be constructed statically")]
+    [InlineData("\"MissingConverter\"", "")]
+    [InlineData("typeof(ValueConverter)", "public class ValueConverter;")]
+    [InlineData("typeof(ValueConverter)", "public abstract class ValueConverter : System.ComponentModel.TypeConverter;")]
+    [InlineData("typeof(ValueConverter<>)", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]
+    [InlineData("typeof(ValueConverter)", "public class ValueConverter : System.ComponentModel.TypeConverter { private ValueConverter() {} }")]
+    [InlineData("typeof(ValueConverter)", "public class ValueConverter(int value) : System.ComponentModel.TypeConverter;")]
+    [InlineData("typeof(ValueConverter)", "public class ValueConverter : System.ComponentModel.TypeConverter { public ValueConverter(ref System.Type type) {} }")]
+    public void GeneratorShouldDiagnoseUnsupportedConverters(string converter, string declaration)
+    {
+        var compilation = CreateCompilation($$"""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public Payload Value { get; init; }
+            }
+            [System.ComponentModel.TypeConverter({{converter}})]
+            public class Payload { public string Name { get; set; } }
+            {{declaration}}
+            """);
+
+        var (_, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002" && diagnostic.GetMessage().Contains("TypeConverter"));
+    }
+
+    [Fact(DisplayName = "Option generator diagnoses private converter types")]
+    public void GeneratorShouldDiagnosePrivateConverters()
+    {
+        var compilation = CreateCompilation("""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public Payload Value { get; init; }
+            }
+            [System.ComponentModel.TypeConverter(typeof(Payload.Converter))]
+            public class Payload
+            {
+                public string Name { get; set; }
+                private class Converter : System.ComponentModel.TypeConverter;
+            }
+            """);
+
+        var (_, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002" && diagnostic.GetMessage().Contains("TypeConverter"));
     }
 
     private static CSharpCompilation CreateCompilation(string source, string name = "GeneratedOptionsTest")
