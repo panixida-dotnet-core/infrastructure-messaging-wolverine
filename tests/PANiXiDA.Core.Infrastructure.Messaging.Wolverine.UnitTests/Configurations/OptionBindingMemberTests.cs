@@ -91,6 +91,48 @@ public sealed class OptionBindingMemberTests
         generated.Pages.Name.ShouldBe("pages");
     }
 
+    [Fact(DisplayName = "Generated binding populates ordinary properties of concrete read-only dictionary models")]
+    public void BinderShouldBindReadOnlyDictionaryObjects()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Payload:Name"] = "configured",
+            ["Options:Sealed:Name"] = "sealed",
+            ["Options:Created:Name"] = "created",
+        };
+
+        var original = configuration.GetSection("Options").Get<ReadOnlyDictionaryOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<ReadOnlyDictionaryOptions>(configuration, "Options");
+
+        generated.Payload.Name.ShouldBe(original.Payload.Name);
+        generated.Payload.Name.ShouldBe("configured");
+        generated.Payload["existing"].ShouldBe(original.Payload["existing"]);
+        generated.Sealed.Name.ShouldBe(original.Sealed.Name);
+        generated.Sealed.Name.ShouldBe("sealed");
+        generated.Created.ShouldNotBeNull();
+        generated.Created.Name.ShouldBe(original.Created!.Name);
+        generated.Created.Name.ShouldBe("created");
+    }
+
+    [Theory(DisplayName = "Generated binding preserves constructor-bound property accessor side effects")]
+    [InlineData("configured")]
+    [InlineData(null)]
+    public void BinderShouldResetConstructorBoundProperties(string? name)
+    {
+        var configuration = new ConfigurationManager { ["Options:TopicName"] = "topic" };
+        if (name is not null)
+        {
+            configuration["Options:Name"] = name;
+        }
+
+        var original = configuration.GetSection("Options").Get<ConstructorOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<ConstructorOptions>(configuration, "Options");
+
+        generated.Name.ShouldBe(original.Name);
+        generated.SetterCalls.ShouldBe(original.SetterCalls);
+        generated.SetterCalls.ShouldBe(1);
+    }
+
     [Theory(DisplayName = "Generated binding assigns absent and present configuration section properties")]
     [InlineData(false)]
     [InlineData(true)]
@@ -238,6 +280,40 @@ public sealed class OptionBindingMemberTests
         public IEnumerator<int> GetEnumerator() => Enumerable.Empty<int>().GetEnumerator();
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
+
+    public sealed class ReadOnlyDictionaryOptions : KafkaConsumerOption
+    {
+        public ReadOnlyDictionaryPayload Payload { get; } = new();
+        public SealedDictionaryPayload Sealed { get; } = new();
+        public ReadOnlyDictionaryPayload? Created { get; init; }
+    }
+
+    public class ReadOnlyDictionaryPayload : IReadOnlyDictionary<string, string>
+    {
+        private readonly Dictionary<string, string> values = new() { ["existing"] = "initial" };
+        public string Name { get; init; } = "initial";
+        public string this[string key] => values[key];
+        public IEnumerable<string> Keys => values.Keys;
+        public IEnumerable<string> Values => values.Values;
+        public int Count => values.Count;
+        public bool ContainsKey(string key) => values.ContainsKey(key);
+        public bool TryGetValue(string key, out string value) => values.TryGetValue(key, out value!);
+        public IEnumerator<KeyValuePair<string, string>> GetEnumerator() => values.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    public sealed class ConstructorOptions(string? Name = null) : KafkaConsumerOption
+    {
+        private string? name = Name;
+        public string? Name
+        {
+            get => name;
+            init { name = value; SetterCalls++; }
+        }
+        public int SetterCalls { get; private set; }
+    }
+
+    public sealed class SealedDictionaryPayload : ReadOnlyDictionaryPayload;
 
     public sealed class ReadOnlyEnumerablePayload : EnumerablePayload, IReadOnlyCollection<int>
     {

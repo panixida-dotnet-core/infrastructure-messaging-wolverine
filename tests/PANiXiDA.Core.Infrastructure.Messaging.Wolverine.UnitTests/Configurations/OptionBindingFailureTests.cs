@@ -41,6 +41,8 @@ public sealed class OptionBindingFailureTests
     [InlineData("required")]
     [InlineData("setter")]
     [InlineData("init")]
+    [InlineData("constructor-getter")]
+    [InlineData("constructor-setter")]
     public void BinderShouldPreserveInvocationErrors(string kind)
     {
         var configuration = new ConfigurationManager
@@ -57,6 +59,8 @@ public sealed class OptionBindingFailureTests
             case "required": AssertSameFailure<HolderOptions<ThrowingRequiredPayload>>(configuration); break;
             case "setter": AssertSameFailure<ThrowingSetterOptions>(configuration); break;
             case "init": AssertSameFailure<ThrowingInitOptions>(configuration); break;
+            case "constructor-getter": AssertSameFailure<ThrowingConstructorGetterOptions>(configuration); break;
+            case "constructor-setter": AssertSameFailure<ThrowingConstructorSetterOptions>(configuration); break;
         }
     }
 
@@ -192,6 +196,20 @@ public sealed class OptionBindingFailureTests
     public sealed class ThrowingSetterOptions : KafkaConsumerOption
     {
         public string Name { get => TopicName; set => throw new FormatException(value); }
+    }
+
+    public sealed class ThrowingConstructorGetterOptions : KafkaConsumerOption
+    {
+        private readonly string message;
+        public ThrowingConstructorGetterOptions(string Name) => message = Name;
+        public string Name { get => throw new FormatException(message); set => TopicName = value; }
+    }
+
+    public sealed class ThrowingConstructorSetterOptions : KafkaConsumerOption
+    {
+        private readonly string name;
+        public ThrowingConstructorSetterOptions(string Name) => name = Name;
+        public string Name { get => name; set => throw new FormatException(value); }
     }
 
     public sealed class ThrowingInitOptions : KafkaConsumerOption

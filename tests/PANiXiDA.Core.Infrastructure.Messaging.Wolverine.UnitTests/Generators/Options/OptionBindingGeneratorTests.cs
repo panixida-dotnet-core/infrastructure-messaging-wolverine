@@ -50,8 +50,10 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldContain("child.Key, \"value\", global::System.StringComparison.OrdinalIgnoreCase");
     }
 
-    [Fact(DisplayName = "Option generator discovers option types from referenced assemblies")]
-    public void GeneratorShouldDiscoverReferencedOptions()
+    [Theory(DisplayName = "Option generator discovers option types from referenced assemblies")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeneratorShouldDiscoverReferencedOptions(bool sourceReference)
     {
         var referenced = CreateCompilation("""
             public sealed class ReferencedSettings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
@@ -59,13 +61,46 @@ public sealed class OptionBindingGeneratorTests
             """, "ReferencedOptions");
         using var stream = new MemoryStream();
         referenced.Emit(stream, cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
-        var compilation = CreateCompilation(string.Empty).AddReferences(MetadataReference.CreateFromImage(stream.ToArray()));
+        MetadataReference reference = sourceReference ? referenced.ToMetadataReference() : MetadataReference.CreateFromImage(stream.ToArray());
+        var compilation = CreateCompilation(string.Empty).AddReferences(reference);
 
         var (source, diagnostics) = Generate(compilation);
 
         diagnostics.ShouldBeEmpty();
         source.ShouldContain(".Register<global::ReferencedSettings>");
         source.ShouldNotContain(".Register<global::HiddenSettings>");
+    }
+
+    [Fact(DisplayName = "Option generator discovers object implementations only within the option model graph")]
+    public void GeneratorShouldDiscoverObjectImplementations()
+    {
+        var compilation = CreateCompilation("""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public object First { get; } = new Payload();
+                public dynamic Dynamic { get; } = new GenericPayload<int>();
+                public object Unknown { get; } = new LocalPayload();
+                public class Factory<T> { public object Create() => new GenericPayload<T>(); }
+            }
+            public sealed class Payload { public object Child { get; } = new LaterPayload(); }
+            public sealed class LaterPayload { public string Name { get; init; } }
+            public sealed class GenericPayload<T> { public T Value { get; init; } }
+            file sealed class LocalPayload;
+            public class Unrelated
+            {
+                public object Value { get; } = new UnsupportedPayload();
+            }
+            public class UnsupportedPayload { public System.Span<int> Span => default; }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain("typeof(global::LaterPayload)");
+        source.ShouldContain("typeof(global::GenericPayload<int>)");
+        source.ShouldNotContain("typeof(global::LocalPayload)");
+        source.ShouldNotContain("typeof(global::GenericPayload<T>)");
+        source.ShouldNotContain("typeof(global::UnsupportedPayload)");
     }
 
     [Fact(DisplayName = "Option generator discovers runtime implementations in referenced assemblies")]

@@ -9,10 +9,14 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class PolymorphicOptionBindingTests
 {
-    [Theory(DisplayName = "Generated binding populates the runtime properties of initialized base and interface members")]
+    [Theory(DisplayName = "Generated binding populates the runtime properties of initialized base, interface and object members")]
     [InlineData("Base")]
     [InlineData("Interface")]
     [InlineData("Generic")]
+    [InlineData("Object")]
+    [InlineData("ReadOnlyObject")]
+    [InlineData("FactoryObject")]
+    [InlineData("ObjectMap:existing")]
     [InlineData("Map:existing")]
     public void BinderShouldBindRuntimeProperties(string member)
     {
@@ -63,9 +67,54 @@ public sealed class PolymorphicOptionBindingTests
         generated.Value.ShouldBeSameAs(generated.Initial);
     }
 
+    [Theory(DisplayName = "Generated object binding preserves scalar precedence and existing instances")]
+    [InlineData(false, null)]
+    [InlineData(false, "")]
+    [InlineData(false, "scalar")]
+    [InlineData(true, null)]
+    [InlineData(true, "")]
+    [InlineData(true, "scalar")]
+    public void BinderShouldPreserveObjectValues(bool readOnly, string? value)
+    {
+        var member = readOnly ? "ReadOnlyObject" : "Object";
+        var configuration = new ConfigurationManager { [$"Options:{member}"] = value, [$"Options:{member}:alias"] = "configured" };
+
+        var original = configuration.GetSection("Options").Get<PolymorphicOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<PolymorphicOptions>(configuration, "Options");
+        var expected = readOnly ? original.ReadOnlyObject : original.Object;
+        var actual = readOnly ? generated.ReadOnlyObject : generated.Object;
+
+        if (expected is null)
+        {
+            actual.ShouldBeNull();
+        }
+        else if (expected is string text)
+        {
+            actual.ShouldBe(text);
+        }
+        else
+        {
+            ((ConcreteSettings)actual).Name.ShouldBe(((ConcreteSettings)expected).Name);
+            actual.ShouldBeSameAs(readOnly ? generated.InitialReadOnlyObject : generated.InitialObject);
+        }
+    }
+
+    [Fact(DisplayName = "Generated binding discovers initialized object types declared by a base option model")]
+    public void BinderShouldBindInheritedObjects()
+    {
+        var configuration = new ConfigurationManager { ["Options:Value:Name"] = "configured" };
+
+        var original = configuration.GetSection("Options").Get<InheritedObjectOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<InheritedObjectOptions>(configuration, "Options");
+
+        ((InheritedPayload)generated.Value).Name.ShouldBe(((InheritedPayload)original.Value).Name);
+        ((InheritedPayload)generated.Value).Name.ShouldBe("configured");
+    }
+
     [Theory(DisplayName = "Generated binding reports inaccessible runtime implementations instead of ignoring their properties")]
     [InlineData("Value")]
     [InlineData("Map:existing")]
+    [InlineData("Object")]
     public void BinderShouldRejectUnknownRuntimeTypes(string member)
     {
         var configuration = new ConfigurationManager { [$"Options:{member}:Name"] = "configured" };
@@ -81,6 +130,10 @@ public sealed class PolymorphicOptionBindingTests
         "Base" => (ConcreteSettings)options.Base,
         "Interface" => (ConcreteSettings)options.Interface,
         "Generic" => (ConcreteSettings)options.Generic,
+        "Object" => (ConcreteSettings)options.Object,
+        "ReadOnlyObject" => (ConcreteSettings)options.ReadOnlyObject,
+        "FactoryObject" => (ConcreteSettings)options.FactoryObject,
+        "ObjectMap:existing" => (ConcreteSettings)options.ObjectMap["existing"],
         _ => (ConcreteSettings)options.Map["existing"],
     };
 
@@ -89,10 +142,30 @@ public sealed class PolymorphicOptionBindingTests
         public BaseSettings Base { get; init; } = new LeafSettings();
         public ISettings Interface { get; } = new ConcreteSettings();
         public ISettings Generic { get; } = new GenericSettings<int>();
+        public object Object { get; init; }
+        public object ReadOnlyObject => InitialReadOnlyObject;
+        public object FactoryObject { get; } = CreateSettings();
+        public Dictionary<string, object> ObjectMap { get; } = new() { ["existing"] = new LeafSettings() };
         public Dictionary<string, BaseSettings> Map { get; } = new() { ["existing"] = new ConcreteSettings() };
+        internal LeafSettings InitialObject { get; } = new();
+        internal GenericSettings<int> InitialReadOnlyObject { get; } = new();
+        public PolymorphicOptions() => Object = InitialObject;
+        private static object CreateSettings() => new ConcreteSettings();
     }
 
     public interface ISettings;
+
+    public class InheritedObjectBaseOptions : KafkaConsumerOption
+    {
+        public object Value { get; } = new InheritedPayload();
+    }
+
+    public sealed class InheritedObjectOptions : InheritedObjectBaseOptions;
+
+    public sealed class InheritedPayload
+    {
+        public string Name { get; init; } = "initial";
+    }
 
     public abstract class BaseSettings;
 
@@ -146,6 +219,7 @@ public sealed class PolymorphicOptionBindingTests
     public sealed class HiddenOptions : KafkaConsumerOption
     {
         public ISettings Value { get; } = new HiddenSettings();
+        public object Object { get; } = new HiddenSettings();
         public Dictionary<string, ISettings> Map { get; } = new() { ["existing"] = new HiddenSettings() };
         private sealed class HiddenSettings : ISettings
         {
