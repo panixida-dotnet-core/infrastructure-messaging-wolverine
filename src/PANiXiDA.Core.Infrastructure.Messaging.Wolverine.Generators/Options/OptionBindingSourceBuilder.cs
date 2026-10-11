@@ -11,6 +11,9 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string Collections = "global::System.Collections.Generic.";
     private const string AnyChildren = "global::System.Linq.Enumerable.Any(section.GetChildren())";
     private const string ReturnOption = "        return option;\n";
+    private const string EndMethod = "    }\n";
+    private const string FalseLiteral = "false";
+    private const string OptionVariable = "option";
     private const string Accessor = "global::System.Runtime.CompilerServices.UnsafeAccessor";
     private const string AccessorKind = "global::System.Runtime.CompilerServices.UnsafeAccessorKind.";
     private readonly Dictionary<ITypeSymbol, string> methods = new(SymbolEqualityComparer.Default);
@@ -45,7 +48,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         source.Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, bool readOnly = false, bool parentCollection = false)\n    {{\n")
-            .Append(body).Append("    }\n");
+            .Append(body).Append(EndMethod);
         return name;
     }
 
@@ -169,7 +172,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var initial = PropertyInitialValue(property.Type, "child" + index, getter);
         var value = "value" + index;
         body.Append($"        {Name(property.Type)} {value} = {(constructorBound ? "!created && " : string.Empty)}hasChild{index}\n")
-            .Append($"            ? {Build(property.Type)}(child{index}, {initial}, {(writable ? "false" : "true")})\n")
+            .Append($"            ? {Build(property.Type)}(child{index}, {initial}, {(writable ? FalseLiteral : "true")})\n")
             .Append($"            : {(writable ? getter : "default")};\n");
         if (!writable)
         {
@@ -191,7 +194,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         else
         {
             var receiver = SymbolEqualityComparer.Default.Equals(type, property.ContainingType)
-                ? "option" : $"(({Name(property.ContainingType)})option)";
+                ? OptionVariable : $"(({Name(property.ContainingType)})option)";
             AppendInvocation(body, $"{receiver}.@{property.Name} = {value};", indent: "            ");
         }
 
@@ -231,7 +234,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var body = new StringBuilder();
         AppendInvocation(body, $"return option.@{property.Name};");
         source.Append($"    private static {Name(property.Type)} {method}({Name(property.ContainingType)} option)\n    {{\n")
-            .Append(body).Append("    }\n");
+            .Append(body).Append(EndMethod);
         return method;
     }
 
@@ -251,7 +254,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             return "default";
         }
-        if (conversion != "false")
+        if (conversion != FalseLiteral)
         {
             return $"({child}.Value is not null || !global::System.Linq.Enumerable.Any({child}.GetChildren())) && ({conversion}) ? default : {getter}";
         }
@@ -304,7 +307,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         AppendInvocation(body, $"return {invocation}({string.Join(", ", parameterNames)});",
             activationType: arguments.Count == 0 ? Name(type) : null);
         source.Append($"    private static {Name(type)} {method}Construct({string.Join(", ", signature)})\n    {{\n")
-            .Append(body).Append("    }\n");
+            .Append(body).Append(EndMethod);
 
         return method + "Construct(" + string.Join(", ", arguments) + ")";
     }
@@ -328,7 +331,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             ? $"        return value is null ? {missing} : value;\n"
             : "        return value;\n");
         source.Append($"    private static {Name(parameterType)} {method}({Section} section)\n    {{\n")
-            .Append(body).Append("    }\n");
+            .Append(body).Append(EndMethod);
         return method;
     }
 
@@ -471,7 +474,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var named = type as INamedTypeSymbol;
         var concrete = Collections + (set ? "HashSet" : "List") + "<" + elementName + ">";
         var create = named is not null && type.TypeKind != TypeKind.Interface ? Construction(named, methods[type]) : "new " + concrete + "()";
-        var empty = copy ? $"!readOnly && option is null && section.Value == string.Empty ? global::System.Array.Empty<{elementName}>() : option" : "option";
+        var empty = copy ? $"!readOnly && option is null && section.Value == string.Empty ? global::System.Array.Empty<{elementName}>() : option" : OptionVariable;
         AppendCollectionLeaf(body, type, create, empty);
         if (copy || readOnlySet)
         {
@@ -497,7 +500,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private void AppendSequenceItems(StringBuilder body, ITypeSymbol element, bool copy, bool readOnlySet)
     {
         var scalarConversion = ScalarConversionCondition(element);
-        var nonNullableArray = copy && element.IsValueType && !IsNullable(element) && scalarConversion != "false";
+        var nonNullableArray = copy && element.IsValueType && !IsNullable(element) && scalarConversion != FalseLiteral;
         if (nonNullableArray)
         {
             body.Append("        var nullElement = false;\n");
@@ -510,7 +513,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             body.Append("        if (nullElement) throw new global::System.InvalidCastException(\"At least one element in the source array could not be cast down to the destination array type.\");\n");
         }
 
-        var result = readOnlySet ? "items" : "option";
+        var result = readOnlySet ? "items" : OptionVariable;
         if (copy)
         {
             result = "items.ToArray()";
@@ -533,7 +536,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         var concrete = $"{Collections}Dictionary<{Name(key)}, {Name(value)}>";
         var create = type.TypeKind == TypeKind.Interface ? "new " + concrete + "()" : Construction(type, methods[type]);
-        AppendCollectionLeaf(body, type, create, "option");
+        AppendCollectionLeaf(body, type, create, OptionVariable);
         if (readOnly)
         {
             body.Append($"        if (readOnly) return option;\n        var items = option is null ? new {concrete}() : new {concrete}(option);\n");
@@ -604,7 +607,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return $"((global::System.ComponentModel.TypeConverter){converter}).CanConvertFrom(typeof(string))";
         }
 
-        return CanConvertScalar(type) ? "true" : "false";
+        return CanConvertScalar(type) ? "true" : FalseLiteral;
     }
 
     private string? GetCustomConverter(ITypeSymbol type)
