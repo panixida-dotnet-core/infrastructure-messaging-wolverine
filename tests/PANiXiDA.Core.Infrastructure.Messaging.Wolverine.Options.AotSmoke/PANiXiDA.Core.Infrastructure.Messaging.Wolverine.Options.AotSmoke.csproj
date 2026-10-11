@@ -3,6 +3,7 @@
         <OutputType>Exe</OutputType>
         <IsPackable>false</IsPackable>
         <IsAotCompatible>true</IsAotCompatible>
+        <PublishAot>true</PublishAot>
         <SonarQubeTestProject>true</SonarQubeTestProject>
     </PropertyGroup>
 

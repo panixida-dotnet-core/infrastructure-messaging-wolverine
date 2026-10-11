@@ -255,10 +255,10 @@ inherited properties and `ConfigurationKeyName` attributes. Custom properties mu
 (strings, booleans, numbers, enums, date/time values, GUIDs, URIs, and nullable value types).
 Unsupported members produce `PANWOLVSG002` instead of silently falling back to reflection. Keep analyzer assets enabled.
 
-The isolated options Native AOT smoke test checks binding without starting Wolverine, Kafka, or EF Core:
+On Linux with the Native AOT toolchain installed, the isolated smoke test checks binding without starting Wolverine, Kafka, or EF Core:
 
 ```bash
-dotnet publish tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke -c Release -r linux-x64 -p:PublishAot=true
+dotnet publish tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke -c Release -r linux-x64
 ./tests/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke/bin/Release/net10.0/linux-x64/publish/PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.AotSmoke
 ```
 

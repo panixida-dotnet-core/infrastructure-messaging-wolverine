@@ -35,6 +35,7 @@ public sealed class OptionBindingGeneratorTests
     {
         var referenced = CreateCompilation("""
             public sealed class ReferencedSettings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            internal sealed class HiddenSettings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
             """, "ReferencedOptions");
         using var stream = new MemoryStream();
         referenced.Emit(stream, cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
@@ -44,6 +45,7 @@ public sealed class OptionBindingGeneratorTests
 
         diagnostics.ShouldBeEmpty();
         source.ShouldContain(".Register<global::ReferencedSettings>");
+        source.ShouldNotContain(".Register<global::HiddenSettings>");
     }
 
     [Fact(DisplayName = "Option generator binds closed generic options used by existing registration calls")]
@@ -51,10 +53,17 @@ public sealed class OptionBindingGeneratorTests
     {
         var compilation = CreateCompilation("""
             public sealed class Settings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public abstract class AbstractSettings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
             public static class Setup
             {
                 public static void Configure(PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration kafka)
-                    => kafka.AddKafkaBroker<Settings<int>>();
+                {
+                    kafka.AddKafkaBroker<Settings<int>>();
+                    kafka.AddKafkaBroker<Settings<int>>();
+                    kafka.AddKafkaBroker<Settings<int[]>>();
+                    Ignore<AbstractSettings>();
+                }
+                private static void Ignore<T>() {}
             }
             """);
 
@@ -62,6 +71,60 @@ public sealed class OptionBindingGeneratorTests
 
         diagnostics.ShouldBeEmpty();
         source.ShouldContain(".Register<global::Settings<int>>");
+        source.Split(".Register<global::Settings<int>>").Length.ShouldBe(2);
+        source.ShouldContain(".Register<global::Settings<int[]>>");
+        source.ShouldNotContain(".Register<global::AbstractSettings>");
+    }
+
+    [Fact(DisplayName = "Option generator respects hidden properties and ignores properties that cannot be bound")]
+    public void GeneratorShouldRespectPropertyVisibility()
+    {
+        var compilation = CreateCompilation("""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption
+            {
+                [System.ComponentModel.Description("Not a configuration key")]
+                public new string BootstrapServers { get; set; } = "default";
+                public static string StaticValue { get; set; } = "ignored";
+                public string this[int index] { get => "ignored"; set {} }
+                public string WriteOnly { set {} }
+                public string PrivateGetter { private get; set; } = "ignored";
+                public string ReadOnly => "ignored";
+                public string PrivateSetter { get; private set; } = "ignored";
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain("children.TryGetValue(\"BootstrapServers\"");
+        foreach (var ignored in new[] { "StaticValue", "WriteOnly", "PrivateGetter", "ReadOnly", "PrivateSetter" })
+        {
+            source.ShouldNotContain("option.@" + ignored);
+        }
+    }
+
+    [Fact(DisplayName = "Option generator does not emit open containing types from generic registration helpers")]
+    public void GeneratorShouldSkipOpenContainingTypes()
+    {
+        var compilation = CreateCompilation("""
+            public class Container<T>
+            {
+                public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+                public static void Configure(PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration kafka)
+                    => kafka.AddKafkaBroker<Settings>();
+            }
+            public static class Setup
+            {
+                public static void Configure(PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration kafka)
+                    => kafka.AddKafkaBroker<Container<int>.Settings>();
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::Container<int>.Settings>");
+        source.ShouldNotContain(".Register<global::Container<T>.Settings>");
     }
 
     [Fact(DisplayName = "Option generator reports unsupported members instead of silently dropping configuration")]
@@ -83,6 +146,9 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("public class Container { private sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption {} }")]
     [InlineData("public sealed class Settings(int value) : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;")]
     [InlineData("public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption { public int Value { get; init; } }")]
+    [InlineData("file sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;")]
+    [InlineData("public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption { public object Extra { get; } = new(); }")]
+    [InlineData("public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption { public string[] Extra { get; set; } = []; }")]
     public void GeneratorShouldReportUnsupportedOptions(string source)
     {
         var (_, diagnostics) = Generate(CreateCompilation(source));

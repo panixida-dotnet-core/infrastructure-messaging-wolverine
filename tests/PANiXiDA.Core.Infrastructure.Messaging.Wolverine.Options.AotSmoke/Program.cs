@@ -5,6 +5,11 @@ using Microsoft.Extensions.Configuration;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options;
 
+if (System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported)
+{
+    throw new InvalidOperationException("Publish and run this smoke test with Native AOT.");
+}
+
 var configuration = new ConfigurationManager
 {
     ["Broker:BootstrapServers"] = "localhost:9092",
