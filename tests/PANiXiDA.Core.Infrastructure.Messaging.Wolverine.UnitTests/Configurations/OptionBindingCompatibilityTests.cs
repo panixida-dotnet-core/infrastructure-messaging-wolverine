@@ -71,7 +71,7 @@ public sealed class OptionBindingCompatibilityTests
         JsonSerializer.Serialize(generated).ShouldBe(JsonSerializer.Serialize(original));
         generated.Positions.Count.ShouldBe(1);
         generated.Positions[0].X.ShouldBe(0);
-        generated.CoordinatesList.ShouldBe([default(Coordinates)]);
+        generated.CoordinatesList.ShouldBe([default]);
     }
 
     [Theory(DisplayName = "Generated binding preserves nullable struct defaults for unconvertible scalar leaves")]
@@ -203,7 +203,7 @@ public sealed class OptionBindingCompatibilityTests
     }
 
     [TypeConverter(typeof(TypeConverter))]
-    public struct NonConvertingPoint
+    public readonly struct NonConvertingPoint
     {
         public int X { get; init; }
     }
@@ -218,7 +218,7 @@ public sealed class OptionBindingCompatibilityTests
         public List<Coordinates> CoordinatesList { get; init; } = [];
     }
 
-    public struct Position(int x)
+    public readonly struct Position(int x)
     {
         public int X { get; init; } = x + 100;
         public int Y { get; init; } = 200;
