@@ -269,7 +269,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private void AppendSequence(StringBuilder body, ITypeSymbol type, ITypeSymbol element, bool copy)
     {
-        var elementName = Name(element);
         var named = type as INamedTypeSymbol;
         var set = named is not null && (FindInterface(named, "System.Collections.Generic.ISet<T>") is not null ||
             FindInterface(named, "System.Collections.Generic.IReadOnlySet<T>") is not null);
@@ -287,6 +286,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
                 .Append("            return option is null ? bytes : global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Concat(option, bytes));\n        }\n");
         }
 
+        AppendSequenceBody(body, type, element, copy, set, readOnlySet);
+    }
+
+    private void AppendSequenceBody(StringBuilder body, ITypeSymbol type, ITypeSymbol element, bool copy, bool set, bool readOnlySet)
+    {
+        var elementName = Name(element);
+        var named = type as INamedTypeSymbol;
         var concrete = Collections + (set ? "HashSet" : "List") + "<" + elementName + ">";
         var create = named is not null && type.TypeKind != TypeKind.Interface ? Construction(named, methods[type]) : "new " + concrete + "()";
         var empty = copy ? $"!readOnly && option is null && section.Value == string.Empty ? global::System.Array.Empty<{elementName}>() : option" : "option";
@@ -309,7 +315,11 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             body.Append($"        option ??= {create};\n        var items = ({Collections}ICollection<{elementName}>)option;\n");
         }
 
-        AppendItems(body, element, $"items.Add({Build(element)}(child, default, parentCollection: true));");
+        var nonNullableArray = copy && element.IsValueType && !IsNullable(element) && CanConvertScalar(element);
+        if (nonNullableArray) body.Append("        var nullElement = false;\n");
+        var rejectNull = nonNullableArray ? "if (child.Value is null && !global::System.Linq.Enumerable.Any(child.GetChildren())) { nullElement = true; continue; }\n                " : string.Empty;
+        AppendItems(body, element, rejectNull + $"items.Add({Build(element)}(child, default, parentCollection: true));");
+        if (nonNullableArray) body.Append("        if (nullElement) throw new global::System.InvalidCastException(\"At least one element in the source array could not be cast down to the destination array type.\");\n");
         body.Append(copy ? "        return items.ToArray();\n" : readOnlySet ? "        return items;\n" : "        return option;\n");
     }
 

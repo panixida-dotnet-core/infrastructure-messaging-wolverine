@@ -192,13 +192,21 @@ public sealed class ComplexOptionBindingTests
         {
             ["Options:Items:0"] = value,
             ["Options:Map:new"] = value,
-            ["Options:Numbers:0"] = null,
         };
 
         var generated = OptionBindingRegistry.GetRequired<ComplexOptions>(configuration, "Options");
         var original = configuration.GetSection("Options").Get<ComplexOptions>()!;
 
         JsonSerializer.Serialize(generated).ShouldBe(JsonSerializer.Serialize(original));
+    }
+
+    [Fact(DisplayName = "Generated binding rejects null entries in non-nullable arrays like the reflection binder")]
+    public void BinderShouldRejectNullValueTypeArrayEntries()
+    {
+        var configuration = new ConfigurationManager { ["Options:Numbers:0"] = null };
+
+        Should.Throw<InvalidCastException>(() => configuration.GetSection("Options").Get<ComplexOptions>());
+        Should.Throw<InvalidCastException>(() => OptionBindingRegistry.GetRequired<ComplexOptions>(configuration, "Options"));
     }
 
     public sealed class ExistingInstanceOptions : KafkaConsumerOption
