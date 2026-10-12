@@ -255,6 +255,7 @@ and configuration keys stay unchanged. It binds scalar values, nested objects, r
 including public `init` setters and `required` properties. Constructor defaults, inherited properties, `ConfigurationKeyName`
 attributes (including paths such as `nested:value`) and existing mutable collections are preserved.
 Getter-only objects and mutable collections are populated in place.
+Getter-only `IReadOnlyDictionary<TKey, TValue>` properties retain their dictionary and keys, while existing reference values are updated through a shallow copy.
 Binding is restricted to statically declared model types; the bundled generator is not a general-purpose replacement for `ConfigurationBinder`.
 Declare nested models with concrete types and collection values with supported element types.
 `object`, `dynamic`, abstract models and user-defined model interfaces produce `PANWOLVSG002`, including inside collections.
@@ -266,6 +267,7 @@ Hidden non-virtual base properties are bound separately; overrides with virtual 
 Getter-only virtual overrides are bound per declaration, so a shared mutable collection receives entries more than once, matching the .NET 10 binder.
 Concrete models implementing only `IEnumerable<T>`, `IReadOnlyCollection<T>` or `IReadOnlyDictionary<TKey, TValue>` bind their ordinary properties.
 Constructor-bound writable properties retain the getter/setter reset performed by the .NET 10 binder, including null values.
+Constructor parameter/property name casing and resets of initialized writable properties absent from configuration follow the .NET 10 binder.
 Writable `IConfigurationSection` properties receive child sections even when those paths are absent.
 Scalar binding includes `CultureInfo`, `Version`, `Half`, `Int128`, `UInt128` and type-level `TypeConverter` attributes,
 including inherited attributes. A converter on the options type can bind a scalar configuration section directly.
@@ -275,6 +277,7 @@ Null and empty binary scalars preserve existing nonempty arrays, including their
 Constructor, getter and setter failures retain the exception wrappers exposed by the previous binder, including `init` setters and custom converter constructors.
 `IConfigurationSection` properties and constructor parameters receive a section even when the configuration key is absent.
 Configured scalar values replace properties without reading their getters when the previous binder skips that read.
+Configured getter-only values are still converted and validated; invalid values throw even though no assignment is possible.
 Dictionary keys support strings, enums and the eight integer types from `sbyte`/`byte` through `long`/`ulong`.
 `ISet<T>` and `IReadOnlySet<T>` bind string and enum elements; other element types remain unchanged.
 Concrete collections such as `HashSet<int>` continue to bind normally.

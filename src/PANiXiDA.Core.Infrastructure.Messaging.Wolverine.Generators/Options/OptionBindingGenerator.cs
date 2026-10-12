@@ -192,7 +192,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         var typeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         if (type.TypeKind == TypeKind.Enum)
         {
-            return $"global::System.Enum.Parse<{typeName}>(value, ignoreCase: true)";
+            return $"({typeName})new global::System.ComponentModel.EnumConverter(typeof({typeName})).ConvertFromInvariantString(value)!";
         }
 
         if (type.ToDisplayString() == "System.Uri")

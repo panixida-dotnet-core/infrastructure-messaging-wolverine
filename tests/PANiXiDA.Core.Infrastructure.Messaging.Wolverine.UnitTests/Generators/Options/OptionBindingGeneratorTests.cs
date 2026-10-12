@@ -229,9 +229,14 @@ public sealed class OptionBindingGeneratorTests
 
         diagnostics.ShouldBeEmpty();
         source.ShouldContain("children.TryGetValue(\"BootstrapServers\"");
-        foreach (var ignored in new[] { "StaticValue", "WriteOnly", "PrivateGetter", "ReadOnly", "PrivateSetter" })
+        foreach (var ignored in new[] { "StaticValue", "WriteOnly", "PrivateGetter" })
         {
             source.ShouldNotContain("option.@" + ignored);
+        }
+        foreach (var readOnly in new[] { "ReadOnly", "PrivateSetter" })
+        {
+            source.ShouldContain("children.TryGetValue(\"" + readOnly + "\"");
+            source.ShouldNotContain("option.@" + readOnly + " =");
         }
     }
 
@@ -433,6 +438,8 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("OptionBindingCompatibilityTests.StructOptions")]
     [InlineData("OptionBindingFailureTests.RestrictedOptions")]
     [InlineData("OptionBindingFailureTests.IntegerDictionaryOptions")]
+    [InlineData("OptionBindingReadOnlyTests.ScalarOptions")]
+    [InlineData("OptionBindingReadOnlyTests.DictionaryOptions")]
     [InlineData("PolymorphicOptionBindingTests.ConcreteOptions")]
     public void GeneratorShouldComposeReferencedModels(string model)
     {

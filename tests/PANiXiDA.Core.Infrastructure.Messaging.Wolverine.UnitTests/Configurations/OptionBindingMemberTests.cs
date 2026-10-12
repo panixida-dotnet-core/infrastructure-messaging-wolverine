@@ -133,6 +133,39 @@ public sealed class OptionBindingMemberTests
         generated.SetterCalls.ShouldBe(1);
     }
 
+    [Fact(DisplayName = "Generated binding preserves case-sensitive constructor property resets")]
+    public void BinderShouldPreserveConstructorParameterCasing()
+    {
+        var configuration = new ConfigurationManager { ["Options:Name"] = "configured", ["Options:Value:Name"] = "configured" };
+
+        var original = configuration.GetSection("Options").Get<LowercaseConstructorOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<LowercaseConstructorOptions>(configuration, "Options");
+
+        generated.Name.ShouldBe(original.Name);
+        generated.Name.ShouldBe("configured");
+        AssertSameFailure<LowercaseThrowingConstructorOptions>(configuration);
+    }
+
+    [Theory(DisplayName = "Generated binding resets initialized ordinary properties even when configuration is absent")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BinderShouldResetAbsentInitializedProperties(bool throws)
+    {
+        var configuration = new ConfigurationManager { ["Options:TopicName"] = "topic" };
+        if (throws)
+        {
+            AssertSameFailure<AbsentThrowingSetterOptions>(configuration);
+            return;
+        }
+
+        var original = configuration.GetSection("Options").Get<AbsentSetterOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<AbsentSetterOptions>(configuration, "Options");
+
+        generated.SetterCalls.ShouldBe(original.SetterCalls);
+        generated.SetterCalls.ShouldBe(1);
+        generated.Name.ShouldBe(original.Name);
+    }
+
     [Fact(DisplayName = "Generated binding skips non-writable constructor-bound getters after creation")]
     public void BinderShouldSkipNonWritableConstructorBoundGetters()
     {
@@ -357,6 +390,36 @@ public sealed class OptionBindingMemberTests
             init { name = value; SetterCalls++; }
         }
         public int SetterCalls { get; private set; }
+    }
+
+    public sealed class LowercaseConstructorOptions(string name) : KafkaConsumerOption
+    {
+        public string Name { get; set; } = "transformed:" + name;
+    }
+
+    public sealed class LowercaseThrowingConstructorOptions(Payload value) : KafkaConsumerOption
+    {
+        public Payload Value => throw new FormatException(value.Name);
+    }
+
+    public sealed class AbsentSetterOptions : KafkaConsumerOption
+    {
+        private string name = "initial";
+        public string Name
+        {
+            get => name;
+            set { name = value; SetterCalls++; }
+        }
+        public int SetterCalls { get; private set; }
+    }
+
+    public sealed class AbsentThrowingSetterOptions : KafkaConsumerOption
+    {
+        public Payload Value
+        {
+            get => new();
+            set => throw new FormatException("Absent property setter was called.");
+        }
     }
 
     public sealed class ReadOnlyConstructorOptions(Payload Value, Payload PrivateValue, List<int> Values) : KafkaConsumerOption
