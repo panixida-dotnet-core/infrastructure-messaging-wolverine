@@ -584,6 +584,14 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("\"ValueConverter, GeneratedOptionsTest\"")]
     [InlineData("typeof(ValueConverter)")]
     [InlineData("typeof(GenericConverter<string>)")]
+    [InlineData("\"GenericConverter`1[[System.String, System.Private.CoreLib]], GeneratedOptionsTest\"")]
+    [InlineData("\"GenericConverter`1[System.String], GeneratedOptionsTest\"")]
+    [InlineData("\"GenericConverter`1[[System.String, System.Runtime]], GeneratedOptionsTest\"")]
+    [InlineData("\"GenericConverter`1[[System.Int32[], mscorlib]], GeneratedOptionsTest\"")]
+    [InlineData("\"GenericConverter`1[System.Int32[,]], GeneratedOptionsTest\"")]
+    [InlineData("\"GenericConverter`1[System.Collections.Generic.List`1[System.String]], GeneratedOptionsTest\"")]
+    [InlineData("\"Outer`1+Converter`1[System.String,System.Int32], GeneratedOptionsTest\"")]
+    [InlineData("\"Outer`1+Converter[System.String], GeneratedOptionsTest\"")]
     public void GeneratorShouldResolveCustomConverters(string converter)
     {
         var compilation = CreateCompilation($$"""
@@ -595,6 +603,11 @@ public sealed class OptionBindingGeneratorTests
             public class Payload { public string Name { get; set; } }
             public class ValueConverter : System.ComponentModel.TypeConverter;
             public class GenericConverter<T> : System.ComponentModel.TypeConverter;
+            public class Outer<T>
+            {
+                public class Converter<U> : System.ComponentModel.TypeConverter;
+                public class Converter : System.ComponentModel.TypeConverter;
+            }
             """);
 
         var (source, diagnostics) = Generate(compilation);
@@ -626,6 +639,18 @@ public sealed class OptionBindingGeneratorTests
 
     [Theory(DisplayName = "Option generator diagnoses converters that cannot be constructed statically")]
     [InlineData("\"MissingConverter\"", "")]
+    [InlineData("\"[\"", "")]
+    [InlineData("\"ValueConverter, MissingAssembly\"", "public class ValueConverter : System.ComponentModel.TypeConverter;")]
+    [InlineData("\"MissingConverter, GeneratedOptionsTest\"", "")]
+    [InlineData("\"ValueConverter[]\"", "public class ValueConverter : System.ComponentModel.TypeConverter;")]
+    [InlineData("\"ValueConverter*\"", "public class ValueConverter : System.ComponentModel.TypeConverter;")]
+    [InlineData("\"ValueConverter&\"", "public class ValueConverter : System.ComponentModel.TypeConverter;")]
+    [InlineData("\"ValueConverter`1\"", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]
+    [InlineData("\"ValueConverter`1[Missing]\"", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]
+    [InlineData("\"ValueConverter`1[Missing[]]\"", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]
+    [InlineData("\"ValueConverter`1[System.String,System.Int32]\"", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]
+    [InlineData("\"ValueConverter`2[System.String]\"", "public class ValueConverter<T, U> : System.ComponentModel.TypeConverter;")]
+    [InlineData("\"Outer`2+Converter`1[System.String]\"", "public class Outer<T, U> { public class Converter<V> : System.ComponentModel.TypeConverter; }")]
     [InlineData("typeof(ValueConverter)", "public class ValueConverter;")]
     [InlineData("typeof(ValueConverter)", "public abstract class ValueConverter : System.ComponentModel.TypeConverter;")]
     [InlineData("typeof(ValueConverter<>)", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]

@@ -109,7 +109,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         return named.Arity == 0 ? definition : definition.Construct([.. named.TypeArguments.Select(argument => Substitute(argument, substitutions))]);
     }
 
-    private static bool ContainsTypeParameter(ITypeSymbol type)
+    internal static bool ContainsTypeParameter(ITypeSymbol type)
     {
         return type switch
         {

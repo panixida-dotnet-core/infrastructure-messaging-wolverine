@@ -254,6 +254,7 @@ options.AddConsumer<UserCreated>("External:Consumers");
 The bundled generator binds Kafka and recurring-command options without reflection. Registration calls and configuration keys stay unchanged.
 It supports accessible concrete models, nested objects, records, collections, public `init`/`required` properties, defaults, inheritance and `ConfigurationKeyName`.
 Binders from the options' declaring assembly are reused by consumers.
+Calls made before generated module initialization completes locate the generated registrar through assembly attributes; property binding still uses generated code.
 
 Requirements and limits:
 
@@ -264,7 +265,7 @@ Requirements and limits:
 - Dictionary keys support strings, enums and integer types from `sbyte`/`byte` to `long`/`ulong`. `ISet<T>`/`IReadOnlySet<T>` bind strings and enums; concrete collections such as `HashSet<int>` also support other element types.
 - Custom `TypeConverter` types must be accessible, with a public parameterless or `System.Type` constructor; Native AOT publishing also requires their implementations to support trimming/Native AOT.
 
-These model restrictions apply to regular builds as well as Native AOT; there is no reflection fallback.
+These model restrictions apply to regular builds as well as Native AOT; there is no reflection-based binding fallback.
 Generated option binding has been validated with Native AOT. Full Native AOT support for the mediator is not currently provided because it still uses Wolverine runtime compilation and EF Core.
 
 ## EF Core Storage

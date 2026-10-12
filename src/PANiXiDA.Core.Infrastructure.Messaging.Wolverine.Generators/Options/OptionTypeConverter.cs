@@ -27,11 +27,12 @@ internal static class OptionTypeConverter
         var converter = argument as INamedTypeSymbol;
         if (argument is string name)
         {
-            converter = compilation.GetTypeByMetadataName(name.Split(',')[0].Trim());
+            converter = OptionConverterTypeName.Resolve(name, compilation);
         }
 
         if (converter is not null && !converter.IsAbstract &&
             !converter.IsUnboundGenericType &&
+            !OptionTypeDiscovery.ContainsTypeParameter(converter) &&
             compilation.IsSymbolAccessibleWithin(converter, compilation.Assembly) &&
             IsConverter(converter, compilation))
         {

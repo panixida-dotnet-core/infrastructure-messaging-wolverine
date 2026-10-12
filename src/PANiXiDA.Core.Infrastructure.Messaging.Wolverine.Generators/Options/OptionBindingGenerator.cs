@@ -48,6 +48,14 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
 
             [global::System.CodeDom.Compiler.GeneratedCode("PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators", "1.0.0")]
             [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+            file sealed class GeneratedWolverineOptionBindingsAttribute(global::System.Type optionType)
+                : global::PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation.OptionBindingInitializerAttribute(optionType)
+            {
+                public override void RegisterBindings() => GeneratedWolverineOptionBindings.Initialize();
+            }
+
+            [global::System.CodeDom.Compiler.GeneratedCode("PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators", "1.0.0")]
+            [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
             file static class GeneratedWolverineOptionBindings
             {
                 [global::System.Runtime.CompilerServices.ModuleInitializer]
@@ -59,9 +67,10 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         var metadata = new StringBuilder();
         var methods = new StringBuilder();
         var candidates = GetCandidates(compilation, context.CancellationToken)
+            .Where(type => IsOption(type, optionTypes) && !HasGeneratedBinder(type, metadataAttribute))
             .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
             .OrderBy(type => type.ToDisplayString(), StringComparer.Ordinal).ToArray();
-        foreach (var type in candidates.Where(type => IsOption(type, optionTypes) && !HasGeneratedBinder(type, metadataAttribute)))
+        foreach (var type in candidates)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             if (type.IsFileLocal || !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
@@ -89,6 +98,8 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
                 .Append(type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
                 .Append(">(static section => ").Append(method).Append("(section, default));\n");
             methods.Append(bindingSource);
+            metadata.Append("[assembly: GeneratedWolverineOptionBindingsAttribute(typeof(")
+                .Append(type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).Append("))]\n");
             if (SymbolEqualityComparer.Default.Equals(type.ContainingAssembly, compilation.Assembly))
             {
                 metadata.Append("[assembly: global::System.Reflection.AssemblyMetadata(")

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 using Microsoft.Extensions.Configuration;
@@ -68,12 +69,32 @@ public static class OptionBindingRegistry
         }
 
         RuntimeHelpers.RunModuleConstructor(typeof(TOption).Assembly.ManifestModule.ModuleHandle);
-        var binder = Binding<TOption>.Binder
+        var binder = Binding<TOption>.Binder ?? InitializeGeneratedBinder<TOption>()
             ?? throw new InvalidOperationException(
                 $"No generated configuration binder exists for '{typeof(TOption).FullName}'. " +
                 "Ensure the Wolverine source generator is enabled in the project declaring or registering the options.");
         return binder(section) ?? throw new InvalidOperationException(
             $"Configuration section '{sectionName}' could not be bound to '{typeof(TOption).FullName}'.");
+    }
+
+    private static Func<IConfigurationSection, TOption>? InitializeGeneratedBinder<TOption>()
+        where TOption : class
+    {
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (!assembly.CustomAttributes.Any(attribute =>
+                attribute.AttributeType.BaseType == typeof(OptionBindingInitializerAttribute) &&
+                attribute.ConstructorArguments.Any(argument => typeof(TOption).Equals(argument.Value))))
+            {
+                continue;
+            }
+
+            assembly.GetCustomAttributes<OptionBindingInitializerAttribute>()
+                .First(initializer => initializer.OptionType == typeof(TOption)).RegisterBindings();
+            return Binding<TOption>.Binder;
+        }
+
+        return null;
     }
 
     private static class Binding<TOption>
