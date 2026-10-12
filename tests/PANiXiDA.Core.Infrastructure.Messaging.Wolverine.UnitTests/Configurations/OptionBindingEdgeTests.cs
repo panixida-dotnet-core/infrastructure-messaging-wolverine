@@ -93,11 +93,12 @@ public sealed class OptionBindingEdgeTests
     [InlineData("array", "leaf")]
     [InlineData("list", "leaf")]
     [InlineData("bytes", "leaf")]
+    [InlineData("bytes", "scalar")]
     [InlineData("array", "invalid")]
     [InlineData("list", "invalid")]
     public void BinderShouldPreserveImmutableGetterAccess(string kind, string shape)
     {
-        var value = shape == "leaf" ? string.Empty : "1";
+        var value = shape switch { "leaf" => string.Empty, "scalar" => "AQI=", _ => "1" };
         var configuration = new ConfigurationManager { [shape == "children" ? "Options:Value:0" : "Options:Value"] = value };
         switch (kind)
         {
@@ -128,7 +129,7 @@ public sealed class OptionBindingEdgeTests
 
     private static void AssertGetter<T>(ConfigurationManager configuration, string shape) where T : class
     {
-        if (shape != "leaf")
+        if (shape is not ("leaf" or "scalar"))
         {
             configuration.GetSection("Options").Get<T>().ShouldNotBeNull();
             OptionBindingRegistry.GetRequired<T>(configuration, "Options").ShouldNotBeNull();

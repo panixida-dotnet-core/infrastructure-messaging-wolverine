@@ -11,6 +11,53 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingCompatibilityTests
 {
+    [Theory(DisplayName = "Generated collection binding skips converter construction and probes for child-only entries")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BinderShouldDeferCollectionConverters(bool throwingProbe)
+    {
+        var configuration = new ConfigurationManager();
+        foreach (var path in new[] { "Values:0", "Array:0", "Set:0", "Entries:entry" })
+        {
+            configuration[$"Options:{path}:Number"] = "42";
+        }
+
+        if (throwingProbe) AssertCollectionChildren<ProbeFailureValue>(configuration);
+        else AssertCollectionChildren<NullableConvertedValue>(configuration);
+    }
+
+    private static void AssertCollectionChildren<T>(ConfigurationManager configuration) where T : struct
+    {
+        var original = configuration.GetSection("Options").Get<ConverterCollectionOptions<T>>()!;
+        var generated = OptionBindingRegistry.GetRequired<ConverterCollectionOptions<T>>(configuration, "Options");
+
+        generated.Values.ShouldBe(original.Values);
+        generated.Array.ShouldBe(original.Array);
+        generated.Set.ShouldBe(original.Set);
+        generated.Entries.ShouldBe(original.Entries);
+        generated.Values.Count.ShouldBe(1);
+        generated.Array.Length.ShouldBe(1);
+        generated.Set.Count.ShouldBe(1);
+        generated.Entries.Count.ShouldBe(1);
+    }
+
+    public sealed class ConverterCollectionOptions<T> : KafkaConsumerOption where T : struct
+    {
+        public List<T> Values { get; init; } = [];
+        public T[] Array { get; init; } = [];
+        public HashSet<T> Set { get; init; } = [];
+        public Dictionary<string, T> Entries { get; init; } = [];
+    }
+
+    [TypeConverter(typeof(ProbeFailureConverter))]
+    public readonly record struct ProbeFailureValue(int Number);
+
+    public sealed class ProbeFailureConverter : TypeConverter
+    {
+        public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType)
+            => throw new InvalidOperationException("Converter probe must not run for child-only entries.");
+    }
+
     [Fact(DisplayName = "Generated dictionaries mutate existing reference values without invoking their indexer setters")]
     public void BinderShouldPreserveDictionaryReferenceValues()
     {

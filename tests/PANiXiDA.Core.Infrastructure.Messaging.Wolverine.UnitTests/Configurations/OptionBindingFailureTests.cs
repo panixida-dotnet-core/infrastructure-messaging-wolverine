@@ -10,6 +10,33 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingFailureTests
 {
+    [Theory(DisplayName = "Generated nullable converter failures identify the underlying value type")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BinderShouldPreserveNullableConversionErrors(bool constructorParameter)
+    {
+        var configuration = new ConfigurationManager { ["Options:Value"] = "invalid" };
+
+        if (constructorParameter)
+        {
+            AssertConversionFailure<ParameterOptions<OptionBindingCompatibilityTests.ConvertedNumber?>>(configuration);
+        }
+        else
+        {
+            AssertConversionFailure<HolderOptions<OptionBindingCompatibilityTests.ConvertedNumber?>>(configuration);
+        }
+    }
+
+    private static void AssertConversionFailure<T>(ConfigurationManager configuration) where T : class
+    {
+        var original = Should.Throw<InvalidOperationException>(() => configuration.GetSection("Options").Get<T>());
+        var generated = Should.Throw<InvalidOperationException>(() => OptionBindingRegistry.GetRequired<T>(configuration, "Options"));
+
+        generated.Message.ShouldBe(original.Message);
+        ExceptionTypes(generated).ShouldBe(ExceptionTypes(original));
+        generated.InnerException!.Message.ShouldBe(original.InnerException!.Message);
+    }
+
     [Theory(DisplayName = "Generated constructor binding supplies absent and present configuration sections")]
     [InlineData("missing")]
     [InlineData("null")]

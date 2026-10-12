@@ -98,12 +98,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         if (converter is not null)
         {
             var nullTest = IsNullable(type) ? "global::System.String.IsNullOrEmpty(section.Value)" : "section.Value is null";
+            var convertedType = IsNullable(type) ? ((INamedTypeSymbol)type).TypeArguments[0] : type;
             body.Append($"        if (section.Value is not null || !{AnyChildren})\n        {{\n            global::System.ComponentModel.TypeConverter converter = {converter};\n")
                 .Append("            if ((conversionProbe ??= converter.CanConvertFrom(typeof(string))) == true)\n            {\n")
                 .Append($"                var nullConversion = {nullTest};\n")
-                .Append($"                var convertedValue = nullConversion ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, value =>\n                {{\n                    var result = converter.ConvertFromInvariantString(value);\n                    nullConversion = result is null;\n                    return nullConversion ? default({Name(type)}) : ({Name(type)})result;\n                }});\n")
+                .Append($"                var convertedValue = nullConversion ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, value =>\n                {{\n                    var result = converter.ConvertFromInvariantString(value);\n                    nullConversion = result is null;\n                    return nullConversion ? default({Name(convertedType)}) : ({Name(convertedType)})result;\n                }});\n")
                 .Append("                convertedNull = nullConversion;\n")
-                .Append("                if (readOnly) return option;\n                hasNewValue = true;\n                return convertedValue;\n            }\n        }\n");
+                .Append("                if (readOnly) return option;\n                hasNewValue = true;\n                return nullConversion ? default : convertedValue;\n            }\n        }\n");
         }
 
         AppendComplexBody(body, type, method);
@@ -599,7 +600,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             body.Append("        var nullElement = false;\n");
         }
 
-        var rejectNull = nonNullableArray ? $"if ({scalarConversion} && child.Value is null && !global::System.Linq.Enumerable.Any(child.GetChildren())) {{ nullElement = true; continue; }}\n                " : string.Empty;
+        var rejectNull = nonNullableArray ? $"if (child.Value is null && !global::System.Linq.Enumerable.Any(child.GetChildren()) && ({scalarConversion})) {{ nullElement = true; continue; }}\n                " : string.Empty;
         var binding = $"var value = {Build(element)}(child, default, out _, out var itemConvertedNull, parentCollection: true{ConversionArgument(element)});\n                ";
         if (nonNullableArray)
         {
@@ -708,7 +709,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var scalarConversion = ScalarConversionCondition(element, ChildVariable);
         if (scalarConversion != "true")
         {
-            body.Append($"if (!({scalarConversion}) && !global::System.String.IsNullOrEmpty(child.Value) && !global::System.Linq.Enumerable.Any(child.GetChildren())) continue;\n                ");
+            body.Append($"if (!global::System.String.IsNullOrEmpty(child.Value) && !global::System.Linq.Enumerable.Any(child.GetChildren()) && !({scalarConversion})) continue;\n                ");
         }
 
         body.Append(binding).Append("\n            }\n            catch (global::System.Exception exception) when (exception is not UnsupportedRuntimeTypeException)\n            {\n            }\n        }\n");
