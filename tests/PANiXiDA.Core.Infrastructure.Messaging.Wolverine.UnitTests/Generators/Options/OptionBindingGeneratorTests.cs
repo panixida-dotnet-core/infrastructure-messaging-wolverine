@@ -343,7 +343,6 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("System.Collections.Generic.IReadOnlyDictionary<int, Payload>")]
     [InlineData("Microsoft.Extensions.Configuration.IConfigurationSection")]
     [InlineData("Payload")]
-    [InlineData("Point")]
     public void GeneratorShouldCompileComplexProperties(string type)
     {
         var compilation = CreateCompilation($$"""
@@ -352,7 +351,6 @@ public sealed class OptionBindingGeneratorTests
                 public {{type}} Value { get; init; }
             }
             public sealed record Payload(string Name, int Count = 2);
-            public struct Point { public int X { get; set; } }
             """);
 
         var (source, diagnostics) = Generate(compilation);
@@ -429,6 +427,7 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("ComplexOptionBindingTests.ComplexOptions")]
     [InlineData("ComplexOptionBindingTests.GenericOptions")]
     [InlineData("ComplexOptionBindingTests.CollectionOptions")]
+    [InlineData("ComplexOptionBindingTests.ExistingInstanceOptions")]
     [InlineData("OptionBindingCompatibilityTests.ConverterOptions")]
     [InlineData("OptionBindingCompatibilityTests.StructOptions")]
     [InlineData("OptionBindingFailureTests.RestrictedOptions")]
