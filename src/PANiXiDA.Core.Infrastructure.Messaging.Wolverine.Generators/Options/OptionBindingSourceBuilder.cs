@@ -15,6 +15,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string FalseLiteral = "false";
     private const string OptionVariable = "option";
     private const string ChildVariable = "child";
+    private const string ConversionVariable = "scalarConversion";
     private const string WritableCondition = "!readOnly";
     private const string SetInterface = "System.Collections.Generic.ISet<T>";
     private const string Accessor = "global::System.Runtime.CompilerServices.UnsafeAccessor";
@@ -200,7 +201,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var writable = property.SetMethod?.DeclaredAccessibility == Accessibility.Public;
         AppendPropertySection(body, property, index);
         var getter = AppendGetter(property, method + "Get" + index) + "(option)";
-        var probe = "scalarConversion" + index;
+        var probe = ConversionVariable + index;
         AppendConversionProbe(body, property.Type, probe);
         var initial = InitialValue(property.Type, ChildVariable + index, getter, probe);
         var value = "value" + index;
@@ -233,8 +234,12 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
         else
         {
-            var receiver = property.IsStatic ? Name(property.ContainingType) : SymbolEqualityComparer.Default.Equals(type, property.ContainingType)
-                ? OptionVariable : $"(({Name(property.ContainingType)})option)";
+            var receiver = Name(property.ContainingType);
+            if (!property.IsStatic)
+            {
+                receiver = SymbolEqualityComparer.Default.Equals(type, property.ContainingType)
+                    ? OptionVariable : $"(({Name(property.ContainingType)})option)";
+            }
             AppendInvocation(body, $"{receiver}.@{property.Name} = {value};", indent: "            ");
         }
     }
@@ -275,7 +280,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         return method;
     }
 
-    private string InitialValue(ITypeSymbol type, string child, string getter, string probe = "scalarConversion")
+    private string InitialValue(ITypeSymbol type, string child, string getter, string probe = ConversionVariable)
     {
         if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
         {
@@ -643,7 +648,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         body.Append(binding).Append("\n            }\n            catch (global::System.Exception exception) when (exception is not UnsupportedRuntimeTypeException)\n            {\n            }\n        }\n");
     }
 
-    private void AppendConversionProbe(StringBuilder body, ITypeSymbol type, string variable = "scalarConversion")
+    private void AppendConversionProbe(StringBuilder body, ITypeSymbol type, string variable = ConversionVariable)
     {
         if (GetCustomConverter(type) is not null)
         {
@@ -651,12 +656,12 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
     }
 
-    private string ConversionArgument(ITypeSymbol type, string variable = "scalarConversion")
+    private string ConversionArgument(ITypeSymbol type, string variable = ConversionVariable)
     {
         return GetCustomConverter(type) is null ? string.Empty : $", conversionProbe: {variable}";
     }
 
-    private string ScalarConversionCondition(ITypeSymbol type, string section, string probe = "scalarConversion")
+    private string ScalarConversionCondition(ITypeSymbol type, string section, string probe = ConversionVariable)
     {
         var converter = GetCustomConverter(type);
         if (converter is not null)

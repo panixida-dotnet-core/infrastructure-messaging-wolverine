@@ -207,7 +207,7 @@ public sealed class OptionBindingLeafTests
 
     public sealed class ProbeConverter : TypeConverter
     {
-        public static int Probes;
+        public static int Probes { get; set; }
         public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType) => ++Probes == 1;
         public override object ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value) => new ProbeValue { Name = (string)value };
     }
