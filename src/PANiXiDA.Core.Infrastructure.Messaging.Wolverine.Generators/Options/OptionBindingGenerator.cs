@@ -76,7 +76,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
                 continue;
             }
 
-            var builder = new OptionBindingSourceBuilder(compilation, keyNameAttribute, optionIndex++, candidates);
+            var builder = new OptionBindingSourceBuilder(compilation, keyNameAttribute, optionIndex++);
             var method = builder.Build(type);
             var bindingSource = builder.Complete();
             if (builder.Error is not null)
@@ -99,12 +99,8 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         }
 
         source.Append("    }\n").Append("""
-                private static bool HasConfigurationValue(global::Microsoft.Extensions.Configuration.IConfigurationSection section)
-                    => section is global::Microsoft.Extensions.Configuration.ConfigurationSection concrete
-                        ? concrete.TryGetValue(null, out _) : section.Value is not null;
-
-                private sealed class UnsupportedRuntimeTypeException(global::System.Type type, string path)
-                    : global::System.NotSupportedException($"Runtime configuration type '{type}' at '{path}' is not accessible or was not discovered by the options generator.") { }
+                private sealed class UnsupportedRuntimeTypeException(global::System.Type type, global::System.Type declaredType, string path)
+                    : global::System.NotSupportedException($"Runtime configuration type '{type}' at '{path}' differs from the declared model type '{declaredType}'. Declare the concrete configuration model type.") { }
 
             """).Append(methods).Append("}\n");
         context.AddSource("OptionBindings.g.cs", metadata.Append(source).ToString());
@@ -148,30 +144,6 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         return type.TypeArguments.Any(argument => argument is ITypeParameterSymbol ||
             argument is INamedTypeSymbol named && ContainsTypeParameter(named)) ||
             type.ContainingType is not null && ContainsTypeParameter(type.ContainingType);
-    }
-
-    internal static IEnumerable<INamedTypeSymbol> GetObjectTypes(Compilation compilation, INamedTypeSymbol owner)
-    {
-        foreach (var declaration in owner.DeclaringSyntaxReferences)
-        {
-            if (!compilation.SyntaxTrees.Contains(declaration.SyntaxTree))
-            {
-                continue;
-            }
-            var model = compilation.GetSemanticModel(declaration.SyntaxTree);
-            foreach (var expression in declaration.GetSyntax().DescendantNodes().OfType<ExpressionSyntax>().Where(expression =>
-                         expression.Parent is EqualsValueClauseSyntax or AssignmentExpressionSyntax or ReturnStatementSyntax or
-                             ArrowExpressionClauseSyntax or ConditionalExpressionSyntax or InitializerExpressionSyntax or CastExpressionSyntax or LambdaExpressionSyntax))
-            {
-                var info = model.GetTypeInfo(expression);
-                if ((info.ConvertedType?.SpecialType == SpecialType.System_Object || info.ConvertedType?.TypeKind == TypeKind.Dynamic) &&
-                    info.Type is INamedTypeSymbol { TypeKind: TypeKind.Class, IsAbstract: false, SpecialType: not SpecialType.System_Object } type &&
-                    !ContainsTypeParameter(type))
-                {
-                    yield return type;
-                }
-            }
-        }
     }
 
     private static bool IsOption(INamedTypeSymbol type, INamedTypeSymbol?[] optionTypes)

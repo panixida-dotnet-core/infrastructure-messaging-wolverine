@@ -141,7 +141,6 @@ public sealed class ComplexOptionBindingTests
             ["Options:CustomList:0:Name"] = "custom",
             ["Options:CustomDictionary:new:Name"] = "custom",
             ["Options:Bytes"] = "AgM=",
-            ["Options:Untyped"] = "text",
         };
 
         var generated = OptionBindingRegistry.GetRequired<CollectionOptions>(configuration, "Options");
@@ -194,7 +193,6 @@ public sealed class ComplexOptionBindingTests
     {
         var configuration = new ConfigurationManager
         {
-            ["Options:Interface:Name"] = "interface",
             ["Options:PrivateConstructor:Name"] = "private constructor",
             ["Options:MultipleConstructors:Name"] = "multiple constructors",
         };
@@ -234,17 +232,11 @@ public sealed class ComplexOptionBindingTests
 
     public sealed class ExistingInstanceOptions : KafkaConsumerOption
     {
-        public ISettings Interface { get; } = Settings.Create();
         public Settings PrivateConstructor { get; init; } = Settings.Create();
         public MultipleConstructors MultipleConstructors { get; init; } = new("initial");
     }
 
-    public interface ISettings
-    {
-        string Name { get; set; }
-    }
-
-    public sealed class Settings : ISettings
+    public sealed class Settings
     {
         private Settings() { }
         public string Name { get; set; } = "initial";
@@ -308,7 +300,6 @@ public sealed class ComplexOptionBindingTests
         public CustomList CustomList { get; init; } = [];
         public CustomDictionary CustomDictionary { get; init; } = [];
         public byte[] Bytes { get; init; } = [1];
-        public object? Untyped { get; init; }
     }
 
     public sealed class CustomList : List<NestedSettings>;

@@ -5,8 +5,7 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Options;
 
-internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamedTypeSymbol? keyNameAttribute, int optionIndex,
-    IReadOnlyList<INamedTypeSymbol> runtimeTypes)
+internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamedTypeSymbol? keyNameAttribute, int optionIndex)
 {
     private const string Section = "global::Microsoft.Extensions.Configuration.IConfigurationSection";
     private const string Collections = "global::System.Collections.Generic.";
@@ -18,35 +17,15 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string Accessor = "global::System.Runtime.CompilerServices.UnsafeAccessor";
     private const string AccessorKind = "global::System.Runtime.CompilerServices.UnsafeAccessorKind.";
     private readonly Dictionary<ITypeSymbol, string> methods = new(SymbolEqualityComparer.Default);
-    private readonly Dictionary<INamedTypeSymbol, string> runtimeMethods = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<string, string> converterMethods = new(StringComparer.Ordinal);
-    private readonly HashSet<INamedTypeSymbol> inspectedObjectTypes = new(SymbolEqualityComparer.Default);
-    private readonly List<INamedTypeSymbol> objectTypes = [];
     private readonly StringBuilder source = new();
 
     internal string? Error { get; private set; }
 
-    internal string Complete()
-    {
-        var type = compilation.GetSpecialType(SpecialType.System_Object);
-        if (methods.TryGetValue(type, out var method))
-        {
-            var body = new StringBuilder();
-            AppendComplexBody(body, type, method);
-            source.Append($"    private static object {method}({Section} section, object option, bool readOnly = false, bool parentCollection = false)\n    {{\n")
-                .Append(body).Append(EndMethod);
-        }
-
-        return source.ToString();
-    }
+    internal string Complete() => source.ToString();
 
     internal string Build(ITypeSymbol type)
     {
-        if (type.TypeKind == TypeKind.Dynamic)
-        {
-            type = compilation.GetSpecialType(SpecialType.System_Object);
-        }
-
         type = type.WithNullableAnnotation(NullableAnnotation.NotAnnotated);
         if (methods.TryGetValue(type, out var existing))
         {
@@ -55,13 +34,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         var name = $"Bind{optionIndex}_{methods.Count}";
         methods.Add(type, name);
-        if (type.SpecialType == SpecialType.System_Object)
-        {
-            return name;
-        }
-
         var body = new StringBuilder();
-        if (type.IsRefLikeType || !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
+        if (type.SpecialType == SpecialType.System_Object || type.TypeKind == TypeKind.Dynamic ||
+            type is { TypeKind: TypeKind.Class, IsAbstract: true })
+        {
+            Error = $"type '{type}' must be a concrete configuration model; object, dynamic and abstract models are not supported";
+        }
+        else if (type.IsRefLikeType || !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
         {
             Error = $"type '{type}' must be accessible to generated code";
         }
@@ -102,12 +81,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         if (Name(type) == Section)
         {
             body.Append("        return readOnly ? option : section;\n");
-        }
-        else if (type.SpecialType == SpecialType.System_Object)
-        {
-            body.Append($"        if (HasConfigurationValue(section) || !{AnyChildren}) return readOnly ? option : section.Value;\n");
-            AppendRuntimeDispatch(body, (INamedTypeSymbol)type);
-            body.Append("        return readOnly ? option : option ?? new object();\n");
         }
         else if (IsNullable(type))
         {
@@ -156,11 +129,17 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return;
         }
 
+        if (type.TypeKind == TypeKind.Interface)
+        {
+            Error = $"interface '{type}' must be replaced with a concrete configuration model or a supported collection interface";
+            return;
+        }
+
         var creation = Construction(type, method);
         body.Append($"        if (!{AnyChildren})\n        {{\n")
             .Append($"            if (parentCollection && !readOnly && {(type.IsReferenceType ? "option is null && " : string.Empty)}global::System.String.IsNullOrEmpty(section.Value)) return {creation};\n")
             .Append("            return option;\n        }\n");
-        AppendRuntimeDispatch(body, type);
+        AppendRuntimeTypeCheck(body, type);
         var constructor = GetConstructor(type);
         var parameters = constructor?.Parameters.Select(parameter => parameter.Name).ToArray() ?? [];
         if (type.IsReferenceType)
@@ -177,7 +156,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         AppendProperties(body, type, method, parameters);
     }
 
-    private void AppendRuntimeDispatch(StringBuilder body, INamedTypeSymbol type)
+    private static void AppendRuntimeTypeCheck(StringBuilder body, INamedTypeSymbol type)
     {
         if (type.IsSealed || type.IsValueType)
         {
@@ -185,62 +164,12 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         body.Append("        if (option is not null)\n        {\n            var runtimeType = ((object)option).GetType();\n");
-        var implementations = type.SpecialType == SpecialType.System_Object ? GetObjectImplementations() : runtimeTypes;
-        foreach (var implementation in implementations.Where(candidate => candidate.TypeKind == TypeKind.Class && !candidate.IsAbstract &&
-                     !candidate.IsFileLocal && compilation.IsSymbolAccessibleWithin(candidate, compilation.Assembly) &&
-                     compilation.ClassifyCommonConversion(candidate, type) is { IsImplicit: true, IsReference: true }))
-        {
-            body.Append($"            if (runtimeType == typeof({Name(implementation)})) return {BuildRuntimeProperties(implementation)}(section, ({Name(implementation)})option);\n");
-        }
-
         body.Append($"            if (runtimeType != typeof({Name(type)}))\n")
-            .Append("                throw new UnsupportedRuntimeTypeException(runtimeType, section.Path);\n        }\n");
-    }
-
-    private string BuildRuntimeProperties(INamedTypeSymbol type)
-    {
-        if (runtimeMethods.TryGetValue(type, out var existing))
-        {
-            return existing;
-        }
-
-        var method = $"Bind{optionIndex}Runtime{runtimeMethods.Count}";
-        runtimeMethods.Add(type, method);
-        var body = new StringBuilder();
-        AppendProperties(body, type, method, []);
-        source.Append($"    private static {Name(type)} {method}({Section} section, {Name(type)} option)\n    {{\n")
-            .Append(body).Append(EndMethod);
-        return method;
-    }
-
-    private IEnumerable<INamedTypeSymbol> GetObjectImplementations()
-    {
-        for (var index = 0; index < objectTypes.Count; index++)
-        {
-            yield return objectTypes[index];
-        }
-    }
-
-    private void DiscoverObjectTypes(INamedTypeSymbol type)
-    {
-        for (var current = type; current is not null; current = current.BaseType)
-        {
-            if (!inspectedObjectTypes.Add(current))
-            {
-                continue;
-            }
-
-            foreach (var candidate in OptionBindingGenerator.GetObjectTypes(compilation, current).Prepend(current)
-                         .Where(candidate => !objectTypes.Any(existing => SymbolEqualityComparer.Default.Equals(existing, candidate))))
-            {
-                objectTypes.Add(candidate);
-            }
-        }
+            .Append($"                throw new UnsupportedRuntimeTypeException(runtimeType, typeof({Name(type)}), section.Path);\n        }}\n");
     }
 
     private void AppendProperties(StringBuilder body, INamedTypeSymbol type, string method, string[] parameters)
     {
-        DiscoverObjectTypes(type);
         body.Append($"        var children = new {Collections}Dictionary<string, {Section}>(global::System.StringComparer.OrdinalIgnoreCase);\n")
             .Append("        foreach (var child in section.GetChildren()) children[child.Key] = child;\n");
         var index = 0;
@@ -340,11 +269,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             return getter;
         }
-        if (type.SpecialType == SpecialType.System_Object || type.TypeKind == TypeKind.Dynamic)
-        {
-            return $"HasConfigurationValue({child}) || !global::System.Linq.Enumerable.Any({child}.GetChildren()) ? default : {getter}";
-        }
-
         var conversion = ScalarConversionCondition(type);
         if (conversion == "true")
         {
@@ -363,11 +287,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private string Construction(INamedTypeSymbol type, string method)
     {
-        if (type.IsAbstract || type.TypeKind == TypeKind.Interface)
-        {
-            return InvalidConstruction(type, method, $"Cannot create an instance of type '{type}'.");
-        }
-
         var constructor = GetConstructor(type);
         if (constructor is null)
         {
@@ -738,7 +657,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private static bool CanConvertScalar(ITypeSymbol type)
     {
-        return OptionBindingGenerator.GetConversion(type) is not null || type.SpecialType == SpecialType.System_Object || type.TypeKind == TypeKind.Dynamic ||
+        return OptionBindingGenerator.GetConversion(type) is not null ||
             type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte } ||
             Name(type) == Section;
     }
@@ -762,6 +681,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private static string Name(ITypeSymbol type)
     {
-        return type.TypeKind == TypeKind.Dynamic ? "object" : type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        return type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
     }
 }

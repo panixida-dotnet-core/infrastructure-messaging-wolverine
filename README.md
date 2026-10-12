@@ -255,10 +255,13 @@ and configuration keys stay unchanged. It binds scalar values, nested objects, r
 including public `init` setters and `required` properties. Constructor defaults, inherited properties, `ConfigurationKeyName`
 attributes (including paths such as `nested:value`) and existing mutable collections are preserved.
 Getter-only objects and mutable collections are populated in place.
-Initialized base-class, interface and `object` members bind the properties of their concrete runtime classes, including `init` setters.
-The generator discovers accessible implementations in the current and referenced assemblies and closed generic types used in source.
-For `object` members, implementations come from the typed option model graph and concrete initializers, assignments and returns in those models' source.
-An undiscovered or inaccessible runtime implementation throws `NotSupportedException` with its configuration path instead of silently ignoring properties.
+Binding is restricted to statically declared model types; the bundled generator is not a general-purpose replacement for `ConfigurationBinder`.
+Declare nested models with concrete types and collection values with supported element types.
+`object`, `dynamic`, abstract models and user-defined model interfaces produce `PANWOLVSG002`, including inside collections.
+Standard collection interfaces and `IConfigurationSection` remain supported.
+Options may inherit properties from base classes, but an ordinary object model instance must match its declared model type.
+A runtime subtype throws `NotSupportedException` with the declared type, actual type and configuration path.
+The generator does not search dependencies for arbitrary runtime implementations.
 Hidden non-virtual base properties are bound separately; overrides with virtual setters retain the base property's configuration metadata.
 Getter-only virtual overrides are bound per declaration, so a shared mutable collection receives entries more than once, matching the .NET 10 binder.
 Concrete models implementing only `IEnumerable<T>`, `IReadOnlyCollection<T>` or `IReadOnlyDictionary<TKey, TValue>` bind their ordinary properties.

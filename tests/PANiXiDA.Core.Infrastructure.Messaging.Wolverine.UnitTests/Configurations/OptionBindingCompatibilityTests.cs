@@ -23,14 +23,13 @@ public sealed class OptionBindingCompatibilityTests
             ["Options:Optional:value"] = "",
             ["Options:Converted:value"] = "configured",
             ["Options:Converted:invalid"] = "invalid",
-            ["Options:Untyped:value"] = "configured",
             ["Options:Sections:value"] = "configured",
             ["Options:Lists:value:0"] = "8",
             ["Options:Bytes:value"] = "AgM=",
         };
         if (hasChildren)
         {
-            foreach (var property in new[] { "Numbers", "Optional", "Converted", "Untyped", "Sections" })
+            foreach (var property in new[] { "Numbers", "Optional", "Converted", "Sections" })
             {
                 configuration[$"Options:{property}:value:Nested"] = "ignored";
             }
@@ -43,14 +42,12 @@ public sealed class OptionBindingCompatibilityTests
         generated.Numbers.ShouldBe(original.Numbers);
         generated.Optional.ShouldBe(original.Optional);
         generated.Converted.ShouldBe(original.Converted);
-        generated.Untyped.ShouldBe(original.Untyped);
         generated.Sections["value"].ShouldBeOfType(original.Sections["value"].GetType());
         generated.Sections["value"].Path.ShouldBe(original.Sections["value"].Path);
         generated.Sections["value"].Value.ShouldBe(original.Sections["value"].Value);
         generated.Numbers.Lookups.ShouldBe(0);
         generated.Optional.Lookups.ShouldBe(0);
         generated.Converted.Lookups.ShouldBe(0);
-        generated.Untyped.Lookups.ShouldBe(0);
         generated.Sections.Lookups.ShouldBe(0);
         generated.Lists["value"].ShouldBe(original.Lists["value"]);
         generated.Lists["value"].ShouldBe([7, 8]);
@@ -415,7 +412,6 @@ public sealed class OptionBindingCompatibilityTests
         public LookupDictionary<int> Numbers { get; } = [];
         public LookupDictionary<int?> Optional { get; } = [];
         public LookupDictionary<ConvertedValue> Converted { get; } = [];
-        public LookupDictionary<object> Untyped { get; } = [];
         public LookupDictionary<IConfigurationSection> Sections { get; } = [];
         public LookupDictionary<List<int>> Lists { get; } = new() { ThrowOnLookup = false, ["value"] = [7] };
         public LookupDictionary<byte[]> Bytes { get; } = new() { ThrowOnLookup = false, ["value"] = [1] };

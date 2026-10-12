@@ -108,50 +108,53 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldContain(".Register<global::GenericSettings<string>>");
     }
 
-    [Fact(DisplayName = "Option generator discovers object implementations only within the option model graph")]
-    public void GeneratorShouldDiscoverObjectImplementations()
+    [Theory(DisplayName = "Option generator diagnoses open model types and polymorphic collection values")]
+    [InlineData("object")]
+    [InlineData("dynamic")]
+    [InlineData("ISettings")]
+    [InlineData("BaseSettings")]
+    [InlineData("System.Collections.Generic.List<object>")]
+    [InlineData("System.Collections.Generic.Dictionary<string, object>")]
+    [InlineData("System.Collections.Generic.List<ISettings>")]
+    public void GeneratorShouldDiagnosePolymorphicModels(string type)
     {
-        var compilation = CreateCompilation("""
+        var compilation = CreateCompilation($$"""
             public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
             {
-                public object First { get; } = new Payload();
-                public object FromFactory { get; } = CreatePayload();
-                private static object CreatePayload() => new FactoryPayload();
-                public dynamic Dynamic { get; } = new GenericPayload<int>();
-                public object Unknown { get; } = new LocalPayload();
-                public object Empty { get; } = new object();
-                public object Missing { get; } = null;
-                public object Scalar { get; } = 42;
-                public object Abstract { get; } = (AbstractPayload)null;
-                public class Factory<T> { public object Create() => new GenericPayload<T>(); }
+                public {{type}} Value { get; init; }
             }
-            public sealed class Payload { public object Child { get; } = new LaterPayload(); }
-            public sealed class LaterPayload { public string Name { get; init; } }
-            public sealed class FactoryPayload { public string Name { get; init; } }
-            public sealed class GenericPayload<T> { public T Value { get; init; } }
-            public abstract class AbstractPayload;
-            file sealed class LocalPayload;
-            public class Unrelated
-            {
-                public object Value { get; } = new UnsupportedPayload();
-            }
-            public class UnsupportedPayload { public System.Span<int> Span => default; }
+            public interface ISettings;
+            public abstract class BaseSettings;
             """);
 
         var (source, diagnostics) = Generate(compilation);
 
-        diagnostics.ShouldBeEmpty();
-        source.ShouldContain("typeof(global::LaterPayload)");
-        source.ShouldContain("typeof(global::FactoryPayload)");
-        source.ShouldContain("typeof(global::GenericPayload<int>)");
-        source.ShouldNotContain("typeof(global::LocalPayload)");
-        source.ShouldNotContain("typeof(global::GenericPayload<T>)");
-        source.ShouldNotContain("typeof(global::UnsupportedPayload)");
-        source.ShouldNotContain("typeof(global::AbstractPayload)");
+        diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002" &&
+            diagnostic.GetMessage().Contains("concrete configuration model"));
+        source.ShouldNotContain(".Register<global::Settings>");
     }
 
-    [Fact(DisplayName = "Option generator discovers runtime implementations in referenced assemblies")]
-    public void GeneratorShouldDiscoverReferencedRuntimeTypes()
+    [Theory(DisplayName = "Option generator rejects object collections without traversing unrelated dependency models")]
+    [InlineData("System.Collections.Generic.List<int>")]
+    [InlineData("System.Collections.Generic.Dictionary<string, int>")]
+    public void GeneratorShouldDiagnoseObjectCollections(string type)
+    {
+        var compilation = CreateCompilation($$"""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public object Value { get; } = new {{type}}();
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002");
+        source.ShouldNotContain("Microsoft.EntityFrameworkCore");
+        source.ShouldNotContain(".Register<global::Settings>");
+    }
+
+    [Fact(DisplayName = "Option generator diagnoses unsupported model interfaces in referenced options")]
+    public void GeneratorShouldDiagnoseReferencedPolymorphicModels()
     {
         var referenced = CreateCompilation("""
             public interface ISettings;
@@ -171,9 +174,9 @@ public sealed class OptionBindingGeneratorTests
 
         var (source, diagnostics) = Generate(compilation);
 
-        diagnostics.ShouldBeEmpty();
-        source.ShouldContain("runtimeType == typeof(global::Implementation)");
-        source.ShouldContain("option.@Extra");
+        diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002");
+        source.ShouldNotContain("typeof(global::Implementation)");
+        source.ShouldNotContain("option.@Extra");
         source.ShouldNotContain("typeof(global::LocalImplementation)");
     }
 
@@ -334,8 +337,6 @@ public sealed class OptionBindingGeneratorTests
     }
 
     [Theory(DisplayName = "Option generator compiles complex and init-only properties without changing consumer models")]
-    [InlineData("object")]
-    [InlineData("dynamic")]
     [InlineData("string[]")]
     [InlineData("byte[]")]
     [InlineData("System.Collections.Generic.List<Payload>")]
@@ -432,7 +433,7 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("OptionBindingCompatibilityTests.StructOptions")]
     [InlineData("OptionBindingFailureTests.RestrictedOptions")]
     [InlineData("OptionBindingFailureTests.IntegerDictionaryOptions")]
-    [InlineData("PolymorphicOptionBindingTests.PolymorphicOptions")]
+    [InlineData("PolymorphicOptionBindingTests.ConcreteOptions")]
     public void GeneratorShouldComposeReferencedModels(string model)
     {
         var compilation = CreateCompilation($$"""
@@ -508,7 +509,6 @@ public sealed class OptionBindingGeneratorTests
         var compilation = CreateCompilation("""
             public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
             {
-                public AbstractPayload Abstract { get; init; }
                 public MissingProperty Missing { get; init; }
                 public RefParameter Reference { get; init; }
                 public OptionalPayload Optional { get; init; }
@@ -517,11 +517,8 @@ public sealed class OptionBindingGeneratorTests
                 [Microsoft.Extensions.Configuration.ConfigurationKeyName(" ")]
                 public string Name { get; init; }
                 public System.Collections.Generic.Dictionary<string, Microsoft.Extensions.Configuration.IConfigurationSection> Sections { get; init; }
-                public System.Collections.Generic.List<object> Values { get; init; }
-                public System.Collections.Generic.List<dynamic> DynamicValues { get; init; }
                 public System.Collections.Generic.List<byte[]> Binary { get; init; }
             }
-            public abstract class AbstractPayload { public string Name { get; set; } }
             public class MissingProperty(int missing);
             public class RefParameter { public RefParameter(ref int value) {} public int Value { get; set; } }
             public record OptionalPayload(string Name = null, System.DayOfWeek Day = System.DayOfWeek.Friday);
