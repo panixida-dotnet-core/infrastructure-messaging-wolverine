@@ -260,7 +260,7 @@ Requirements and limits:
 - Keep analyzer assets enabled. These registrations need no additional attributes, setup or `EnableConfigurationBindingGenerator` flag.
   Applications may enable Microsoft's generator for other configuration binding calls; both generators can coexist.
 - Declare concrete model types. `object`, `dynamic`, abstract models and user-defined model interfaces produce `PANWOLVSG002`, including inside collections.
-  Standard collection interfaces and `IConfigurationSection` are supported. Ordinary model instances must match their declared types; runtime subtypes throw `NotSupportedException`.
+  Standard collection interfaces and `IConfigurationSection` are supported; custom interfaces extending collections also produce `PANWOLVSG002`. Ordinary model instances must match their declared types; runtime subtypes throw `NotSupportedException`.
 - Dictionary keys support strings, enums and integer types from `sbyte`/`byte` to `long`/`ulong`. `ISet<T>`/`IReadOnlySet<T>` bind strings and enums; concrete collections such as `HashSet<int>` also support other element types.
 - Custom `TypeConverter` types must be accessible, with a public parameterless or `System.Type` constructor; Native AOT publishing also requires their implementations to support trimming/Native AOT.
 

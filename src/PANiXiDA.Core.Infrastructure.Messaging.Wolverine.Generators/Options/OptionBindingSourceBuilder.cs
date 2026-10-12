@@ -151,6 +151,16 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private void AppendNamedBody(StringBuilder body, INamedTypeSymbol type, string method)
     {
         var definition = type.OriginalDefinition.ToDisplayString();
+        if (type.TypeKind == TypeKind.Interface && definition is not (
+            "System.Collections.Generic.IDictionary<TKey, TValue>" or "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>" or
+            "System.Collections.Generic.IEnumerable<T>" or "System.Collections.Generic.IReadOnlyList<T>" or
+            "System.Collections.Generic.IReadOnlyCollection<T>" or "System.Collections.Generic.ICollection<T>" or
+            "System.Collections.Generic.IList<T>" or SetInterface or "System.Collections.Generic.IReadOnlySet<T>"))
+        {
+            Error = $"interface '{type}' must be replaced with a concrete configuration model or a supported collection interface";
+            return;
+        }
+
         var dictionary = FindInterface(type, "System.Collections.Generic.IDictionary<TKey, TValue>") ??
             (definition == "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>" ? type : null);
         if (dictionary is not null)
@@ -166,12 +176,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         if (sequence is not null)
         {
             AppendSequence(body, type, sequence.TypeArguments[0], copy);
-            return;
-        }
-
-        if (type.TypeKind == TypeKind.Interface)
-        {
-            Error = $"interface '{type}' must be replaced with a concrete configuration model or a supported collection interface";
             return;
         }
 
@@ -526,13 +530,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         if (setInterface && element.SpecialType != SpecialType.System_String && element.TypeKind != TypeKind.Enum)
         {
             body.Append(ReturnOption);
-            return;
-        }
-
-        var collection = named is not null && FindInterface(named, "System.Collections.Generic.ICollection<T>") is not null;
-        if (!copy && !set && !collection)
-        {
-            Error = $"collection '{type}' needs an ICollection<T> implementation";
             return;
         }
 

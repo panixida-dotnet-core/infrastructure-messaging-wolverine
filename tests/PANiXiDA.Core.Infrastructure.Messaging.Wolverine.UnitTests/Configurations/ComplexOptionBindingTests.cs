@@ -149,8 +149,10 @@ public sealed class ComplexOptionBindingTests
         JsonSerializer.Serialize(generated).ShouldBe(JsonSerializer.Serialize(original));
     }
 
-    [Fact(DisplayName = "Generated dictionary binding preserves the current culture for integer keys")]
-    public void BinderShouldPreserveDictionaryKeyCulture()
+    [Theory(DisplayName = "Generated dictionary binding preserves the current culture for integer keys")]
+    [InlineData("~1", true)]
+    [InlineData("-1", false)]
+    public void BinderShouldPreserveDictionaryKeyCulture(string key, bool expected)
     {
         var previousCulture = CultureInfo.CurrentCulture;
         var culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
@@ -158,12 +160,14 @@ public sealed class ComplexOptionBindingTests
         CultureInfo.CurrentCulture = culture;
         try
         {
-            var configuration = new ConfigurationManager { ["Options:Dictionary:~1:0"] = "5" };
+            var configuration = new ConfigurationManager { [$"Options:Dictionary:{key}:0"] = "5" };
 
             var generated = OptionBindingRegistry.GetRequired<CollectionOptions>(configuration, "Options");
             var original = configuration.GetSection("Options").Get<CollectionOptions>()!;
 
-            generated.Dictionary[-1].ShouldBe(original.Dictionary[-1]);
+            generated.Dictionary.ContainsKey(-1).ShouldBe(original.Dictionary.ContainsKey(-1));
+            generated.Dictionary.ContainsKey(-1).ShouldBe(expected);
+            if (expected) generated.Dictionary[-1].ShouldBe(original.Dictionary[-1]);
         }
         finally
         {

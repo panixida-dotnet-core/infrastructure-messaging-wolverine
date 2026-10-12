@@ -113,6 +113,7 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("dynamic")]
     [InlineData("ISettings")]
     [InlineData("BaseSettings")]
+    [InlineData("System.Collections.Frozen.FrozenSet<int>")]
     [InlineData("System.Collections.Generic.List<object>")]
     [InlineData("System.Collections.Generic.Dictionary<string, object>")]
     [InlineData("System.Collections.Generic.List<ISettings>")]
@@ -311,6 +312,32 @@ public sealed class OptionBindingGeneratorTests
         var (_, diagnostics) = Generate(CreateCompilation(source));
 
         diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002");
+    }
+
+    [Theory(DisplayName = "Option generator diagnoses derived collection interfaces instead of emitting invalid assignments")]
+    [InlineData("IDictionary<string, int>")]
+    [InlineData("IDictionary<System.Guid, int>")]
+    [InlineData("IReadOnlyDictionary<string, int>")]
+    [InlineData("IList<int>")]
+    [InlineData("ICollection<int>")]
+    [InlineData("ISet<string>")]
+    [InlineData("IReadOnlySet<string>")]
+    [InlineData("IEnumerable<int>")]
+    public void GeneratorShouldDiagnoseDerivedCollectionInterfaces(string collection)
+    {
+        var compilation = CreateCompilation($$"""
+            using System.Collections.Generic;
+            public interface ICustomCollection : {{collection}};
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public ICustomCollection Value { get; init; }
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002");
+        source.ShouldNotContain(".Register<global::Settings>");
     }
 
     [Fact(DisplayName = "Option generator compiles scalar conversions including nullable values")]
