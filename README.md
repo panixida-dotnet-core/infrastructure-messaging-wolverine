@@ -36,7 +36,9 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - PostgreSQL for Wolverine message storage
 - Kafka only when external event topics are registered
 
-Full Native AOT support is not currently provided.
+Kafka and recurring-command option binding is generated at compile time, including derived `TOption` models; existing registration calls are unchanged.
+Closed options are also discovered through generic helpers whose source is available in the compilation, including inferred type arguments, helper chains and generic containing classes.
+Full Native AOT support is not currently provided: the mediator still uses Wolverine runtime compilation and EF Core.
 
 ### Installation
 
@@ -282,6 +284,23 @@ options.AddConsumer<UserCreated>("External:Consumers");
 
 `AddKafkaBroker<TOption>()`, `AddKafkaProducer<TOption, TEvent>()`, and
 `AddKafkaConsumer<TOption, TEvent>()` bind sections named after their option types.
+
+The bundled generator binds Kafka and recurring-command options without reflection. Registration calls and configuration keys stay unchanged.
+It supports accessible concrete models, nested objects, records, collections, public `init`/`required` properties, defaults, inheritance and `ConfigurationKeyName`.
+Binders from the options' declaring assembly are reused by consumers.
+Calls made before generated module initialization completes locate the generated registrar through assembly attributes; property binding still uses generated code.
+
+Requirements and limits:
+
+- Keep analyzer assets enabled. These registrations need no additional attributes, setup or `EnableConfigurationBindingGenerator` flag.
+  Applications may enable Microsoft's generator for other configuration binding calls; both generators can coexist.
+- Declare concrete model types. `object`, `dynamic`, abstract models and user-defined model interfaces produce `PANWOLVSG002`, including inside collections.
+  Standard collection interfaces and `IConfigurationSection` are supported; custom interfaces extending collections also produce `PANWOLVSG002`. Ordinary model instances must match their declared types; runtime subtypes throw `NotSupportedException`.
+- Dictionary keys support strings, enums and integer types from `sbyte`/`byte` to `long`/`ulong`. `ISet<T>`/`IReadOnlySet<T>` bind strings and enums; concrete collections such as `HashSet<int>` also support other element types.
+- Custom `TypeConverter` types must be accessible, with a public parameterless or `System.Type` constructor; Native AOT publishing also requires their implementations to support trimming/Native AOT.
+
+These model restrictions apply to regular builds as well as Native AOT; there is no reflection-based binding fallback.
+Generated option binding has been validated with Native AOT. Full Native AOT support for the mediator is not currently provided because it still uses Wolverine runtime compilation and EF Core.
 
 ## EF Core Storage
 
