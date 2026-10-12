@@ -42,6 +42,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
             .Select(name => compilation.GetTypeByMetadataName(OptionsNamespace + name))
             .Where(type => type is not null).ToArray();
         var keyNameAttribute = compilation.GetTypeByMetadataName("Microsoft.Extensions.Configuration.ConfigurationKeyNameAttribute");
+        var metadataAttribute = compilation.GetTypeByMetadataName("System.Reflection.AssemblyMetadataAttribute");
         var source = new StringBuilder("""
             #nullable disable
             #pragma warning disable CA2255, CS0618
@@ -61,7 +62,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         var candidates = GetCandidates(compilation, context.CancellationToken)
             .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
             .OrderBy(type => type.ToDisplayString(), StringComparer.Ordinal).ToArray();
-        foreach (var type in candidates.Where(type => IsOption(type, optionTypes) && !HasGeneratedBinder(type)))
+        foreach (var type in candidates.Where(type => IsOption(type, optionTypes) && !HasGeneratedBinder(type, metadataAttribute)))
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             if (type.IsFileLocal || !compilation.IsSymbolAccessibleWithin(type, compilation.Assembly))
@@ -109,10 +110,10 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         context.AddSource("OptionBindings.g.cs", metadata.Append(source).ToString());
     }
 
-    private static bool HasGeneratedBinder(INamedTypeSymbol type)
+    private static bool HasGeneratedBinder(INamedTypeSymbol type, INamedTypeSymbol? metadataAttribute)
     {
         return type.ContainingAssembly.GetAttributes().Any(attribute =>
-            attribute.AttributeClass?.ToDisplayString() == "System.Reflection.AssemblyMetadataAttribute" &&
+            SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, metadataAttribute) &&
             attribute.ConstructorArguments.Length == 2 &&
             attribute.ConstructorArguments[0].Value as string == GeneratedBinderKey &&
             attribute.ConstructorArguments[1].Value as string == type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));

@@ -10,6 +10,7 @@ internal static class RequestBehaviorMetadataSourceBuilder
             #nullable enable
             #pragma warning disable CA2255
 
+            [global::System.CodeDom.Compiler.GeneratedCode("PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators", "1.0.0")]
             file static class GeneratedWolverineRequestBehaviors
             {
                 [global::System.Runtime.CompilerServices.ModuleInitializer]

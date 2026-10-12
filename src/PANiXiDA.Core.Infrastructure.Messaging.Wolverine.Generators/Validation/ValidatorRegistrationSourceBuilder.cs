@@ -13,6 +13,7 @@ internal sealed class ValidatorRegistrationSourceBuilder
         #nullable enable
         #pragma warning disable CA2255
 
+        [global::System.CodeDom.Compiler.GeneratedCode("PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators", "1.0.0")]
         [global::System.Obsolete("Generated code may reference obsolete validators.")]
         file static class GeneratedWolverineValidators
         {

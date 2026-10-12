@@ -343,6 +343,7 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("System.Collections.Generic.IReadOnlyDictionary<int, Payload>")]
     [InlineData("Microsoft.Extensions.Configuration.IConfigurationSection")]
     [InlineData("Payload")]
+    [InlineData("Point")]
     public void GeneratorShouldCompileComplexProperties(string type)
     {
         var compilation = CreateCompilation($$"""
@@ -351,6 +352,7 @@ public sealed class OptionBindingGeneratorTests
                 public {{type}} Value { get; init; }
             }
             public sealed record Payload(string Name, int Count = 2);
+            public struct Point { public int X { get; set; } }
             """);
 
         var (source, diagnostics) = Generate(compilation);
@@ -421,6 +423,48 @@ public sealed class OptionBindingGeneratorTests
         diagnostics.ShouldBeEmpty();
         source.ShouldNotContain("ComplexOptionBindingTests.ComplexOptions");
         source.ShouldNotContain("ComplexOptionBindingTests.GenericOptions");
+    }
+
+    [Theory(DisplayName = "Option generator composes referenced models inside consumer options")]
+    [InlineData("ComplexOptionBindingTests.ComplexOptions")]
+    [InlineData("ComplexOptionBindingTests.GenericOptions")]
+    [InlineData("ComplexOptionBindingTests.CollectionOptions")]
+    [InlineData("OptionBindingCompatibilityTests.ConverterOptions")]
+    [InlineData("OptionBindingCompatibilityTests.StructOptions")]
+    [InlineData("OptionBindingFailureTests.RestrictedOptions")]
+    [InlineData("OptionBindingFailureTests.IntegerDictionaryOptions")]
+    [InlineData("PolymorphicOptionBindingTests.PolymorphicOptions")]
+    public void GeneratorShouldComposeReferencedModels(string model)
+    {
+        var compilation = CreateCompilation($$"""
+            using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurations;
+            public sealed class ConsumerOptions : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public {{model}} Value { get; init; }
+            }
+            """).AddReferences(MetadataReference.CreateFromFile(typeof(OptionBindingGeneratorTests).Assembly.Location));
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::ConsumerOptions>");
+        source.ShouldContain(model);
+    }
+
+    [Fact(DisplayName = "Option generator tolerates incomplete assembly metadata while the compiler reports its error")]
+    public void GeneratorShouldHandleIncompleteAssemblyMetadata()
+    {
+        var compilation = CreateCompilation("""
+            [assembly: System.Reflection.AssemblyMetadata("PANiXiDA.Wolverine.GeneratedOptionBinder")]
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption;
+            """);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new OptionBindingGenerator());
+
+        var result = driver.RunGenerators(compilation, TestContext.Current.CancellationToken).GetRunResult();
+
+        compilation.GetDiagnostics(TestContext.Current.CancellationToken).ShouldContain(diagnostic => diagnostic.Id == "CS7036");
+        result.Diagnostics.ShouldBeEmpty();
+        result.GeneratedTrees.Single().ToString().ShouldContain(".Register<global::Settings>");
     }
 
     [Theory(DisplayName = "Option generator diagnoses unsupported property shapes without emitting invalid binders")]
