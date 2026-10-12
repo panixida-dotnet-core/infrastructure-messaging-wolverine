@@ -10,6 +10,63 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingFailureTests
 {
+    [Theory(DisplayName = "Generated constructor binding supplies absent and present configuration sections")]
+    [InlineData("missing")]
+    [InlineData("null")]
+    [InlineData("scalar")]
+    [InlineData("children")]
+    public void BinderShouldBindSectionParameters(string kind)
+    {
+        var configuration = new ConfigurationManager { ["Options:Value:Name"] = "configured" };
+        if (kind != "missing")
+        {
+            configuration[kind == "children" ? "Options:Value:Section:Child" : "Options:Value:Section"] =
+                kind == "null" ? null : "configured";
+        }
+
+        var original = configuration.GetSection("Options").Get<HolderOptions<SectionPayload>>()!;
+        var generated = OptionBindingRegistry.GetRequired<HolderOptions<SectionPayload>>(configuration, "Options");
+        var originalOptional = configuration.GetSection("Options").Get<HolderOptions<OptionalSectionPayload>>()!;
+        var generatedOptional = OptionBindingRegistry.GetRequired<HolderOptions<OptionalSectionPayload>>(configuration, "Options");
+
+        generated.Value.ShouldNotBeNull();
+        generated.Value.Section.Path.ShouldBe(original.Value!.Section.Path);
+        generated.Value.Section.Path.ShouldBe("Options:Value:section");
+        generated.Value.Section.Value.ShouldBe(original.Value.Section.Value);
+        generated.Value.Section["Child"].ShouldBe(original.Value.Section["Child"]);
+        generatedOptional.Value.ShouldNotBeNull();
+        generatedOptional.Value.Section.ShouldNotBeNull();
+        generatedOptional.Value.Section.Path.ShouldBe(originalOptional.Value!.Section!.Path);
+        generatedOptional.Value.Section.Value.ShouldBe(originalOptional.Value.Section.Value);
+        generatedOptional.Value.Section["Child"].ShouldBe(originalOptional.Value.Section["Child"]);
+    }
+
+    [Theory(DisplayName = "Generated binding preserves custom converter constructor exception chains")]
+    [InlineData("root")]
+    [InlineData("property")]
+    [InlineData("parameter")]
+    [InlineData("typed-root")]
+    [InlineData("typed-property")]
+    [InlineData("typed-parameter")]
+    public void BinderShouldPreserveConverterConstructionErrors(string kind)
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options"] = "configured",
+            ["Options:value"] = "configured",
+        };
+
+        switch (kind)
+        {
+            case "root": AssertSameFailure<ThrowingConverterOptions>(configuration); break;
+            case "property": AssertSameFailure<HolderOptions<ThrowingConverterOptions>>(configuration); break;
+            case "parameter": AssertSameFailure<ParameterOptions<ThrowingConverterOptions>>(configuration); break;
+            case "typed-root": AssertSameFailure<ThrowingTypedConverterOptions>(configuration); break;
+            case "typed-property": AssertSameFailure<HolderOptions<ThrowingTypedConverterOptions>>(configuration); break;
+            case "typed-parameter": AssertSameFailure<ParameterOptions<ThrowingTypedConverterOptions>>(configuration); break;
+        }
+    }
+
     [Theory(DisplayName = "Generated constructor binding rejects unconvertible scalar parameters")]
     [InlineData("object", "invalid")]
     [InlineData("object", "")]
@@ -163,6 +220,34 @@ public sealed class OptionBindingFailureTests
     public sealed class Payload
     {
         public string Name { get; init; } = "initial";
+    }
+
+    public sealed class SectionPayload(IConfigurationSection section)
+    {
+        public IConfigurationSection Section { get; } = section;
+        public string? Name { get; init; }
+    }
+
+    public sealed class OptionalSectionPayload(IConfigurationSection? section = null)
+    {
+        public IConfigurationSection? Section { get; } = section;
+        public string? Name { get; init; }
+    }
+
+    [TypeConverter(typeof(ThrowingConverter))]
+    public sealed class ThrowingConverterOptions : KafkaConsumerOption;
+
+    [TypeConverter(typeof(ThrowingTypedConverter))]
+    public sealed class ThrowingTypedConverterOptions : KafkaConsumerOption;
+
+    public sealed class ThrowingConverter : TypeConverter
+    {
+        public ThrowingConverter() => throw new FormatException("Converter constructor failed.");
+    }
+
+    public sealed class ThrowingTypedConverter : TypeConverter
+    {
+        public ThrowingTypedConverter(Type type) => throw new FormatException(type.Name);
     }
 
     public readonly record struct Point(int X);

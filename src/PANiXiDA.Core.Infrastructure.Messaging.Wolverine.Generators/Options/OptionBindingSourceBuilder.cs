@@ -19,6 +19,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string AccessorKind = "global::System.Runtime.CompilerServices.UnsafeAccessorKind.";
     private readonly Dictionary<ITypeSymbol, string> methods = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<INamedTypeSymbol, string> runtimeMethods = new(SymbolEqualityComparer.Default);
+    private readonly Dictionary<string, string> converterMethods = new(StringComparer.Ordinal);
     private readonly HashSet<INamedTypeSymbol> inspectedObjectTypes = new(SymbolEqualityComparer.Default);
     private readonly List<INamedTypeSymbol> objectTypes = [];
     private readonly StringBuilder source = new();
@@ -417,7 +418,11 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var parameterType = parameter.Type;
         var missing = MissingParameter(type, parameter);
         var missingStatement = parameter.HasExplicitDefaultValue ? "return " + missing : missing;
-        var body = new StringBuilder($"        if (!global::Microsoft.Extensions.Configuration.ConfigurationExtensions.Exists(section)) {missingStatement};\n");
+        var body = new StringBuilder();
+        if (Name(parameterType) != Section)
+        {
+            body.Append($"        if (!global::Microsoft.Extensions.Configuration.ConfigurationExtensions.Exists(section)) {missingStatement};\n");
+        }
         var conversion = ScalarConversionCondition(parameterType);
         if (conversion != "true")
         {
@@ -718,7 +723,21 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             Error = error;
         }
 
-        return converter;
+        if (converter is null)
+        {
+            return null;
+        }
+
+        if (!converterMethods.TryGetValue(converter, out var method))
+        {
+            method = $"CreateConverter{optionIndex}_{converterMethods.Count}";
+            converterMethods.Add(converter, method);
+            source.Append($"    private static global::System.ComponentModel.TypeConverter {method}()\n    {{\n");
+            AppendInvocation(source, $"return {converter};");
+            source.Append(EndMethod);
+        }
+
+        return method + "()";
     }
 
     private static bool CanConvertScalar(ITypeSymbol type)

@@ -268,7 +268,8 @@ Scalar binding includes `CultureInfo`, `Version`, `Half`, `Int128`, `UInt128` an
 including inherited attributes. A converter on the options type can bind a scalar configuration section directly.
 Null `byte[]` entries in collections and dictionaries retain their positions and keys, matching .NET 10 configuration binding.
 Base64 scalars and array children append to initialized byte arrays, matching the .NET 10 binder.
-Constructor, getter and setter failures retain the exception wrappers exposed by the previous binder, including `init` setters.
+Constructor, getter and setter failures retain the exception wrappers exposed by the previous binder, including `init` setters and custom converter constructors.
+`IConfigurationSection` properties and constructor parameters receive a section even when the configuration key is absent.
 Configured scalar values replace properties without reading their getters when the previous binder skips that read.
 Dictionary keys support strings, enums and the eight integer types from `sbyte`/`byte` through `long`/`ulong`.
 `ISet<T>` and `IReadOnlySet<T>` bind string and enum elements; other element types remain unchanged.
@@ -277,7 +278,9 @@ Custom converters are constructed directly and must be accessible, with a public
 Their implementations must also support trimming and Native AOT when publishing a native application.
 Models must be accessible to generated code; unsupported shapes produce `PANWOLVSG002` instead of a reflection fallback.
 Keep analyzer assets enabled.
-`EnableConfigurationBindingGenerator` is not required for these registrations: the bundled generator emits their binders.
+`EnableConfigurationBindingGenerator` is enabled in the library project and can coexist with the bundled generator.
+It is not required for these registrations: the bundled generator emits their binders.
+Applications can enable the same property in their own project for other configuration binding calls; the library setting does not propagate to consumers.
 The .NET configuration binding generator cannot specialize `Get<TOption>()` inside a generic library method;
 enabling it in the consuming application does not rewrite that compiled method.
 

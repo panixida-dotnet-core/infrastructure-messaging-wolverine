@@ -330,6 +330,7 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("Point")]
     [InlineData("Point?")]
     [InlineData("Point[]")]
+    [InlineData("Microsoft.Extensions.Configuration.IConfigurationSection")]
     public void GeneratorShouldCompileConstructorParameters(string type)
     {
         var compilation = CreateCompilation($$"""
