@@ -198,17 +198,15 @@ public sealed class OptionBindingFailureTests
         public string Name { get => TopicName; set => throw new FormatException(value); }
     }
 
-    public sealed class ThrowingConstructorGetterOptions : KafkaConsumerOption
+    public sealed class ThrowingConstructorGetterOptions(string Name) : KafkaConsumerOption
     {
-        private readonly string message;
-        public ThrowingConstructorGetterOptions(string Name) => message = Name;
+        private readonly string message = Name;
         public string Name { get => throw new FormatException(message); set => TopicName = value; }
     }
 
-    public sealed class ThrowingConstructorSetterOptions : KafkaConsumerOption
+    public sealed class ThrowingConstructorSetterOptions(string Name) : KafkaConsumerOption
     {
-        private readonly string name;
-        public ThrowingConstructorSetterOptions(string Name) => name = Name;
+        private readonly string name = Name;
         public string Name { get => name; set => throw new FormatException(value); }
     }
 

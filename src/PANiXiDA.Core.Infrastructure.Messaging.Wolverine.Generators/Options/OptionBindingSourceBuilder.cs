@@ -233,12 +233,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
                 continue;
             }
 
-            foreach (var candidate in OptionBindingGenerator.GetObjectTypes(compilation, current).Prepend(current))
+            foreach (var candidate in OptionBindingGenerator.GetObjectTypes(compilation, current).Prepend(current)
+                         .Where(candidate => !objectTypes.Any(existing => SymbolEqualityComparer.Default.Equals(existing, candidate))))
             {
-                if (!objectTypes.Any(existing => SymbolEqualityComparer.Default.Equals(existing, candidate)))
-                {
-                    objectTypes.Add(candidate);
-                }
+                objectTypes.Add(candidate);
             }
         }
     }
@@ -283,10 +281,16 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         body.Append("        {\n");
+        AppendSetter(body, type, property, method + "Set" + index, value);
+        body.Append("        }\n");
+    }
+
+    private void AppendSetter(StringBuilder body, INamedTypeSymbol type, IPropertySymbol property, string method, string value)
+    {
         if (property.SetMethod!.IsInitOnly)
         {
             var reference = property.ContainingType.IsValueType ? "ref " : string.Empty;
-            var setter = AppendAccessor(property.SetMethod, method + "Set" + index);
+            var setter = AppendAccessor(property.SetMethod, method);
             AppendInvocation(body, $"{setter}({reference}option, {value});", indent: "            ");
         }
         else
@@ -295,8 +299,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
                 ? OptionVariable : $"(({Name(property.ContainingType)})option)";
             AppendInvocation(body, $"{receiver}.@{property.Name} = {value};", indent: "            ");
         }
-
-        body.Append("        }\n");
     }
 
     private void AppendPropertySection(StringBuilder body, IPropertySymbol property, int index)

@@ -78,6 +78,8 @@ public sealed class OptionBindingGeneratorTests
             public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
             {
                 public object First { get; } = new Payload();
+                public object FromFactory { get; } = CreatePayload();
+                private static object CreatePayload() => new FactoryPayload();
                 public dynamic Dynamic { get; } = new GenericPayload<int>();
                 public object Unknown { get; } = new LocalPayload();
                 public object Empty { get; } = new object();
@@ -88,6 +90,7 @@ public sealed class OptionBindingGeneratorTests
             }
             public sealed class Payload { public object Child { get; } = new LaterPayload(); }
             public sealed class LaterPayload { public string Name { get; init; } }
+            public sealed class FactoryPayload { public string Name { get; init; } }
             public sealed class GenericPayload<T> { public T Value { get; init; } }
             public abstract class AbstractPayload;
             file sealed class LocalPayload;
@@ -102,6 +105,7 @@ public sealed class OptionBindingGeneratorTests
 
         diagnostics.ShouldBeEmpty();
         source.ShouldContain("typeof(global::LaterPayload)");
+        source.ShouldContain("typeof(global::FactoryPayload)");
         source.ShouldContain("typeof(global::GenericPayload<int>)");
         source.ShouldNotContain("typeof(global::LocalPayload)");
         source.ShouldNotContain("typeof(global::GenericPayload<T>)");

@@ -277,6 +277,9 @@ Custom converters are constructed directly and must be accessible, with a public
 Their implementations must also support trimming and Native AOT when publishing a native application.
 Models must be accessible to generated code; unsupported shapes produce `PANWOLVSG002` instead of a reflection fallback.
 Keep analyzer assets enabled.
+`EnableConfigurationBindingGenerator` is not required for these registrations: the bundled generator emits their binders.
+The .NET configuration binding generator cannot specialize `Get<TOption>()` inside a generic library method;
+enabling it in the consuming application does not rewrite that compiled method.
 
 ## EF Core Storage
 

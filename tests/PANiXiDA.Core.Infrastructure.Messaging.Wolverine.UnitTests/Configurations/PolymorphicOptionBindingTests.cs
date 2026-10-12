@@ -150,7 +150,7 @@ public sealed class PolymorphicOptionBindingTests
         internal LeafSettings InitialObject { get; } = new();
         internal GenericSettings<int> InitialReadOnlyObject { get; } = new();
         public PolymorphicOptions() => Object = InitialObject;
-        private static object CreateSettings() => new ConcreteSettings();
+        private static ConcreteSettings CreateSettings() => new();
     }
 
     public interface ISettings;
