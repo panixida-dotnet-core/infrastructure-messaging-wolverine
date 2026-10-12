@@ -106,7 +106,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             definition = containing.GetTypeMembers(named.Name, named.Arity)
                 .First(candidate => SymbolEqualityComparer.Default.Equals(candidate.OriginalDefinition, named.OriginalDefinition));
         }
-        return named.Arity == 0 ? definition : definition.Construct(named.TypeArguments.Select(argument => Substitute(argument, substitutions)).ToArray());
+        return named.Arity == 0 ? definition : definition.Construct([.. named.TypeArguments.Select(argument => Substitute(argument, substitutions))]);
     }
 
     private static bool ContainsTypeParameter(ITypeSymbol type)

@@ -190,10 +190,9 @@ public sealed class OptionBindingEdgeTests
         public string Name { get; init; }
     }
 
-    public sealed class MissingPropertiesModel
+    public sealed class MissingPropertiesModel(string first, string second)
     {
-        public MissingPropertiesModel(string first, string second) => Name = first + second;
-        public string Name { get; init; }
+        public string Name { get; init; } = first + second;
     }
 
     public sealed class RefModel
