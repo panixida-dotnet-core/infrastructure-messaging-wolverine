@@ -133,6 +133,52 @@ public sealed class OptionBindingMemberTests
         generated.SetterCalls.ShouldBe(1);
     }
 
+    [Fact(DisplayName = "Generated binding skips non-writable constructor-bound getters after creation")]
+    public void BinderShouldSkipNonWritableConstructorBoundGetters()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Value:Name"] = "configured",
+            ["Options:PrivateValue:Name"] = "private",
+            ["Options:Values:0"] = "42",
+        };
+
+        var original = configuration.GetSection("Options").Get<ReadOnlyConstructorOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<ReadOnlyConstructorOptions>(configuration, "Options");
+
+        generated.GetterCalls.ShouldBe(original.GetterCalls);
+        generated.GetterCalls.ShouldBe(0);
+        generated.CapturedValue.Name.ShouldBe(original.CapturedValue.Name);
+        generated.CapturedValue.Name.ShouldBe("configured");
+        generated.CapturedPrivateValue.Name.ShouldBe(original.CapturedPrivateValue.Name);
+        generated.CapturedPrivateValue.Name.ShouldBe("private");
+        generated.CapturedValues.ShouldBe(original.CapturedValues);
+        generated.CapturedValues.ShouldBe([42]);
+    }
+
+    [Fact(DisplayName = "Generated binding still populates non-writable properties of existing constructor models")]
+    public void BinderShouldBindExistingNonWritableConstructorProperties()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Existing:Value:Name"] = "configured",
+            ["Options:Existing:PrivateValue:Name"] = "private",
+            ["Options:Existing:Values:0"] = "42",
+        };
+
+        var original = configuration.GetSection("Options").Get<ExistingConstructorOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<ExistingConstructorOptions>(configuration, "Options");
+
+        generated.Existing.GetterCalls.ShouldBe(original.Existing.GetterCalls);
+        generated.Existing.GetterCalls.ShouldBe(3);
+        generated.Existing.CapturedValue.Name.ShouldBe(original.Existing.CapturedValue.Name);
+        generated.Existing.CapturedValue.Name.ShouldBe("configured");
+        generated.Existing.CapturedPrivateValue.Name.ShouldBe(original.Existing.CapturedPrivateValue.Name);
+        generated.Existing.CapturedPrivateValue.Name.ShouldBe("private");
+        generated.Existing.CapturedValues.ShouldBe(original.Existing.CapturedValues);
+        generated.Existing.CapturedValues.ShouldBe([1, 42]);
+    }
+
     [Theory(DisplayName = "Generated binding assigns absent and present configuration section properties")]
     [InlineData(false)]
     [InlineData(true)]
@@ -311,6 +357,33 @@ public sealed class OptionBindingMemberTests
             init { name = value; SetterCalls++; }
         }
         public int SetterCalls { get; private set; }
+    }
+
+    public sealed class ReadOnlyConstructorOptions(Payload Value, Payload PrivateValue, List<int> Values) : KafkaConsumerOption
+    {
+        public readonly Payload CapturedValue = Value;
+        public readonly Payload CapturedPrivateValue = PrivateValue;
+        public readonly List<int> CapturedValues = Values;
+        public bool ThrowOnRead = true;
+        public int GetterCalls { get; private set; }
+        public Payload Value => Read(CapturedValue);
+        public List<int> Values => Read(CapturedValues);
+        public Payload PrivateValue
+        {
+            get => Read(CapturedPrivateValue);
+            private set => throw new InvalidOperationException("Private setter must not be called.");
+        }
+
+        private T Read<T>(T value)
+        {
+            GetterCalls++;
+            return ThrowOnRead ? throw new FormatException("Constructor-bound getter must not be called.") : value;
+        }
+    }
+
+    public sealed class ExistingConstructorOptions : KafkaConsumerOption
+    {
+        public ReadOnlyConstructorOptions Existing { get; } = new(new Payload(), new Payload(), [1]) { ThrowOnRead = false };
     }
 
     public sealed class SealedDictionaryPayload : ReadOnlyDictionaryPayload;
