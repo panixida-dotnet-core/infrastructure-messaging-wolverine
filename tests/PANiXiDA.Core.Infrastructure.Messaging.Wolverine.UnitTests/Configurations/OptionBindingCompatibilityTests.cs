@@ -11,6 +11,57 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingCompatibilityTests
 {
+    [Theory(DisplayName = "Generated dictionary binding reads existing values only when needed")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BinderShouldDeferDictionaryLookups(bool hasChildren)
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Numbers:value"] = "42",
+            ["Options:Numbers:invalid"] = "invalid",
+            ["Options:Optional:value"] = "",
+            ["Options:Converted:value"] = "configured",
+            ["Options:Converted:invalid"] = "invalid",
+            ["Options:Untyped:value"] = "configured",
+            ["Options:Sections:value"] = "configured",
+            ["Options:Lists:value:0"] = "8",
+            ["Options:Bytes:value"] = "AgM=",
+        };
+        if (hasChildren)
+        {
+            foreach (var property in new[] { "Numbers", "Optional", "Converted", "Untyped", "Sections" })
+            {
+                configuration[$"Options:{property}:value:Nested"] = "ignored";
+            }
+        }
+
+        var original = configuration.GetSection("Options").Get<DictionaryLookupOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<DictionaryLookupOptions>(configuration, "Options");
+
+        original.Numbers["value"].ShouldBe(42);
+        generated.Numbers.ShouldBe(original.Numbers);
+        generated.Optional.ShouldBe(original.Optional);
+        generated.Converted.ShouldBe(original.Converted);
+        generated.Untyped.ShouldBe(original.Untyped);
+        generated.Sections["value"].ShouldBeOfType(original.Sections["value"].GetType());
+        generated.Sections["value"].Path.ShouldBe(original.Sections["value"].Path);
+        generated.Sections["value"].Value.ShouldBe(original.Sections["value"].Value);
+        generated.Numbers.Lookups.ShouldBe(0);
+        generated.Optional.Lookups.ShouldBe(0);
+        generated.Converted.Lookups.ShouldBe(0);
+        generated.Untyped.Lookups.ShouldBe(0);
+        generated.Sections.Lookups.ShouldBe(0);
+        generated.Lists["value"].ShouldBe(original.Lists["value"]);
+        generated.Lists["value"].ShouldBe([7, 8]);
+        generated.Bytes["value"].ShouldBe(original.Bytes["value"]);
+        generated.Bytes["value"].ShouldBe([1, 2, 3]);
+        generated.Lists.Lookups.ShouldBe(original.Lists.Lookups);
+        generated.Lists.Lookups.ShouldBe(1);
+        generated.Bytes.Lookups.ShouldBe(original.Bytes.Lookups);
+        generated.Bytes.Lookups.ShouldBe(1);
+    }
+
     [Fact(DisplayName = "Generated binding reuses custom converters across probes, values and options types")]
     public void BinderShouldReuseConverterForConversion()
     {
@@ -357,6 +408,34 @@ public sealed class OptionBindingCompatibilityTests
         public UInt128 Unsigned { get; init; }
         public Half? Optional { get; init; } = (Half)7;
         public List<Version> Versions { get; init; } = [];
+    }
+
+    public sealed class DictionaryLookupOptions : KafkaConsumerOption
+    {
+        public LookupDictionary<int> Numbers { get; } = new();
+        public LookupDictionary<int?> Optional { get; } = new();
+        public LookupDictionary<ConvertedValue> Converted { get; } = new();
+        public LookupDictionary<object> Untyped { get; } = new();
+        public LookupDictionary<IConfigurationSection> Sections { get; } = new();
+        public LookupDictionary<List<int>> Lists { get; } = new() { ThrowOnLookup = false, ["value"] = [7] };
+        public LookupDictionary<byte[]> Bytes { get; } = new() { ThrowOnLookup = false, ["value"] = [1] };
+    }
+
+    public sealed class LookupDictionary<T> : Dictionary<string, T>, IDictionary<string, T>
+    {
+        public bool ThrowOnLookup { get; init; } = true;
+        public int Lookups { get; private set; }
+
+        bool IDictionary<string, T>.TryGetValue(string key, out T value)
+        {
+            Lookups++;
+            if (ThrowOnLookup)
+            {
+                throw new InvalidOperationException("Existing values cannot be read.");
+            }
+
+            return TryGetValue(key, out value!);
+        }
     }
 
     public sealed class SingleConversionOptions : KafkaConsumerOption

@@ -262,7 +262,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         AppendPropertySection(body, property, index);
         var getter = AppendGetter(property, method + "Get" + index) + "(option)";
-        var initial = PropertyInitialValue(property.Type, "child" + index, getter);
+        var initial = InitialValue(property.Type, "child" + index, getter);
         var value = "value" + index;
         body.Append($"        {Name(property.Type)} {value} = {(constructorBound ? "!created && " : string.Empty)}hasChild{index}\n")
             .Append($"            ? {Build(property.Type)}(child{index}, {initial}, {(writable ? FalseLiteral : "true")})\n")
@@ -334,7 +334,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         return method;
     }
 
-    private string PropertyInitialValue(ITypeSymbol type, string child, string getter)
+    private string InitialValue(ITypeSymbol type, string child, string getter)
     {
         if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
         {
@@ -648,7 +648,8 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         if (keyExpression is not null)
         {
-            AppendItems(body, value, $"var key = {keyExpression};\n                items.TryGetValue(key, out var current);\n                items[key] = {Build(value)}(child, current, parentCollection: true);");
+            var initial = InitialValue(value, "child", "(items.TryGetValue(key, out var current) ? current : default)");
+            AppendItems(body, value, $"var key = {keyExpression};\n                items[key] = {Build(value)}(child, {initial}, parentCollection: true);");
         }
         body.Append(readOnly ? "        return items;\n" : ReturnOption);
     }
