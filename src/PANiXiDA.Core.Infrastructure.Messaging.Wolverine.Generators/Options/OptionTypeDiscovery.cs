@@ -55,7 +55,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         }
         AddType(Substitute(method.ReturnType, substitutions));
 
-        if (definition.DeclaringSyntaxReferences.Length == 0 || substitutions.Values.Any(ContainsTypeParameter) || active.Contains(definition))
+        if (definition.DeclaringSyntaxReferences.Length == 0 || substitutions.Values.Any(type => ContainsTypeParameter(type)) || active.Contains(definition))
         {
             return;
         }
