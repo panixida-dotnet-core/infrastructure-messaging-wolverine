@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -11,6 +12,8 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 [EditorBrowsable(EditorBrowsableState.Never)]
 public static class OptionBindingRegistry
 {
+    private static readonly ConcurrentDictionary<Type, TypeConverter> Converters = new();
+
     /// <summary>
     /// Registers a statically compiled binder for an options type.
     /// </summary>
@@ -29,7 +32,8 @@ public static class OptionBindingRegistry
     public static TypeConverter GetConverter<TValue>(Func<TypeConverter> factory)
     {
         ArgumentNullException.ThrowIfNull(factory);
-        return LazyInitializer.EnsureInitialized(ref Conversion<TValue>.Converter, factory);
+        return Converters.GetOrAdd(typeof(TValue), static (_, create) => create()
+            ?? throw new InvalidOperationException("The converter factory returned null."), factory);
     }
 
     /// <summary>
@@ -70,11 +74,6 @@ public static class OptionBindingRegistry
                 "Ensure the Wolverine source generator is enabled in the project declaring or registering the options.");
         return binder(section) ?? throw new InvalidOperationException(
             $"Configuration section '{sectionName}' could not be bound to '{typeof(TOption).FullName}'.");
-    }
-
-    private static class Conversion<TValue>
-    {
-        internal static TypeConverter? Converter;
     }
 
     private static class Binding<TOption>

@@ -143,6 +143,8 @@ public sealed class OptionBindingTests
 
         var exception = Should.Throw<FormatException>(() =>
             OptionBindingRegistry.GetConverter<ConverterCacheProbe>(() => throw failure));
+        Should.Throw<InvalidOperationException>(() =>
+            OptionBindingRegistry.GetConverter<ConverterCacheProbe>(static () => null!));
         var first = OptionBindingRegistry.GetConverter<ConverterCacheProbe>(() => converter);
         var second = OptionBindingRegistry.GetConverter<ConverterCacheProbe>(() => throw failure);
 
