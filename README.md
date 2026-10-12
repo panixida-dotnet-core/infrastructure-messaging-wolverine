@@ -251,59 +251,21 @@ options.AddConsumer<UserCreated>("External:Consumers");
 `AddKafkaBroker<TOption>()`, `AddKafkaProducer<TOption, TEvent>()`, and
 `AddKafkaConsumer<TOption, TEvent>()` bind sections named after their option types.
 
-The bundled generator discovers accessible concrete options in the current and referenced assemblies. Existing registration calls
-and configuration keys stay unchanged. It binds scalar values, nested objects, records, arrays, lists, sets and dictionaries,
-including public `init` setters and `required` properties. Constructor defaults, inherited properties, `ConfigurationKeyName`
-attributes (including paths such as `nested:value`) and existing mutable collections are preserved.
-Getter-only objects and mutable collections are populated in place.
-Getter-only `IReadOnlyDictionary<TKey, TValue>` properties retain their dictionary and keys, while existing reference values are updated through a shallow copy.
-Binding is restricted to statically declared model types; the bundled generator is not a general-purpose replacement for `ConfigurationBinder`.
-Declare nested models with concrete types and collection values with supported element types.
-`object`, `dynamic`, abstract models and user-defined model interfaces produce `PANWOLVSG002`, including inside collections.
-Standard collection interfaces and `IConfigurationSection` remain supported.
-Options may inherit properties from base classes, but an ordinary object model instance must match its declared model type.
-A runtime subtype throws `NotSupportedException` with the declared type, actual type and configuration path.
-The generator does not search dependencies for arbitrary runtime implementations.
-Hidden non-virtual base properties are bound separately; overrides with virtual setters retain the base property's configuration metadata.
-Getter-only virtual overrides are bound per declaration, so a shared mutable collection receives entries more than once, matching the .NET 10 binder.
-Concrete models implementing only `IEnumerable<T>`, `IReadOnlyCollection<T>` or `IReadOnlyDictionary<TKey, TValue>` bind their ordinary properties.
-Constructor-bound writable properties retain the getter/setter reset performed by the .NET 10 binder, including null values.
-Constructor parameter/property name casing and resets of initialized writable properties absent from configuration follow the .NET 10 binder.
-Writable `IConfigurationSection` properties receive child sections even when those paths are absent.
-Scalar binding includes `CultureInfo`, `Version`, `Half`, `Int128`, `UInt128` and type-level `TypeConverter` attributes,
-including inherited attributes. A converter on the options type can bind a scalar configuration section directly.
-Null `byte[]` entries in collections and dictionaries retain their positions and keys, matching .NET 10 configuration binding.
-Base64 scalars and array children append to initialized byte arrays, matching the .NET 10 binder.
-Null and empty binary scalars preserve existing nonempty arrays, including their reference identity.
-Constructor, getter and setter failures retain the exception wrappers exposed by the previous binder, including `init` setters and custom converter constructors.
-`IConfigurationSection` properties and constructor parameters receive a section even when the configuration key is absent.
-Configured scalar values replace properties without reading their getters when the previous binder skips that read.
-Configured getter-only values are still converted and validated; invalid values throw even though no assignment is possible.
-Dictionary keys support strings, enums and the eight integer types from `sbyte`/`byte` through `long`/`ulong`.
-`ISet<T>` and `IReadOnlySet<T>` bind string and enum elements; other element types remain unchanged.
-Concrete collections such as `HashSet<int>` continue to bind normally.
-Custom converters are constructed directly and must be accessible, with a public parameterless or `System.Type` constructor.
-Successful converter instances are reused per converted type; failed construction is retried on the next binding attempt.
-Each configured value probes a custom converter once, reusing that result for conversion and fallback binding.
-Null results from struct converters retain the previous assignment, collection and constructor behavior, including array failures and optional parameter defaults.
-Nullable null and empty values are bound without constructing or probing the underlying custom converter, even when child keys are present.
-Dictionary entries read existing values only when binding needs them; scalar replacements do not call `TryGetValue`.
-Public static properties remain bindable. An unconvertible scalar does not invoke the setter of a null complex property.
-Missing constructor parameters retain the previous error text; empty strings for null immutable collection interfaces retain the .NET 10 binder's exception.
-Constructor validation failures also retain the previous messages for inaccessible constructors, overload ambiguity, missing properties and by-reference parameters.
-Getter-only arrays and immutable collection interfaces do not read their getters when binding children.
-Scalar sections containing only child keys preserve existing values and the previous getter/setter behavior; explicit nulls and scalar values still replace writable values.
-Existing object and mutable collection entries are updated in place without invoking the dictionary indexer setter.
-New or replaced values and modified structs are written back; collection interface replacement follows the .NET 10 binder.
-Binders generated in the options' declaring assembly are reused by consumers, including binders that use internal converters.
-Their implementations must also support trimming and Native AOT when publishing a native application.
-Models must be accessible to generated code; unsupported shapes produce `PANWOLVSG002` instead of a reflection fallback.
-Keep analyzer assets enabled.
-`EnableConfigurationBindingGenerator` is enabled in the library project and can coexist with the bundled generator.
-It is not required for these registrations: the bundled generator emits their binders.
-Applications can enable the same property in their own project for other configuration binding calls; the library setting does not propagate to consumers.
-The .NET configuration binding generator cannot specialize `Get<TOption>()` inside a generic library method;
-enabling it in the consuming application does not rewrite that compiled method.
+The bundled generator binds Kafka and recurring-command options without reflection. Registration calls and configuration keys stay unchanged.
+It supports accessible concrete models, nested objects, records, collections, public `init`/`required` properties, defaults, inheritance and `ConfigurationKeyName`.
+Binders from the options' declaring assembly are reused by consumers.
+
+Requirements and limits:
+
+- Keep analyzer assets enabled. These registrations need no additional attributes, setup or `EnableConfigurationBindingGenerator` flag.
+  Applications may enable Microsoft's generator for other configuration binding calls; both generators can coexist.
+- Declare concrete model types. `object`, `dynamic`, abstract models and user-defined model interfaces produce `PANWOLVSG002`, including inside collections.
+  Standard collection interfaces and `IConfigurationSection` are supported. Ordinary model instances must match their declared types; runtime subtypes throw `NotSupportedException`.
+- Dictionary keys support strings, enums and integer types from `sbyte`/`byte` to `long`/`ulong`. `ISet<T>`/`IReadOnlySet<T>` bind strings and enums; concrete collections such as `HashSet<int>` also support other element types.
+- Custom `TypeConverter` types must be accessible, with a public parameterless or `System.Type` constructor; Native AOT publishing also requires their implementations to support trimming/Native AOT.
+
+These model restrictions apply to regular builds as well as Native AOT; there is no reflection fallback.
+Generated option binding has been validated with Native AOT. Full Native AOT support for the mediator is not currently provided because it still uses Wolverine runtime compilation and EF Core.
 
 ## EF Core Storage
 
