@@ -37,6 +37,7 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - Kafka only when external event topics are registered
 
 Kafka and recurring-command option binding is generated at compile time, including derived `TOption` models; existing registration calls are unchanged.
+Closed options are also discovered through generic helpers whose source is available in the compilation, including inferred type arguments, helper chains and generic containing classes.
 Full Native AOT support is not currently provided: the mediator still uses Wolverine runtime compilation and EF Core.
 
 ### Installation
@@ -284,10 +285,13 @@ Concrete collections such as `HashSet<int>` continue to bind normally.
 Custom converters are constructed directly and must be accessible, with a public parameterless or `System.Type` constructor.
 Successful converter instances are reused per converted type; failed construction is retried on the next binding attempt.
 Each configured value probes a custom converter once, reusing that result for conversion and fallback binding.
+Null results from struct converters retain the previous assignment, collection and constructor behavior, including array failures and optional parameter defaults.
 Nullable null and empty values are bound without constructing or probing the underlying custom converter, even when child keys are present.
 Dictionary entries read existing values only when binding needs them; scalar replacements do not call `TryGetValue`.
 Public static properties remain bindable. An unconvertible scalar does not invoke the setter of a null complex property.
 Missing constructor parameters retain the previous error text; empty strings for null immutable collection interfaces retain the .NET 10 binder's exception.
+Constructor validation failures also retain the previous messages for inaccessible constructors, overload ambiguity, missing properties and by-reference parameters.
+Getter-only arrays and immutable collection interfaces do not read their getters when binding children.
 Existing object and mutable collection entries are updated in place without invoking the dictionary indexer setter.
 New or replaced values and modified structs are written back; collection interface replacement follows the .NET 10 binder.
 Binders generated in the options' declaring assembly are reused by consumers, including binders that use internal converters.

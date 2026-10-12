@@ -443,6 +443,13 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("OptionBindingReadOnlyTests.DictionaryOptions")]
     [InlineData("OptionBindingLeafTests.StaticOptions")]
     [InlineData("OptionBindingLeafTests.NullSetterOptions")]
+    [InlineData("OptionBindingEdgeTests.NullConversionOptions")]
+    [InlineData("OptionBindingEdgeTests.RequiredOptions")]
+    [InlineData("OptionBindingEdgeTests.OptionalOptions")]
+    [InlineData("OptionBindingEdgeTests.ValueOptions<OptionBindingEdgeTests.NullNumber[]>")]
+    [InlineData("OptionBindingEdgeTests.ThrowingGetterOptions<int[]>")]
+    [InlineData("OptionBindingEdgeTests.ThrowingGetterOptions<byte[]>")]
+    [InlineData("OptionBindingEdgeTests.ThrowingGetterOptions<System.Collections.Generic.IReadOnlyList<int>>")]
     [InlineData("OptionBindingLeafTests.ValueOptions<System.Collections.Generic.List<OptionBindingLeafTests.RequiredStruct>>")]
     [InlineData("OptionBindingLeafTests.ValueOptions<System.Collections.Generic.List<OptionBindingLeafTests.OptionalStruct>>")]
     [InlineData("OptionBindingLeafTests.ValueOptions<System.Collections.Generic.List<OptionBindingLeafTests.DefaultStruct>>")]
@@ -642,6 +649,84 @@ public sealed class OptionBindingGeneratorTests
             .Select(path => MetadataReference.CreateFromFile(path));
         return CSharpCompilation.Create(name, [CSharpSyntaxTree.ParseText(source)], references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    [Theory(DisplayName = "Option generator discovers closed options through source generic helpers")]
+    [InlineData("Register<int>(kafka);", "static void Register<T>(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>();", "int")]
+    [InlineData("Register<dynamic>(kafka);", "static void Register<T>(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>();", "dynamic")]
+    [InlineData("Register(kafka, 42);", "static void Register<T>(Kafka kafka, T value) => kafka.AddKafkaBroker<Settings<T>>();", "int")]
+    [InlineData("Register<int>(kafka);", "static void Register<T>(Kafka kafka) => Other<T[]>(kafka); static void Other<U>(Kafka kafka) => kafka.AddKafkaBroker<Settings<U>>();", "int[]")]
+    [InlineData("Registration<int>.Register(kafka);", "static class Registration<T> { public static void Register(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("_ = Create<int>();", "static Settings<T> Create<T>() => new();", "int")]
+    [InlineData("Register<int>(kafka);", "static void Register<T>(Kafka kafka) { kafka.AddKafkaBroker<Settings<T>>(); Register<T>(kafka); }", "int")]
+    [InlineData("kafka.Register<int>();", "public static void Register<T>(this Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>();", "int")]
+    [InlineData("42.Register(kafka);", "public static void Register<T>(this T value, Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>();", "int")]
+    [InlineData("Register<int>(kafka);", "static void Register<T>(Kafka kafka) { void Inner() => kafka.AddKafkaBroker<Settings<T>>(); Inner(); }", "int")]
+    public void GeneratorShouldDiscoverGenericHelpers(string call, string helper, string argument)
+    {
+        var compilation = CreateCompilation($$"""
+            using Kafka = PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration;
+            public sealed class Settings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public static class Setup
+            {
+                public static void Configure(Kafka kafka) { {{call}} }
+                {{helper}}
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::Settings<" + argument + ">>");
+    }
+
+    [Fact(DisplayName = "Option generator substitutes nested containing types in generic helpers")]
+    public void GeneratorShouldDiscoverNestedGenericHelpers()
+    {
+        var compilation = CreateCompilation("""
+            using Kafka = PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration;
+            public class Outer<T>
+            {
+                public sealed class Settings<U> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+                public sealed class Nested : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            }
+            public static class Setup
+            {
+                public static void Configure(Kafka kafka) { Register<int>(kafka); Register<string>(kafka); }
+                static void Register<T>(Kafka kafka)
+                {
+                    kafka.AddKafkaBroker<Outer<T>.Settings<T[]>>();
+                    kafka.AddKafkaBroker<Outer<T>.Nested>();
+                    _ = typeof(Outer<>);
+                }
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::Outer<int>.Settings<int[]>>");
+        source.ShouldContain(".Register<global::Outer<string>.Settings<string[]>>");
+        source.ShouldContain(".Register<global::Outer<int>.Nested>");
+        source.ShouldContain(".Register<global::Outer<string>.Nested>");
+    }
+
+    [Fact(DisplayName = "Option generator does not emit open array arguments from uncalled generic helpers")]
+    public void GeneratorShouldSkipOpenArrayArguments()
+    {
+        var compilation = CreateCompilation("""
+            public sealed class Settings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public static class Setup
+            {
+                public static void Register<T>(PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration kafka)
+                    => kafka.AddKafkaBroker<Settings<T[]>>();
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldNotContain(".Register<global::Settings<");
     }
 
     private static (string Source, Diagnostic[] Diagnostics) Generate(CSharpCompilation compilation)

@@ -2,7 +2,6 @@ using System.Text;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Validation;
 
@@ -126,30 +125,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         var declaredTypes = compilation.SourceModule.ReferencedAssemblySymbols.Append(compilation.Assembly)
             .SelectMany(assembly => ValidatorRegistrationGenerator.EnumerateTypes(assembly.GlobalNamespace))
             .Where(type => !type.IsAbstract && !ValidatorRegistrationGenerator.HasTypeParameters(type));
-        return declaredTypes.Concat(GetClosedTypes(compilation, token));
-    }
-
-    private static IEnumerable<INamedTypeSymbol> GetClosedTypes(Compilation compilation, CancellationToken token)
-    {
-        foreach (var tree in compilation.SyntaxTrees)
-        {
-            var model = compilation.GetSemanticModel(tree);
-            var symbols = tree.GetRoot(token).DescendantNodes().OfType<GenericNameSyntax>()
-                .Select(name => model.GetSymbolInfo(name, token).Symbol).ToArray();
-            var types = symbols.OfType<IMethodSymbol>().SelectMany(method => method.TypeArguments)
-                .OfType<INamedTypeSymbol>().Concat(symbols.OfType<INamedTypeSymbol>());
-            foreach (var type in types.Where(type => !type.IsAbstract && !ContainsTypeParameter(type)))
-            {
-                yield return type;
-            }
-        }
-    }
-
-    private static bool ContainsTypeParameter(INamedTypeSymbol type)
-    {
-        return type.TypeArguments.Any(argument => argument is ITypeParameterSymbol ||
-            argument is INamedTypeSymbol named && ContainsTypeParameter(named)) ||
-            type.ContainingType is not null && ContainsTypeParameter(type.ContainingType);
+        return declaredTypes.Concat(new OptionTypeDiscovery(compilation, token).Discover());
     }
 
     private static bool IsOption(INamedTypeSymbol type, INamedTypeSymbol?[] optionTypes)
@@ -165,14 +141,14 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         return false;
     }
 
-    internal static IEnumerable<IPropertySymbol> GetProperties(INamedTypeSymbol type)
+    internal static IEnumerable<IPropertySymbol> GetProperties(INamedTypeSymbol type, bool includeNonBindable = false)
     {
         for (var current = type; current is not null; current = current.BaseType)
         {
             foreach (var property in current.GetMembers().OfType<IPropertySymbol>())
             {
-                if (property.SetMethod?.IsOverride != true && !property.IsIndexer &&
-                    property.GetMethod?.DeclaredAccessibility == Accessibility.Public)
+                if (includeNonBindable || (property.SetMethod?.IsOverride != true && !property.IsIndexer &&
+                    property.GetMethod?.DeclaredAccessibility == Accessibility.Public))
                 {
                     yield return property;
                 }

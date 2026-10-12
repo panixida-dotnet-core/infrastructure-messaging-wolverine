@@ -55,7 +55,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         source.Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null)\n")
             .Append($"        => {name}(section, option, out _, readOnly, parentCollection, conversionProbe);\n")
-            .Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, out bool hasNewValue, bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null)\n    {{\n")
+            .Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, out bool hasNewValue, bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null)\n")
+            .Append($"        => {name}(section, option, out hasNewValue, out _, readOnly, parentCollection, conversionProbe);\n")
+            .Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, out bool hasNewValue, out bool convertedNull, bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null)\n    {{\n")
+            .Append("        convertedNull = false;\n")
             .Append($"        hasNewValue = {(type.IsValueType ? WritableCondition : FalseLiteral)};\n")
             .Append(body).Append(EndMethod);
         return name;
@@ -82,7 +85,9 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             var nullTest = IsNullable(type) ? "global::System.String.IsNullOrEmpty(section.Value)" : "section.Value is null";
             body.Append($"        if (section.Value is not null || !{AnyChildren})\n        {{\n            global::System.ComponentModel.TypeConverter converter = {converter};\n")
                 .Append("            if ((conversionProbe ??= converter.CanConvertFrom(typeof(string))) == true)\n            {\n")
-                .Append($"                var convertedValue = {nullTest} ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, value => ({Name(type)})converter.ConvertFromInvariantString(value)!);\n")
+                .Append($"                var nullConversion = {nullTest};\n")
+                .Append($"                var convertedValue = nullConversion ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, value =>\n                {{\n                    var result = converter.ConvertFromInvariantString(value);\n                    nullConversion = result is null;\n                    return nullConversion ? default({Name(type)}) : ({Name(type)})result;\n                }});\n")
+                .Append("                convertedNull = nullConversion;\n")
                 .Append("                if (readOnly) return option;\n                hasNewValue = true;\n                return convertedValue;\n            }\n        }\n");
         }
 
@@ -203,7 +208,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var getter = AppendGetter(property, method + "Get" + index) + "(option)";
         var probe = ConversionVariable + index;
         AppendConversionProbe(body, property.Type, probe);
-        var initial = InitialValue(property.Type, ChildVariable + index, getter, probe);
+        var initial = InitialValue(property.Type, ChildVariable + index, getter, probe, readOnly: !writable);
         var value = "value" + index;
         body.Append($"        var changed{index} = false;\n")
             .Append($"        {Name(property.Type)} {value} = {(constructorBound ? "!created && " : string.Empty)}hasChild{index}\n")
@@ -280,11 +285,16 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         return method;
     }
 
-    private string InitialValue(ITypeSymbol type, string child, string getter, string probe = ConversionVariable)
+    private string InitialValue(ITypeSymbol type, string child, string getter, string probe = ConversionVariable, bool readOnly = false)
     {
         if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
         {
-            return getter;
+            return readOnly ? $"!IsNullValue({child}) && {child}.Value is null && global::System.Linq.Enumerable.Any({child}.GetChildren()) ? default : {getter}" : getter;
+        }
+        if (readOnly && (type is IArrayTypeSymbol || type.OriginalDefinition.ToDisplayString() is
+            "System.Collections.Generic.IEnumerable<T>" or "System.Collections.Generic.IReadOnlyCollection<T>" or "System.Collections.Generic.IReadOnlyList<T>"))
+        {
+            return $"global::System.Linq.Enumerable.Any({child}.GetChildren()) || !global::System.String.IsNullOrEmpty({child}.Value) ? default : {getter}";
         }
         var conversion = ScalarConversionCondition(type, child, probe);
         if (conversion == "true")
@@ -308,7 +318,9 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var constructor = GetConstructor(type);
         if (constructor is null)
         {
-            return InvalidConstruction(type, method, $"Type '{type}' needs a public parameterless constructor or a single public constructor with matching properties.");
+            var reason = type.InstanceConstructors.Any(candidate => candidate.DeclaredAccessibility == Accessibility.Public)
+                ? "it has multiple public parameterized constructors." : "it is missing a public instance constructor.";
+            return InvalidConstruction(type, method, reason);
         }
 
         if (type.IsValueType && constructor.IsImplicitlyDeclared)
@@ -316,17 +328,22 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return "default(" + Name(type) + ")";
         }
 
-        var properties = OptionBindingGenerator.GetProperties(type).ToArray();
+        var properties = OptionBindingGenerator.GetProperties(type, includeNonBindable: true).ToArray();
+        var invalid = constructor.Parameters.FirstOrDefault(parameter => parameter.RefKind != RefKind.None);
+        if (invalid is not null)
+        {
+            return InvalidConstruction(type, method, $"one or more parameters cannot be bound to. Constructor parameters cannot be declared as in, out, or ref. Invalid parameters are: '{invalid.Name}'");
+        }
+        var missing = constructor.Parameters.Where(parameter => !properties.Any(property => string.Equals(property.Name, parameter.Name, StringComparison.OrdinalIgnoreCase)))
+            .Select(parameter => parameter.Name).ToArray();
+        if (missing.Length > 0)
+        {
+            return InvalidConstruction(type, method, $"one or more parameters cannot be bound to. Constructor parameters must have corresponding properties. Fields are not supported. Missing properties are: '{string.Join(",", missing)}'");
+        }
         var arguments = new List<string>();
         var signature = new List<string>();
         foreach (var parameter in constructor.Parameters)
         {
-            var property = properties.FirstOrDefault(candidate => string.Equals(candidate.Name, parameter.Name, StringComparison.OrdinalIgnoreCase));
-            if (property is null || parameter.RefKind != RefKind.None)
-            {
-                return InvalidConstruction(type, method, $"Constructor parameter '{parameter.Name}' on '{type}' needs a matching property.");
-            }
-
             var section = "section.GetSection(" + SymbolDisplay.FormatLiteral(parameter.Name, true) + ")";
             arguments.Add(AppendParameter(type, parameter, method + "Parameter" + arguments.Count) + "(" + section + ")");
             signature.Add(Name(parameter.Type) + " argument" + signature.Count);
@@ -364,7 +381,8 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
                 .Append($"            throw new global::System.ArgumentException($\"Object of type 'System.String' cannot be converted to type '{{typeof({Name(parameterType)})}}'.\");\n");
         }
 
-        body.Append($"        var value = {Build(parameterType)}(section, default{ConversionArgument(parameterType)});\n");
+        body.Append($"        var value = {Build(parameterType)}(section, default, out _, out var convertedNull{ConversionArgument(parameterType)});\n")
+            .Append($"        if (convertedNull) {missingStatement};\n");
         body.Append(parameterType.IsReferenceType || IsNullable(parameterType)
             ? $"        return value is null ? {missing} : value;\n"
             : "        return value;\n");
@@ -402,7 +420,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private string InvalidConstruction(INamedTypeSymbol type, string method, string message)
     {
-        source.Append($"    private static {Name(type)} {method}CannotCreate() => throw new global::System.InvalidOperationException({SymbolDisplay.FormatLiteral(message, true)});\n");
+        source.Append($"    private static {Name(type)} {method}CannotCreate() => throw new global::System.InvalidOperationException($\"Cannot create instance of type '{{typeof({Name(type)})}}' because \" + {SymbolDisplay.FormatLiteral(message, true)});\n");
         return method + "CannotCreate()";
     }
 
@@ -552,7 +570,12 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         var rejectNull = nonNullableArray ? $"if ({scalarConversion} && child.Value is null && !global::System.Linq.Enumerable.Any(child.GetChildren())) {{ nullElement = true; continue; }}\n                " : string.Empty;
-        AppendItems(body, element, rejectNull + $"items.Add({Build(element)}(child, default, parentCollection: true{ConversionArgument(element)}));");
+        var binding = $"var value = {Build(element)}(child, default, out _, out var itemConvertedNull, parentCollection: true{ConversionArgument(element)});\n                ";
+        if (nonNullableArray)
+        {
+            binding += "if (itemConvertedNull) { nullElement = true; continue; }\n                ";
+        }
+        AppendItems(body, element, rejectNull + binding + "items.Add(value);");
         if (nonNullableArray)
         {
             body.Append("        if (nullElement) throw new global::System.InvalidCastException(\"At least one element in the source array could not be cast down to the destination array type.\");\n");
