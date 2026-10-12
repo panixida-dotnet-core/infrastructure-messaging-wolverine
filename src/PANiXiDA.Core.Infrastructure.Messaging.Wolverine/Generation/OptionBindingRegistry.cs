@@ -24,6 +24,15 @@ public static class OptionBindingRegistry
     }
 
     /// <summary>
+    /// Gets the cached type converter using a statically compiled factory, retrying failed construction.
+    /// </summary>
+    public static TypeConverter GetConverter<TValue>(Func<TypeConverter> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        return LazyInitializer.EnsureInitialized(ref Conversion<TValue>.Converter, factory);
+    }
+
+    /// <summary>
     /// Converts a configuration value and preserves the configuration path in conversion errors.
     /// </summary>
     /// <typeparam name="TValue">The target value type.</typeparam>
@@ -61,6 +70,11 @@ public static class OptionBindingRegistry
                 "Ensure the Wolverine source generator is enabled in the project declaring or registering the options.");
         return binder(section) ?? throw new InvalidOperationException(
             $"Configuration section '{sectionName}' could not be bound to '{typeof(TOption).FullName}'.");
+    }
+
+    private static class Conversion<TValue>
+    {
+        internal static TypeConverter? Converter;
     }
 
     private static class Binding<TOption>

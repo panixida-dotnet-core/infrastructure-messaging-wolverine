@@ -132,7 +132,26 @@ public sealed class OptionBindingTests
 
         Should.Throw<ArgumentNullException>(() => OptionBindingRegistry.Parse(null!, static value => value));
         Should.Throw<ArgumentNullException>(() => OptionBindingRegistry.Parse<string>(section, null!));
+        Should.Throw<ArgumentNullException>(() => OptionBindingRegistry.GetConverter<object>(null!));
     }
+
+    [Fact(DisplayName = "Generated converters retry failed construction and retain the successful instance")]
+    public void ConverterShouldRetryFailedConstruction()
+    {
+        var failure = new FormatException("Constructor failed.");
+        var converter = new System.ComponentModel.TypeConverter();
+
+        var exception = Should.Throw<FormatException>(() =>
+            OptionBindingRegistry.GetConverter<ConverterCacheProbe>(() => throw failure));
+        var first = OptionBindingRegistry.GetConverter<ConverterCacheProbe>(() => converter);
+        var second = OptionBindingRegistry.GetConverter<ConverterCacheProbe>(() => throw failure);
+
+        exception.ShouldBeSameAs(failure);
+        first.ShouldBeSameAs(converter);
+        second.ShouldBeSameAs(first);
+    }
+
+    private sealed class ConverterCacheProbe;
 
     [Fact(DisplayName = "Unregistered options fail explicitly without falling back to reflection")]
     public void MissingBinderShouldFailExplicitly()

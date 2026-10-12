@@ -275,6 +275,8 @@ Dictionary keys support strings, enums and the eight integer types from `sbyte`/
 `ISet<T>` and `IReadOnlySet<T>` bind string and enum elements; other element types remain unchanged.
 Concrete collections such as `HashSet<int>` continue to bind normally.
 Custom converters are constructed directly and must be accessible, with a public parameterless or `System.Type` constructor.
+Successful converter instances are reused per converted type; failed construction is retried on the next binding attempt.
+Binders generated in the options' declaring assembly are reused by consumers, including binders that use internal converters.
 Their implementations must also support trimming and Native AOT when publishing a native application.
 Models must be accessible to generated code; unsupported shapes produce `PANWOLVSG002` instead of a reflection fallback.
 Keep analyzer assets enabled.

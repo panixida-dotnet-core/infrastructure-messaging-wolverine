@@ -11,6 +11,44 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingCompatibilityTests
 {
+    [Fact(DisplayName = "Generated binding reuses custom converters across probes, values and options types")]
+    public void BinderShouldReuseConverterForConversion()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Value"] = "configured",
+            ["Options:Values:0"] = "first",
+            ["Options:Values:1"] = "second",
+            ["Options:Entries:first"] = "first",
+            ["Options:Entries:second"] = "second",
+        };
+        TypeDescriptor.Refresh(typeof(SingleConversionValue));
+        SingleConversionConverter.Activations = 0;
+        var original = new[]
+        {
+            configuration.GetSection("Options").Get<SingleConversionOptions>()!.Value!.Value.Name,
+            configuration.GetSection("Options").Get<SingleConversionParameter>()!.Value.Name,
+            string.Join(",", configuration.GetSection("Options").Get<SingleConversionArray>()!.Values.Select(value => value.Name)),
+            string.Join(",", configuration.GetSection("Options").Get<SingleConversionDictionary>()!.Entries.Values.Select(value => value.Name)),
+        };
+        SingleConversionConverter.Activations.ShouldBe(1);
+        SingleConversionConverter.Activations = 0;
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var generated = new[]
+            {
+                OptionBindingRegistry.GetRequired<SingleConversionOptions>(configuration, "Options").Value!.Value.Name,
+                OptionBindingRegistry.GetRequired<SingleConversionParameter>(configuration, "Options").Value.Name,
+                string.Join(",", OptionBindingRegistry.GetRequired<SingleConversionArray>(configuration, "Options").Values.Select(value => value.Name)),
+                string.Join(",", OptionBindingRegistry.GetRequired<SingleConversionDictionary>(configuration, "Options").Entries.Values.Select(value => value.Name)),
+            };
+
+            generated.ShouldBe(original);
+        }
+        SingleConversionConverter.Activations.ShouldBe(1);
+    }
+
     [Theory(DisplayName = "Generated binding preserves intrinsic scalar and nullable conversions")]
     [InlineData("1.5")]
     [InlineData("")]
@@ -319,6 +357,47 @@ public sealed class OptionBindingCompatibilityTests
         public UInt128 Unsigned { get; init; }
         public Half? Optional { get; init; } = (Half)7;
         public List<Version> Versions { get; init; } = [];
+    }
+
+    public sealed class SingleConversionOptions : KafkaConsumerOption
+    {
+        public SingleConversionValue? Value { get; init; }
+    }
+
+    public sealed class SingleConversionParameter(SingleConversionValue value) : KafkaConsumerOption
+    {
+        public SingleConversionValue Value { get; } = value;
+    }
+
+    public sealed class SingleConversionArray : KafkaConsumerOption
+    {
+        public SingleConversionValue[] Values { get; init; } = [];
+    }
+
+    public sealed class SingleConversionDictionary : KafkaConsumerOption
+    {
+        public Dictionary<string, SingleConversionValue> Entries { get; init; } = [];
+    }
+
+    [TypeConverter(typeof(SingleConversionConverter))]
+    public readonly record struct SingleConversionValue(string Name);
+
+    public sealed class SingleConversionConverter : TypeConverter
+    {
+        public static int Activations { get; set; }
+
+        public SingleConversionConverter()
+        {
+            if (++Activations > 1)
+            {
+                throw new InvalidOperationException("Converter constructed more than once.");
+            }
+        }
+
+        public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType) => sourceType == typeof(string);
+
+        public override object ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
+            => new SingleConversionValue((string)value);
     }
 
     [TypeConverter(typeof(ScalarOptionsConverter))]

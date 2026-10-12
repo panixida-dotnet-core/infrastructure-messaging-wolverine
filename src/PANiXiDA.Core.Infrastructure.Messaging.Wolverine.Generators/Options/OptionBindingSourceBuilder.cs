@@ -54,8 +54,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         var name = $"Bind{optionIndex}_{methods.Count}";
-        methods.Add(type, name); // Reserve before visiting members: recursive models share a binder.
-        // Object dispatch is emitted after the typed model graph and its initializers are known.
+        methods.Add(type, name);
         if (type.SpecialType == SpecialType.System_Object)
         {
             return name;
@@ -208,8 +207,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var method = $"Bind{optionIndex}Runtime{runtimeMethods.Count}";
         runtimeMethods.Add(type, method);
         var body = new StringBuilder();
-        // Existing instances use runtime property metadata, but retain the declared type's
-        // conversion/collection rules. Their constructors must not run again.
         AppendProperties(body, type, method, []);
         source.Append($"    private static {Name(type)} {method}({Section} section, {Name(type)} option)\n    {{\n")
             .Append(body).Append(EndMethod);
@@ -218,7 +215,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private IEnumerable<INamedTypeSymbol> GetObjectImplementations()
     {
-        // Binding one implementation can discover further object members and their implementations.
         for (var index = 0; index < objectTypes.Count; index++)
         {
             yield return objectTypes[index];
@@ -323,7 +319,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             var parent = SymbolDisplay.FormatLiteral(key.Substring(0, separator), true);
             var childKey = SymbolDisplay.FormatLiteral(key.Substring(separator + 1), true);
-            // Enumerating the parent also finds explicitly configured null leaves, unlike Exists().
             body.Append($"        var child{index} = global::System.Linq.Enumerable.FirstOrDefault(section.GetSection({parent}).GetChildren(), child => global::System.String.Equals(child.Key, {childKey}, global::System.StringComparison.OrdinalIgnoreCase));\n");
             lookup = $"child{index} is not null";
         }
@@ -475,7 +470,6 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private string AppendAccessor(IMethodSymbol target, string accessorName)
     {
-        // UnsafeAccessor signatures must retain the declaring type's generic parameter positions.
         var containingTypes = new Stack<INamedTypeSymbol>();
         for (var type = target.ContainingType; type is not null; type = type.ContainingType)
         {
@@ -701,7 +695,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             body.Append($"if (!({scalarConversion}) && !global::System.String.IsNullOrEmpty(child.Value) && !global::System.Linq.Enumerable.Any(child.GetChildren())) continue;\n                ");
         }
 
-        body.Append(binding).Append("\n            }\n            catch (global::System.Exception exception) when (exception is not UnsupportedRuntimeTypeException)\n            {\n                // ConfigurationBinder skips invalid collection entries by default.\n            }\n        }\n");
+        body.Append(binding).Append("\n            }\n            catch (global::System.Exception exception) when (exception is not UnsupportedRuntimeTypeException)\n            {\n            }\n        }\n");
     }
 
     private string ScalarConversionCondition(ITypeSymbol type)
@@ -737,7 +731,8 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             source.Append(EndMethod);
         }
 
-        return method + "()";
+        var convertedType = IsNullable(type) ? ((INamedTypeSymbol)type).TypeArguments[0] : type;
+        return $"{OptionBindingGenerator.Registry}.GetConverter<{Name(convertedType)}>(static () => {method}())";
     }
 
     private static bool CanConvertScalar(ITypeSymbol type)

@@ -71,6 +71,43 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldNotContain(".Register<global::HiddenSettings>");
     }
 
+    [Theory(DisplayName = "Option generator reuses binders from the options assembly without revalidating internal converters")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeneratorShouldReuseReferencedBinders(bool sourceReference)
+    {
+        var referenced = CreateCompilation("""
+            [System.ComponentModel.TypeConverter(typeof(InternalConverter))]
+            public sealed class ReferencedSettings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            internal sealed class InternalConverter : System.ComponentModel.TypeConverter;
+            public sealed class GenericSettings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption
+            {
+                public T Value { get; set; }
+            }
+            public static class Setup { public static GenericSettings<int> Create() => new(); }
+            """, "ReferencedGeneratedOptions");
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new OptionBindingGenerator());
+        driver.RunGeneratorsAndUpdateCompilation(referenced, out var generated, out var ownerDiagnostics, TestContext.Current.CancellationToken);
+        ownerDiagnostics.ShouldBeEmpty();
+        using var stream = new MemoryStream();
+        generated.Emit(stream, cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
+        MetadataReference reference = sourceReference ? generated.ToMetadataReference() : MetadataReference.CreateFromImage(stream.ToArray());
+        var compilation = CreateCompilation("""
+            public static class Consumer
+            {
+                public static GenericSettings<int> Existing() => new();
+                public static GenericSettings<string> New() => new();
+            }
+            """).AddReferences(reference);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldNotContain(".Register<global::ReferencedSettings>");
+        source.ShouldNotContain(".Register<global::GenericSettings<int>>");
+        source.ShouldContain(".Register<global::GenericSettings<string>>");
+    }
+
     [Fact(DisplayName = "Option generator discovers object implementations only within the option model graph")]
     public void GeneratorShouldDiscoverObjectImplementations()
     {
@@ -321,7 +358,8 @@ public sealed class OptionBindingGeneratorTests
         diagnostics.ShouldBeEmpty();
         source.ShouldContain("UnsafeAccessor");
         source.ShouldNotContain("ConfigurationBinder.Get");
-        source.Replace("global::System.Reflection.TargetInvocationException", string.Empty).ShouldNotContain("System.Reflection");
+        source.Replace("global::System.Reflection.TargetInvocationException", string.Empty)
+            .Replace("global::System.Reflection.AssemblyMetadata", string.Empty).ShouldNotContain("System.Reflection");
     }
 
     [Theory(DisplayName = "Option generator compiles scalar and complex constructor parameter checks")]
