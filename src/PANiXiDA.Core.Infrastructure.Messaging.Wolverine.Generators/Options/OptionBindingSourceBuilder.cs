@@ -20,6 +20,18 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string SetInterface = "System.Collections.Generic.ISet<T>";
     private const string Accessor = "global::System.Runtime.CompilerServices.UnsafeAccessor";
     private const string AccessorKind = "global::System.Runtime.CompilerServices.UnsafeAccessorKind.";
+    private static readonly HashSet<string> SupportedCollectionInterfaces = new(StringComparer.Ordinal)
+    {
+        "System.Collections.Generic.IDictionary<TKey, TValue>",
+        "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>",
+        "System.Collections.Generic.IEnumerable<T>",
+        "System.Collections.Generic.IReadOnlyList<T>",
+        "System.Collections.Generic.IReadOnlyCollection<T>",
+        "System.Collections.Generic.ICollection<T>",
+        "System.Collections.Generic.IList<T>",
+        SetInterface,
+        "System.Collections.Generic.IReadOnlySet<T>",
+    };
     private readonly Dictionary<ITypeSymbol, string> methods = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<string, string> converterMethods = new(StringComparer.Ordinal);
     private readonly StringBuilder source = new();
@@ -151,11 +163,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private void AppendNamedBody(StringBuilder body, INamedTypeSymbol type, string method)
     {
         var definition = type.OriginalDefinition.ToDisplayString();
-        if (type.TypeKind == TypeKind.Interface && definition is not (
-            "System.Collections.Generic.IDictionary<TKey, TValue>" or "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>" or
-            "System.Collections.Generic.IEnumerable<T>" or "System.Collections.Generic.IReadOnlyList<T>" or
-            "System.Collections.Generic.IReadOnlyCollection<T>" or "System.Collections.Generic.ICollection<T>" or
-            "System.Collections.Generic.IList<T>" or SetInterface or "System.Collections.Generic.IReadOnlySet<T>"))
+        if (type.TypeKind == TypeKind.Interface && !SupportedCollectionInterfaces.Contains(definition))
         {
             Error = $"interface '{type}' must be replaced with a concrete configuration model or a supported collection interface";
             return;
