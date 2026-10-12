@@ -271,6 +271,7 @@ Scalar binding includes `CultureInfo`, `Version`, `Half`, `Int128`, `UInt128` an
 including inherited attributes. A converter on the options type can bind a scalar configuration section directly.
 Null `byte[]` entries in collections and dictionaries retain their positions and keys, matching .NET 10 configuration binding.
 Base64 scalars and array children append to initialized byte arrays, matching the .NET 10 binder.
+Null and empty binary scalars preserve existing nonempty arrays, including their reference identity.
 Constructor, getter and setter failures retain the exception wrappers exposed by the previous binder, including `init` setters and custom converter constructors.
 `IConfigurationSection` properties and constructor parameters receive a section even when the configuration key is absent.
 Configured scalar values replace properties without reading their getters when the previous binder skips that read.
@@ -281,6 +282,8 @@ Custom converters are constructed directly and must be accessible, with a public
 Successful converter instances are reused per converted type; failed construction is retried on the next binding attempt.
 Nullable null and empty values are bound without constructing or probing the underlying custom converter, even when child keys are present.
 Dictionary entries read existing values only when binding needs them; scalar replacements do not call `TryGetValue`.
+Existing object and mutable collection entries are updated in place without invoking the dictionary indexer setter.
+New or replaced values and modified structs are written back; collection interface replacement follows the .NET 10 binder.
 Binders generated in the options' declaring assembly are reused by consumers, including binders that use internal converters.
 Their implementations must also support trimming and Native AOT when publishing a native application.
 Models must be accessible to generated code; unsupported shapes produce `PANWOLVSG002` instead of a reflection fallback.

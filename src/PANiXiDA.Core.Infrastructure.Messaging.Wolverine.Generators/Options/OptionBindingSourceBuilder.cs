@@ -15,6 +15,8 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string FalseLiteral = "false";
     private const string OptionVariable = "option";
     private const string ChildVariable = "child";
+    private const string WritableCondition = "!readOnly";
+    private const string SetInterface = "System.Collections.Generic.ISet<T>";
     private const string Accessor = "global::System.Runtime.CompilerServices.UnsafeAccessor";
     private const string AccessorKind = "global::System.Runtime.CompilerServices.UnsafeAccessorKind.";
     private readonly Dictionary<ITypeSymbol, string> methods = new(SymbolEqualityComparer.Default);
@@ -50,7 +52,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             AppendBody(body, type, name);
         }
 
-        source.Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, bool readOnly = false, bool parentCollection = false)\n    {{\n")
+        source.Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, bool readOnly = false, bool parentCollection = false)\n")
+            .Append($"        => {name}(section, option, out _, readOnly, parentCollection);\n")
+            .Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, out bool hasNewValue, bool readOnly = false, bool parentCollection = false)\n    {{\n")
+            .Append($"        hasNewValue = {(type.IsValueType ? WritableCondition : FalseLiteral)};\n")
             .Append(body).Append(EndMethod);
         return name;
     }
@@ -66,7 +71,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         if (conversion is not null)
         {
             var nullTest = IsNullable(type) ? "global::System.String.IsNullOrEmpty(section.Value)" : "section.Value is null";
-            body.Append($"        if (readOnly) return option;\n        return {nullTest} ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, static value => {conversion});\n");
+            body.Append($"        if (readOnly) return option;\n        hasNewValue = true;\n        return {nullTest} ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, static value => {conversion});\n");
             return;
         }
 
@@ -74,7 +79,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             var nullTest = IsNullable(type) ? "global::System.String.IsNullOrEmpty(section.Value)" : "section.Value is null";
             body.Append($"        if (section.Value is not null || !{AnyChildren})\n        {{\n            global::System.ComponentModel.TypeConverter converter = {converter};\n")
-                .Append("            if (converter.CanConvertFrom(typeof(string)))\n            {\n                if (readOnly) return option;\n")
+                .Append("            if (converter.CanConvertFrom(typeof(string)))\n            {\n                if (readOnly) return option;\n                hasNewValue = true;\n")
                 .Append($"                return {nullTest} ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, value => ({Name(type)})converter.ConvertFromInvariantString(value)!);\n            }}\n        }}\n");
         }
 
@@ -85,7 +90,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     {
         if (Name(type) == Section)
         {
-            body.Append("        return readOnly ? option : section;\n");
+            body.Append("        hasNewValue = !readOnly;\n        return readOnly ? option : section;\n");
         }
         else if (IsNullable(type))
         {
@@ -142,7 +147,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         var creation = Construction(type, method);
         body.Append($"        if (!{AnyChildren})\n        {{\n")
-            .Append($"            if (parentCollection && !readOnly && {(type.IsReferenceType ? "option is null && " : string.Empty)}global::System.String.IsNullOrEmpty(section.Value)) return {creation};\n")
+            .Append($"            if (parentCollection && !readOnly && {(type.IsReferenceType ? "option is null && " : string.Empty)}global::System.String.IsNullOrEmpty(section.Value))\n            {{\n                hasNewValue = true;\n                return {creation};\n            }}\n")
             .Append("            return option;\n        }\n");
         AppendRuntimeTypeCheck(body, type);
         var constructor = GetConstructor(type);
@@ -154,7 +159,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
                 body.Append("        var created = option is null;\n");
             }
 
-            body.Append("        if (option is null)\n        {\n            if (readOnly) return option;\n")
+            body.Append("        if (option is null)\n        {\n            if (readOnly) return option;\n            hasNewValue = true;\n")
                 .Append("            option = ").Append(creation).Append(";\n        }\n");
         }
 
@@ -465,10 +470,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private void AppendSequence(StringBuilder body, ITypeSymbol type, ITypeSymbol element, bool copy)
     {
         var named = type as INamedTypeSymbol;
-        var set = named is not null && (FindInterface(named, "System.Collections.Generic.ISet<T>") is not null ||
+        var set = named is not null && (FindInterface(named, SetInterface) is not null ||
             FindInterface(named, "System.Collections.Generic.IReadOnlySet<T>") is not null);
         var readOnlySet = named?.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.IReadOnlySet<T>";
-        var setInterface = named?.OriginalDefinition.ToDisplayString() is "System.Collections.Generic.ISet<T>" or "System.Collections.Generic.IReadOnlySet<T>";
+        var setInterface = named?.OriginalDefinition.ToDisplayString() is SetInterface or "System.Collections.Generic.IReadOnlySet<T>";
         if (setInterface && element.SpecialType != SpecialType.System_String && element.TypeKind != TypeKind.Enum)
         {
             body.Append(ReturnOption);
@@ -484,8 +489,9 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
         {
-            body.Append($"        if (section.Value is null && !{AnyChildren}) return readOnly || option is {{ Length: > 0 }} ? option : null;\n")
+            body.Append($"        if (section.Value is null && (IsNullValue(section) || !{AnyChildren}))\n        {{\n            hasNewValue = !readOnly && option is not {{ Length: > 0 }};\n            return readOnly || option is {{ Length: > 0 }} ? option : null;\n        }}\n")
                 .Append($"        if (section.Value is not null && !readOnly)\n        {{\n            var bytes = {OptionBindingGenerator.Registry}.Parse(section, static value => global::System.Convert.FromBase64String(value));\n")
+                .Append("            if (option is { Length: > 0 } && bytes.Length == 0) return option;\n            hasNewValue = true;\n")
                 .Append("            return option is null ? bytes : global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Concat(option, bytes));\n        }\n");
         }
 
@@ -511,11 +517,12 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         if (copy || readOnlySet)
         {
-            body.Append($"        var items = option is null ? new {concrete}() : new {concrete}(option);\n");
+            body.Append($"        hasNewValue = true;\n        var items = option is null ? new {concrete}() : new {concrete}(option);\n");
         }
         else
         {
-            body.Append($"        option ??= {create};\n        var items = ({Collections}ICollection<{elementName}>)option;\n");
+            var replacement = type.OriginalDefinition.ToDisplayString() == SetInterface ? WritableCondition : "option is null";
+            body.Append($"        hasNewValue = {replacement};\n        option ??= {create};\n        var items = ({Collections}ICollection<{elementName}>)option;\n");
         }
 
         AppendSequenceItems(body, element, copy, readOnlySet);
@@ -563,18 +570,19 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         AppendCollectionLeaf(body, type, create, OptionVariable);
         if (readOnly)
         {
-            body.Append($"        if (readOnly) return option;\n        var items = option is null ? new {concrete}() : new {concrete}(option);\n");
+            body.Append($"        if (readOnly) return option;\n        hasNewValue = true;\n        var items = option is null ? new {concrete}() : new {concrete}(option);\n");
         }
         else
         {
-            body.Append($"        if (readOnly && option is null) return option;\n        option ??= {create};\n")
+            var replacement = type.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.IDictionary<TKey, TValue>" ? WritableCondition : "option is null";
+            body.Append($"        if (readOnly && option is null) return option;\n        hasNewValue = {replacement};\n        option ??= {create};\n")
                 .Append($"        var items = ({Collections}IDictionary<{Name(key)}, {Name(value)}>)option;\n");
         }
 
         if (keyExpression is not null)
         {
             var initial = InitialValue(value, ChildVariable, "(items.TryGetValue(key, out var current) ? current : default)");
-            AppendItems(body, value, $"var key = {keyExpression};\n                items[key] = {Build(value)}(child, {initial}, parentCollection: true);");
+            AppendItems(body, value, $"var key = {keyExpression};\n                var value = {Build(value)}(child, {initial}, out var changed, parentCollection: true);\n                if (changed) items[key] = value;");
         }
         body.Append(readOnly ? "        return items;\n" : ReturnOption);
     }
@@ -606,7 +614,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
         else
         {
-            body.Append($"                return {creation};\n");
+            body.Append($"                hasNewValue = true;\n                return {creation};\n");
         }
 
         body.Append($"            }}\n            return {empty};\n        }}\n");

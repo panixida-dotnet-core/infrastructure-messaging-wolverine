@@ -11,6 +11,129 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingCompatibilityTests
 {
+    [Fact(DisplayName = "Generated dictionaries mutate existing reference values without invoking their indexer setters")]
+    public void BinderShouldPreserveDictionaryReferenceValues()
+    {
+        var configuration = new ConfigurationManager();
+        foreach (var entry in new[] { "existing", "created", "empty" })
+        {
+            configuration[$"Options:Objects:{entry}:Name"] = "configured";
+            configuration[$"Options:Lists:{entry}:0"] = "8";
+            configuration[$"Options:Maps:{entry}:number"] = "8";
+            configuration[$"Options:Collections:{entry}:0"] = "8";
+        }
+
+        var original = configuration.GetSection("Options").Get<ReferenceDictionaryOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<ReferenceDictionaryOptions>(configuration, "Options");
+
+        generated.Objects["existing"].ShouldBeSameAs(generated.InitialObject);
+        generated.Objects["existing"].Name.ShouldBe("configured");
+        generated.Objects["created"].Name.ShouldBe(original.Objects["created"].Name);
+        generated.Objects["empty"].Name.ShouldBe(original.Objects["empty"].Name);
+        generated.Lists["existing"].ShouldBeSameAs(generated.InitialList);
+        generated.Lists["existing"].ShouldBe([7, 8]);
+        generated.Maps["existing"].ShouldBeSameAs(generated.InitialMap);
+        generated.Maps["existing"].ShouldBe(original.Maps["existing"]);
+        generated.Collections["existing"].ShouldBeSameAs(generated.InitialCollection);
+        generated.Collections["existing"].ShouldBe(original.Collections["existing"]);
+        generated.Objects.Writes.ShouldBe(original.Objects.Writes);
+        generated.Lists.Writes.ShouldBe(original.Lists.Writes);
+        generated.Maps.Writes.ShouldBe(original.Maps.Writes);
+        generated.Collections.Writes.ShouldBe(original.Collections.Writes);
+        generated.Objects.Writes.ShouldBe(2);
+        generated.Objects.Lookups.ShouldBe(original.Objects.Lookups);
+        generated.Lists.Lookups.ShouldBe(original.Lists.Lookups);
+    }
+
+    [Fact(DisplayName = "Generated dictionaries retain indexer writes for replaced collections and converted values")]
+    public void BinderShouldWriteReplacedDictionaryValues()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Maps:existing:number"] = "8",
+            ["Options:Sets:existing:0"] = "configured",
+            ["Options:Arrays:existing:0"] = "invalid",
+            ["Options:Converted:existing"] = "configured",
+        };
+
+        var original = configuration.GetSection("Options").Get<ReplacingDictionaryOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<ReplacingDictionaryOptions>(configuration, "Options");
+
+        generated.Maps["existing"].ShouldBe(original.Maps["existing"]);
+        generated.Sets["existing"].ShouldBe(original.Sets["existing"]);
+        generated.Arrays["existing"].ShouldBe(original.Arrays["existing"]);
+        generated.Converted["existing"].ShouldBe(original.Converted["existing"]);
+        generated.Maps.Writes.ShouldBe(original.Maps.Writes);
+        generated.Sets.Writes.ShouldBe(original.Sets.Writes);
+        generated.Arrays.Writes.ShouldBe(original.Arrays.Writes);
+        generated.Converted.Writes.ShouldBe(original.Converted.Writes);
+        generated.Maps.Writes.ShouldBe(1);
+        generated.Sets.Writes.ShouldBe(1);
+        generated.Arrays.Writes.ShouldBe(1);
+        generated.Converted.Writes.ShouldBe(1);
+        generated.Converted.Lookups.ShouldBe(0);
+    }
+
+    [Fact(DisplayName = "Generated dictionaries preserve existing references for empty sections")]
+    public void BinderShouldRetainDictionaryReferencesForEmptySections()
+    {
+        var configuration = new ConfigurationManager();
+        foreach (var property in new[] { "Objects", "Lists", "Maps", "Collections", "Sets", "Arrays" })
+        {
+            configuration[$"Options:{property}:existing"] = "";
+        }
+
+        var original = configuration.GetSection("Options").Get<ReferenceDictionaryOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<ReferenceDictionaryOptions>(configuration, "Options");
+        var originalCollections = configuration.GetSection("Options").Get<ReplacingDictionaryOptions>()!;
+        var generatedCollections = OptionBindingRegistry.GetRequired<ReplacingDictionaryOptions>(configuration, "Options");
+
+        generated.Objects.Writes.ShouldBe(original.Objects.Writes);
+        generated.Lists.Writes.ShouldBe(original.Lists.Writes);
+        generated.Maps.Writes.ShouldBe(original.Maps.Writes);
+        generated.Collections.Writes.ShouldBe(original.Collections.Writes);
+        generatedCollections.Maps.Writes.ShouldBe(originalCollections.Maps.Writes);
+        generatedCollections.Sets.Writes.ShouldBe(originalCollections.Sets.Writes);
+        generatedCollections.Arrays.Writes.ShouldBe(originalCollections.Arrays.Writes);
+        generated.Objects.Writes.ShouldBe(0);
+        generated.Objects["existing"].ShouldBeSameAs(generated.InitialObject);
+        generated.Objects["existing"].Name.ShouldBe("initial");
+    }
+
+    [Theory(DisplayName = "Generated dictionaries replace byte arrays only when binding produces a new value")]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData(" ", false)]
+    [InlineData("AgM=", false)]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData(" ", true)]
+    [InlineData("AgM=", true)]
+    public void BinderShouldTrackBinaryDictionaryReplacements(string? value, bool hasChildren)
+    {
+        var configuration = new ConfigurationManager();
+        foreach (var entry in new[] { "existing", "empty", "created" })
+        {
+            configuration[$"Options:Bytes:{entry}"] = value;
+            if (hasChildren)
+            {
+                configuration[$"Options:Bytes:{entry}:0"] = "4";
+            }
+        }
+
+        var original = configuration.GetSection("Options").Get<BinaryDictionaryOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<BinaryDictionaryOptions>(configuration, "Options");
+
+        foreach (var entry in original.Bytes)
+        {
+            generated.Bytes[entry.Key].ShouldBe(entry.Value);
+        }
+        generated.Bytes.Writes.ShouldBe(original.Bytes.Writes);
+        generated.Bytes.Lookups.ShouldBe(original.Bytes.Lookups);
+        ReferenceEquals(generated.Bytes["existing"], generated.InitialBytes)
+            .ShouldBe(ReferenceEquals(original.Bytes["existing"], original.InitialBytes));
+    }
+
     [Theory(DisplayName = "Generated binding skips nullable converters for null and empty values")]
     [InlineData(null, false)]
     [InlineData("", false)]
@@ -495,6 +618,50 @@ public sealed class OptionBindingCompatibilityTests
         public List<Version> Versions { get; init; } = [];
     }
 
+    public sealed class ReferenceDictionaryOptions : KafkaConsumerOption
+    {
+        internal ReferenceValue InitialObject { get; } = new();
+        internal List<int> InitialList { get; } = [7];
+        internal Dictionary<string, int> InitialMap { get; } = new() { ["initial"] = 7 };
+        internal ICollection<int> InitialCollection { get; } = [7];
+        public LookupDictionary<ReferenceValue> Objects { get; }
+        public LookupDictionary<List<int>> Lists { get; }
+        public LookupDictionary<Dictionary<string, int>> Maps { get; }
+        public LookupDictionary<ICollection<int>> Collections { get; }
+
+        public ReferenceDictionaryOptions()
+        {
+            Objects = new() { ThrowOnLookup = false, ThrowOnExistingWrite = true, ["existing"] = InitialObject, ["empty"] = null! };
+            Lists = new() { ThrowOnLookup = false, ThrowOnExistingWrite = true, ["existing"] = InitialList, ["empty"] = null! };
+            Maps = new() { ThrowOnLookup = false, ThrowOnExistingWrite = true, ["existing"] = InitialMap, ["empty"] = null! };
+            Collections = new() { ThrowOnLookup = false, ThrowOnExistingWrite = true, ["existing"] = InitialCollection, ["empty"] = null! };
+        }
+    }
+
+    public sealed class ReferenceValue
+    {
+        public string Name { get; init; } = "initial";
+    }
+
+    public sealed class ReplacingDictionaryOptions : KafkaConsumerOption
+    {
+        public LookupDictionary<IDictionary<string, int>> Maps { get; } = new() { ThrowOnLookup = false, ["existing"] = new Dictionary<string, int>() };
+        public LookupDictionary<ISet<string>> Sets { get; } = new() { ThrowOnLookup = false, ["existing"] = new HashSet<string>() };
+        public LookupDictionary<int[]> Arrays { get; } = new() { ThrowOnLookup = false, ["existing"] = [] };
+        public LookupDictionary<ConvertedValue> Converted { get; } = new() { ["existing"] = new ConvertedValue("initial") };
+    }
+
+    public sealed class BinaryDictionaryOptions : KafkaConsumerOption
+    {
+        internal byte[] InitialBytes { get; } = [1];
+        public LookupDictionary<byte[]?> Bytes { get; }
+
+        public BinaryDictionaryOptions()
+        {
+            Bytes = new() { ThrowOnLookup = false, ["existing"] = InitialBytes, ["empty"] = [] };
+        }
+    }
+
     public sealed class NullableConverterOptions : KafkaConsumerOption
     {
         public NullableConvertedValue? Value { get; init; } = new NullableConvertedValue { Number = 7 };
@@ -539,6 +706,7 @@ public sealed class OptionBindingCompatibilityTests
     public sealed class LookupDictionary<T> : Dictionary<string, T>, IDictionary<string, T>
     {
         public bool ThrowOnLookup { get; init; } = true;
+        public bool ThrowOnExistingWrite { get; init; }
         public int Lookups { get; private set; }
         public int Writes { get; private set; }
 
@@ -548,6 +716,10 @@ public sealed class OptionBindingCompatibilityTests
             set
             {
                 Writes++;
+                if (ThrowOnExistingWrite && TryGetValue(key, out var previous) && previous is not null)
+                {
+                    throw new InvalidOperationException("Existing entries cannot be replaced.");
+                }
                 this[key] = value;
             }
         }
