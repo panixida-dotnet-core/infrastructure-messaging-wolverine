@@ -171,7 +171,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         {
             foreach (var property in current.GetMembers().OfType<IPropertySymbol>())
             {
-                if (property.SetMethod?.IsOverride != true && !property.IsStatic && !property.IsIndexer &&
+                if (property.SetMethod?.IsOverride != true && !property.IsIndexer &&
                     property.GetMethod?.DeclaredAccessibility == Accessibility.Public)
                 {
                     yield return property;

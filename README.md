@@ -283,8 +283,11 @@ Dictionary keys support strings, enums and the eight integer types from `sbyte`/
 Concrete collections such as `HashSet<int>` continue to bind normally.
 Custom converters are constructed directly and must be accessible, with a public parameterless or `System.Type` constructor.
 Successful converter instances are reused per converted type; failed construction is retried on the next binding attempt.
+Each configured value probes a custom converter once, reusing that result for conversion and fallback binding.
 Nullable null and empty values are bound without constructing or probing the underlying custom converter, even when child keys are present.
 Dictionary entries read existing values only when binding needs them; scalar replacements do not call `TryGetValue`.
+Public static properties remain bindable. An unconvertible scalar does not invoke the setter of a null complex property.
+Missing constructor parameters retain the previous error text; empty strings for null immutable collection interfaces retain the .NET 10 binder's exception.
 Existing object and mutable collection entries are updated in place without invoking the dictionary indexer setter.
 New or replaced values and modified structs are written back; collection interface replacement follows the .NET 10 binder.
 Binders generated in the options' declaring assembly are reused by consumers, including binders that use internal converters.

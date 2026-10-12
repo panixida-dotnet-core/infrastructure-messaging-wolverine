@@ -216,7 +216,7 @@ public sealed class OptionBindingGeneratorTests
             {
                 [System.ComponentModel.Description("Not a configuration key")]
                 public new string BootstrapServers { get; set; } = "default";
-                public static string StaticValue { get; set; } = "ignored";
+                public static string StaticValue { get; set; } = "initial";
                 public string this[int index] { get => "ignored"; set {} }
                 public string WriteOnly { set {} }
                 public string PrivateGetter { private get; set; } = "ignored";
@@ -229,7 +229,8 @@ public sealed class OptionBindingGeneratorTests
 
         diagnostics.ShouldBeEmpty();
         source.ShouldContain("children.TryGetValue(\"BootstrapServers\"");
-        foreach (var ignored in new[] { "StaticValue", "WriteOnly", "PrivateGetter" })
+        source.ShouldContain("global::Settings.@StaticValue =");
+        foreach (var ignored in new[] { "WriteOnly", "PrivateGetter" })
         {
             source.ShouldNotContain("option.@" + ignored);
         }
@@ -440,6 +441,11 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("OptionBindingFailureTests.IntegerDictionaryOptions")]
     [InlineData("OptionBindingReadOnlyTests.ScalarOptions")]
     [InlineData("OptionBindingReadOnlyTests.DictionaryOptions")]
+    [InlineData("OptionBindingLeafTests.StaticOptions")]
+    [InlineData("OptionBindingLeafTests.NullSetterOptions")]
+    [InlineData("OptionBindingLeafTests.ValueOptions<System.Collections.Generic.List<OptionBindingLeafTests.RequiredStruct>>")]
+    [InlineData("OptionBindingLeafTests.ValueOptions<System.Collections.Generic.List<OptionBindingLeafTests.OptionalStruct>>")]
+    [InlineData("OptionBindingLeafTests.ValueOptions<System.Collections.Generic.List<OptionBindingLeafTests.DefaultStruct>>")]
     [InlineData("PolymorphicOptionBindingTests.ConcreteOptions")]
     public void GeneratorShouldComposeReferencedModels(string model)
     {
@@ -455,7 +461,7 @@ public sealed class OptionBindingGeneratorTests
 
         diagnostics.ShouldBeEmpty();
         source.ShouldContain(".Register<global::ConsumerOptions>");
-        source.ShouldContain(model);
+        source.ShouldContain(model.Split('<')[0]);
     }
 
     [Fact(DisplayName = "Option generator tolerates incomplete assembly metadata while the compiler reports its error")]
