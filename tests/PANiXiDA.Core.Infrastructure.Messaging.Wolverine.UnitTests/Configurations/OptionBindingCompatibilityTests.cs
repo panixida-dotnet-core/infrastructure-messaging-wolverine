@@ -412,11 +412,11 @@ public sealed class OptionBindingCompatibilityTests
 
     public sealed class DictionaryLookupOptions : KafkaConsumerOption
     {
-        public LookupDictionary<int> Numbers { get; } = new();
-        public LookupDictionary<int?> Optional { get; } = new();
-        public LookupDictionary<ConvertedValue> Converted { get; } = new();
-        public LookupDictionary<object> Untyped { get; } = new();
-        public LookupDictionary<IConfigurationSection> Sections { get; } = new();
+        public LookupDictionary<int> Numbers { get; } = [];
+        public LookupDictionary<int?> Optional { get; } = [];
+        public LookupDictionary<ConvertedValue> Converted { get; } = [];
+        public LookupDictionary<object> Untyped { get; } = [];
+        public LookupDictionary<IConfigurationSection> Sections { get; } = [];
         public LookupDictionary<List<int>> Lists { get; } = new() { ThrowOnLookup = false, ["value"] = [7] };
         public LookupDictionary<byte[]> Bytes { get; } = new() { ThrowOnLookup = false, ["value"] = [1] };
     }
