@@ -292,6 +292,7 @@ Public static properties remain bindable. An unconvertible scalar does not invok
 Missing constructor parameters retain the previous error text; empty strings for null immutable collection interfaces retain the .NET 10 binder's exception.
 Constructor validation failures also retain the previous messages for inaccessible constructors, overload ambiguity, missing properties and by-reference parameters.
 Getter-only arrays and immutable collection interfaces do not read their getters when binding children.
+Scalar sections containing only child keys preserve existing values and the previous getter/setter behavior; explicit nulls and scalar values still replace writable values.
 Existing object and mutable collection entries are updated in place without invoking the dictionary indexer setter.
 New or replaced values and modified structs are written back; collection interface replacement follows the .NET 10 binder.
 Binders generated in the options' declaring assembly are reused by consumers, including binders that use internal converters.

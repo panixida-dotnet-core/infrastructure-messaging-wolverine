@@ -441,6 +441,7 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("OptionBindingFailureTests.IntegerDictionaryOptions")]
     [InlineData("OptionBindingReadOnlyTests.ScalarOptions")]
     [InlineData("OptionBindingReadOnlyTests.DictionaryOptions")]
+    [InlineData("OptionBindingScalarChildrenTests.DictionaryOptions")]
     [InlineData("OptionBindingLeafTests.StaticOptions")]
     [InlineData("OptionBindingLeafTests.NullSetterOptions")]
     [InlineData("OptionBindingEdgeTests.NullConversionOptions")]

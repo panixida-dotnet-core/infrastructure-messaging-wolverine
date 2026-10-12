@@ -74,6 +74,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var conversion = converter is null ? OptionBindingGenerator.GetConversion(type) : null;
         if (conversion is not null)
         {
+            AppendScalarChildren(body, type, method);
             var nullTest = IsNullable(type) ? "global::System.String.IsNullOrEmpty(section.Value)" : "section.Value is null";
             body.Append($"        var convertedValue = {nullTest} ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, static value => {conversion});\n")
                 .Append("        if (readOnly) return option;\n        hasNewValue = true;\n        return convertedValue;\n");
@@ -92,6 +93,26 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         AppendComplexBody(body, type, method);
+    }
+
+    private void AppendScalarChildren(StringBuilder body, ITypeSymbol type, string method)
+    {
+        body.Append($"        if (section.Value is null && !IsNullValue(section) && {AnyChildren})\n        {{\n");
+        if (IsNullable(type))
+        {
+            body.Append("            return readOnly ? option : option.GetValueOrDefault();\n");
+        }
+        else if (type.IsReferenceType)
+        {
+            var creation = Construction((INamedTypeSymbol)type, method);
+            body.Append($"            if (!readOnly && option is null)\n            {{\n                hasNewValue = true;\n                return {creation};\n            }}\n")
+                .Append("            return option;\n");
+        }
+        else
+        {
+            body.Append("            return option;\n");
+        }
+        body.Append("        }\n");
     }
 
     private void AppendComplexBody(StringBuilder body, ITypeSymbol type, string method)
@@ -299,7 +320,9 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var conversion = ScalarConversionCondition(type, child, probe);
         if (conversion == "true")
         {
-            return "default";
+            return OptionBindingGenerator.GetConversion(type) is not null
+                ? $"{child}.Value is not null || IsNullValue({child}) || !global::System.Linq.Enumerable.Any({child}.GetChildren()) ? default : {getter}"
+                : "default";
         }
         if (conversion != FalseLiteral)
         {
@@ -618,10 +641,23 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         if (keyExpression is not null)
         {
-            var initial = InitialValue(value, ChildVariable, "(items.TryGetValue(key, out var current) ? current : default)");
-            AppendItems(body, value, $"var key = {keyExpression};\n                var value = {Build(value)}(child, {initial}, out var changed, parentCollection: true{ConversionArgument(value)});\n                if (changed) items[key] = value;");
+            AppendDictionaryItems(body, value, keyExpression);
         }
         body.Append(readOnly ? "        return readOnly ? option : items;\n" : ReturnOption);
+    }
+
+    private void AppendDictionaryItems(StringBuilder body, ITypeSymbol value, string keyExpression)
+    {
+        var primitive = IsPrimitiveScalar(value);
+        var lookup = "items.TryGetValue(key, out var current)";
+        if (primitive)
+        {
+            lookup = "existingScalar = " + lookup + (IsNullable(value) ? " && current.HasValue" : string.Empty);
+        }
+        var initial = InitialValue(value, ChildVariable, $"(({lookup}) ? current : default)");
+        var existing = primitive ? "var existingScalar = false;\n                " : string.Empty;
+        var changed = primitive ? "changed && !existingScalar" : "changed";
+        AppendItems(body, value, $"var key = {keyExpression};\n                {existing}var value = {Build(value)}(child, {initial}, out var changed, parentCollection: true{ConversionArgument(value)});\n                if ({changed}) items[key] = value;");
     }
 
     private static string? DictionaryKey(ITypeSymbol key)
@@ -727,6 +763,15 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         return OptionBindingGenerator.GetConversion(type) is not null ||
             type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte } ||
             Name(type) == Section;
+    }
+
+    private static bool IsPrimitiveScalar(ITypeSymbol type)
+    {
+        if (IsNullable(type)) type = ((INamedTypeSymbol)type).TypeArguments[0];
+        return type.SpecialType is SpecialType.System_Boolean or SpecialType.System_Char or
+            SpecialType.System_SByte or SpecialType.System_Byte or SpecialType.System_Int16 or SpecialType.System_UInt16 or
+            SpecialType.System_Int32 or SpecialType.System_UInt32 or SpecialType.System_Int64 or SpecialType.System_UInt64 or
+            SpecialType.System_Single or SpecialType.System_Double;
     }
 
     private static INamedTypeSymbol? FindInterface(INamedTypeSymbol type, string name)
