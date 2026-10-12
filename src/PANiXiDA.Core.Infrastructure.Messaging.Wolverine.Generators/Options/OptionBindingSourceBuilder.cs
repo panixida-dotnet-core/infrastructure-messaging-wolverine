@@ -18,19 +18,21 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string ConversionVariable = "scalarConversion";
     private const string WritableCondition = "!readOnly";
     private const string SetInterface = "System.Collections.Generic.ISet<T>";
+    private const string EnumerableInterface = "System.Collections.Generic.IEnumerable<T>";
+    private const string ReadOnlySetInterface = "System.Collections.Generic.IReadOnlySet<T>";
     private const string Accessor = "global::System.Runtime.CompilerServices.UnsafeAccessor";
     private const string AccessorKind = "global::System.Runtime.CompilerServices.UnsafeAccessorKind.";
     private static readonly HashSet<string> SupportedCollectionInterfaces = new(StringComparer.Ordinal)
     {
         "System.Collections.Generic.IDictionary<TKey, TValue>",
         "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>",
-        "System.Collections.Generic.IEnumerable<T>",
+        EnumerableInterface,
         "System.Collections.Generic.IReadOnlyList<T>",
         "System.Collections.Generic.IReadOnlyCollection<T>",
         "System.Collections.Generic.ICollection<T>",
         "System.Collections.Generic.IList<T>",
         SetInterface,
-        "System.Collections.Generic.IReadOnlySet<T>",
+        ReadOnlySetInterface,
     };
     private readonly Dictionary<ITypeSymbol, string> methods = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<string, string> converterMethods = new(StringComparer.Ordinal);
@@ -177,10 +179,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return;
         }
 
-        var copy = definition is "System.Collections.Generic.IEnumerable<T>" or
+        var copy = definition is EnumerableInterface or
             "System.Collections.Generic.IReadOnlyList<T>" or "System.Collections.Generic.IReadOnlyCollection<T>";
         var sequence = FindInterface(type, type.TypeKind == TypeKind.Interface
-            ? "System.Collections.Generic.IEnumerable<T>" : "System.Collections.Generic.ICollection<T>");
+            ? EnumerableInterface : "System.Collections.Generic.ICollection<T>");
         if (sequence is not null)
         {
             AppendSequence(body, type, sequence.TypeArguments[0], copy);
@@ -325,7 +327,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return readOnly ? $"!IsNullValue({child}) && {child}.Value is null && global::System.Linq.Enumerable.Any({child}.GetChildren()) ? default : {getter}" : getter;
         }
         if (readOnly && (type is IArrayTypeSymbol || type.OriginalDefinition.ToDisplayString() is
-            "System.Collections.Generic.IEnumerable<T>" or "System.Collections.Generic.IReadOnlyCollection<T>" or "System.Collections.Generic.IReadOnlyList<T>"))
+            EnumerableInterface or "System.Collections.Generic.IReadOnlyCollection<T>" or "System.Collections.Generic.IReadOnlyList<T>"))
         {
             return $"global::System.Linq.Enumerable.Any({child}.GetChildren()) || !global::System.String.IsNullOrEmpty({child}.Value) ? default : {getter}";
         }
@@ -532,9 +534,9 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     {
         var named = type as INamedTypeSymbol;
         var set = named is not null && (FindInterface(named, SetInterface) is not null ||
-            FindInterface(named, "System.Collections.Generic.IReadOnlySet<T>") is not null);
-        var readOnlySet = named?.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.IReadOnlySet<T>";
-        var setInterface = named?.OriginalDefinition.ToDisplayString() is SetInterface or "System.Collections.Generic.IReadOnlySet<T>";
+            FindInterface(named, ReadOnlySetInterface) is not null);
+        var readOnlySet = named?.OriginalDefinition.ToDisplayString() == ReadOnlySetInterface;
+        var setInterface = named?.OriginalDefinition.ToDisplayString() is SetInterface or ReadOnlySetInterface;
         if (setInterface && element.SpecialType != SpecialType.System_String && element.TypeKind != TypeKind.Enum)
         {
             body.Append(ReturnOption);
