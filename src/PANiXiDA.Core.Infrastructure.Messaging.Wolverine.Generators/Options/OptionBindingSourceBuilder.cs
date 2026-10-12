@@ -14,6 +14,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string EndMethod = "    }\n";
     private const string FalseLiteral = "false";
     private const string OptionVariable = "option";
+    private const string ChildVariable = "child";
     private const string Accessor = "global::System.Runtime.CompilerServices.UnsafeAccessor";
     private const string AccessorKind = "global::System.Runtime.CompilerServices.UnsafeAccessorKind.";
     private readonly Dictionary<ITypeSymbol, string> methods = new(SymbolEqualityComparer.Default);
@@ -195,7 +196,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         AppendPropertySection(body, property, index);
         var getter = AppendGetter(property, method + "Get" + index) + "(option)";
-        var initial = InitialValue(property.Type, "child" + index, getter);
+        var initial = InitialValue(property.Type, ChildVariable + index, getter);
         var value = "value" + index;
         body.Append($"        {Name(property.Type)} {value} = {(constructorBound ? "!created && " : string.Empty)}hasChild{index}\n")
             .Append($"            ? {Build(property.Type)}(child{index}, {initial}, {(writable ? FalseLiteral : "true")})\n")
@@ -522,7 +523,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private void AppendSequenceItems(StringBuilder body, ITypeSymbol element, bool copy, bool readOnlySet)
     {
-        var scalarConversion = ScalarConversionCondition(element, "child");
+        var scalarConversion = ScalarConversionCondition(element, ChildVariable);
         var nonNullableArray = copy && element.IsValueType && !IsNullable(element) && scalarConversion != FalseLiteral;
         if (nonNullableArray)
         {
@@ -572,7 +573,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         if (keyExpression is not null)
         {
-            var initial = InitialValue(value, "child", "(items.TryGetValue(key, out var current) ? current : default)");
+            var initial = InitialValue(value, ChildVariable, "(items.TryGetValue(key, out var current) ? current : default)");
             AppendItems(body, value, $"var key = {keyExpression};\n                items[key] = {Build(value)}(child, {initial}, parentCollection: true);");
         }
         body.Append(readOnly ? "        return items;\n" : ReturnOption);
@@ -614,7 +615,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private void AppendItems(StringBuilder body, ITypeSymbol element, string binding)
     {
         body.Append("        foreach (var child in section.GetChildren())\n        {\n            try\n            {\n                ");
-        var scalarConversion = ScalarConversionCondition(element, "child");
+        var scalarConversion = ScalarConversionCondition(element, ChildVariable);
         if (scalarConversion != "true")
         {
             body.Append($"if (!({scalarConversion}) && !global::System.String.IsNullOrEmpty(child.Value) && !global::System.Linq.Enumerable.Any(child.GetChildren())) continue;\n                ");
