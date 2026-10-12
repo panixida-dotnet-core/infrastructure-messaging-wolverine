@@ -415,9 +415,10 @@ public sealed class OptionBindingMemberTests
 
     public sealed class AbsentThrowingSetterOptions : KafkaConsumerOption
     {
+        private readonly Payload initial = new();
         public Payload Value
         {
-            get => new();
+            get => initial;
             set => throw new FormatException("Absent property setter was called.");
         }
     }

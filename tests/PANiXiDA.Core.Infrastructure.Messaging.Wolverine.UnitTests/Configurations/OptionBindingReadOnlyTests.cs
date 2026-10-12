@@ -124,7 +124,7 @@ public sealed class OptionBindingReadOnlyTests
         public OptionBindingCompatibilityTests.Position Point { get; } = new(5);
         public OptionBindingCompatibilityTests.Position? OptionalPoint { get; } = new(5);
         public OptionBindingCompatibilityTests.Position? MissingPoint { get; }
-        public int Throwing => throw new InvalidOperationException("Scalar getter must not be read.");
+        public int Throwing => throw new InvalidOperationException($"Scalar getter must not be read for '{TopicName}'.");
     }
 
     public sealed class DictionaryOptions : KafkaConsumerOption
