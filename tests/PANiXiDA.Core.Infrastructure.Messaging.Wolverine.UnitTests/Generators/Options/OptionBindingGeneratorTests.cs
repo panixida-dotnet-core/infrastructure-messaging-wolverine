@@ -648,6 +648,7 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("\"ValueConverter`1\"", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]
     [InlineData("\"ValueConverter`1[Missing]\"", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]
     [InlineData("\"ValueConverter`1[Missing[]]\"", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]
+    [InlineData("\"ValueConverter`1[System.Int32[*]]\"", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]
     [InlineData("\"ValueConverter`1[System.String,System.Int32]\"", "public class ValueConverter<T> : System.ComponentModel.TypeConverter;")]
     [InlineData("\"ValueConverter`2[System.String]\"", "public class ValueConverter<T, U> : System.ComponentModel.TypeConverter;")]
     [InlineData("\"Outer`2+Converter`1[System.String]\"", "public class Outer<T, U> { public class Converter<V> : System.ComponentModel.TypeConverter; }")]

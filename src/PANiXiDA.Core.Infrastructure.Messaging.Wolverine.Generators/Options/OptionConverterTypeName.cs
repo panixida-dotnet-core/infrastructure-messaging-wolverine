@@ -17,6 +17,11 @@ internal static class OptionConverterTypeName
     {
         if (name.IsArray)
         {
+            if (name.IsVariableBoundArrayType && name.GetArrayRank() == 1)
+            {
+                return null;
+            }
+
             var element = ResolveType(name.GetElementType(), compilation);
             return element is null ? null : compilation.CreateArrayTypeSymbol(element, name.GetArrayRank());
         }
