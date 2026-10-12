@@ -25,7 +25,7 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldContain("new global::Settings()");
         source.ShouldContain("children.TryGetValue(\"retry-count\"");
         source.ShouldContain("option.@RetryCount =");
-        source.ShouldContain("option.@GroupProtocol =");
+        source.ShouldContain("KafkaConsumerOption)option).@GroupProtocol =");
         source.ShouldNotContain("ConfigurationBinder");
         source.ShouldNotContain("Activator");
     }
@@ -410,8 +410,8 @@ public sealed class OptionBindingGeneratorTests
         diagnostics.ShouldBeEmpty();
     }
 
-    [Fact(DisplayName = "Option generator supports complex models declared in a separate consumer assembly")]
-    public void GeneratorShouldCompileReferencedComplexModels()
+    [Fact(DisplayName = "Option generator reuses binders for complex models declared in a referenced assembly")]
+    public void GeneratorShouldReuseReferencedComplexModels()
     {
         var compilation = CreateCompilation(string.Empty)
             .AddReferences(MetadataReference.CreateFromFile(typeof(OptionBindingGeneratorTests).Assembly.Location));
@@ -419,8 +419,8 @@ public sealed class OptionBindingGeneratorTests
         var (source, diagnostics) = Generate(compilation);
 
         diagnostics.ShouldBeEmpty();
-        source.ShouldContain("ComplexOptionBindingTests.ComplexOptions");
-        source.ShouldContain("ComplexOptionBindingTests.GenericOptions");
+        source.ShouldNotContain("ComplexOptionBindingTests.ComplexOptions");
+        source.ShouldNotContain("ComplexOptionBindingTests.GenericOptions");
     }
 
     [Theory(DisplayName = "Option generator diagnoses unsupported property shapes without emitting invalid binders")]
