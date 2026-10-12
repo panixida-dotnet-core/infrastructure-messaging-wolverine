@@ -279,6 +279,7 @@ Dictionary keys support strings, enums and the eight integer types from `sbyte`/
 Concrete collections such as `HashSet<int>` continue to bind normally.
 Custom converters are constructed directly and must be accessible, with a public parameterless or `System.Type` constructor.
 Successful converter instances are reused per converted type; failed construction is retried on the next binding attempt.
+Nullable null and empty values are bound without constructing or probing the underlying custom converter, even when child keys are present.
 Dictionary entries read existing values only when binding needs them; scalar replacements do not call `TryGetValue`.
 Binders generated in the options' declaring assembly are reused by consumers, including binders that use internal converters.
 Their implementations must also support trimming and Native AOT when publishing a native application.

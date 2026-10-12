@@ -99,6 +99,12 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         }
 
         source.Append("    }\n").Append("""
+                private static bool IsNullValue(global::Microsoft.Extensions.Configuration.IConfigurationSection section)
+                    => global::System.String.IsNullOrEmpty(section.Value) &&
+                        (section is global::Microsoft.Extensions.Configuration.ConfigurationSection concrete
+                            ? concrete.TryGetValue(null, out _)
+                            : section.Value is not null);
+
                 private sealed class UnsupportedRuntimeTypeException(global::System.Type type, global::System.Type declaredType, string path)
                     : global::System.NotSupportedException($"Runtime configuration type '{type}' at '{path}' differs from the declared model type '{declaredType}'. Declare the concrete configuration model type.") { }
 

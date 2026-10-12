@@ -11,6 +11,94 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingCompatibilityTests
 {
+    [Theory(DisplayName = "Generated binding skips nullable converters for null and empty values")]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    public void BinderShouldSkipNullableConverters(string? value, bool hasChildren)
+    {
+        using var json = new MemoryStream(System.Text.Encoding.UTF8.GetBytes($$"""
+            { "Options": {
+                "Value": {{JsonSerializer.Serialize(value)}},
+                "Values": [{{JsonSerializer.Serialize(value)}}],
+                "Array": [{{JsonSerializer.Serialize(value)}}],
+                "Entries": { "entry": {{JsonSerializer.Serialize(value)}} }
+            } }
+            """));
+        var configuration = new ConfigurationManager();
+        configuration.AddJsonStream(json);
+        if (hasChildren)
+        {
+            foreach (var path in new[] { "Value", "Values:0", "Array:0", "Entries:entry" })
+            {
+                configuration[$"Options:{path}:Number"] = "42";
+            }
+        }
+
+        var original = configuration.GetSection("Options").Get<NullableConverterOptions>()!;
+        var originalParameter = configuration.GetSection("Options").Get<NullableConverterParameter>()!;
+        var generated = OptionBindingRegistry.GetRequired<NullableConverterOptions>(configuration, "Options");
+        var generatedParameter = OptionBindingRegistry.GetRequired<NullableConverterParameter>(configuration, "Options");
+
+        original.Value.ShouldBeNull();
+        generated.Value.ShouldBe(original.Value);
+        generated.Values.ShouldBe(original.Values);
+        generated.Values.ShouldBe([null]);
+        generated.Array.ShouldBe(original.Array);
+        generated.Array.ShouldBe([null]);
+        generated.Entries.ShouldBe(original.Entries);
+        generated.Entries["entry"].ShouldBeNull();
+        generatedParameter.Value.ShouldBe(originalParameter.Value);
+        generatedParameter.Value.ShouldBeNull();
+    }
+
+    [Fact(DisplayName = "Generated nullable binding retains child-only sections without resolving converters")]
+    public void BinderShouldBindNullableConverterChildren()
+    {
+        var configuration = new ConfigurationManager();
+        foreach (var path in new[] { "Value", "Values:0", "Array:0", "Entries:entry" })
+        {
+            configuration[$"Options:{path}:Number"] = "42";
+        }
+
+        var original = configuration.GetSection("Options").Get<NullableConverterOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<NullableConverterOptions>(configuration, "Options");
+
+        generated.Value.ShouldBe(original.Value);
+        generated.Value!.Value.Number.ShouldBe(42);
+        generated.Values.ShouldBe(original.Values);
+        generated.Values.Single()!.Value.Number.ShouldBe(42);
+        generated.Array.ShouldBe(original.Array);
+        generated.Array.Single()!.Value.Number.ShouldBe(42);
+        generated.Entries.ShouldBe(original.Entries);
+        generated.Entries["entry"]!.Value.Number.ShouldBe(42);
+    }
+
+    [Fact(DisplayName = "Generated dictionaries write back existing complex structs and populate new entries")]
+    public void BinderShouldWriteBackDictionaryStructs()
+    {
+        var configuration = new ConfigurationManager();
+        foreach (var property in new[] { "Positions", "Optional", "ReadOnly" })
+        {
+            configuration[$"Options:{property}:existing:X"] = "42";
+            configuration[$"Options:{property}:created:X"] = "43";
+        }
+
+        var original = configuration.GetSection("Options").Get<DictionaryStructOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<DictionaryStructOptions>(configuration, "Options");
+
+        original.Positions["existing"].X.ShouldBe(42);
+        original.Positions["existing"].Y.ShouldBe(200);
+        original.Positions["created"].X.ShouldBe(43);
+        generated.Positions.ShouldBe(original.Positions);
+        generated.Optional.ShouldBe(original.Optional);
+        generated.ReadOnly.ShouldBe(original.ReadOnly);
+        generated.Positions.Lookups.ShouldBe(original.Positions.Lookups);
+        generated.Positions.Writes.ShouldBe(original.Positions.Writes);
+        generated.Positions.Writes.ShouldBe(2);
+    }
+
     [Theory(DisplayName = "Generated dictionary binding reads existing values only when needed")]
     [InlineData(false)]
     [InlineData(true)]
@@ -407,6 +495,37 @@ public sealed class OptionBindingCompatibilityTests
         public List<Version> Versions { get; init; } = [];
     }
 
+    public sealed class NullableConverterOptions : KafkaConsumerOption
+    {
+        public NullableConvertedValue? Value { get; init; } = new NullableConvertedValue { Number = 7 };
+        public List<NullableConvertedValue?> Values { get; init; } = [];
+        public NullableConvertedValue?[] Array { get; init; } = [];
+        public Dictionary<string, NullableConvertedValue?> Entries { get; init; } = [];
+    }
+
+    public sealed class NullableConverterParameter(NullableConvertedValue? value = null) : KafkaConsumerOption
+    {
+        public NullableConvertedValue? Value { get; } = value;
+    }
+
+    [TypeConverter(typeof(ThrowingNullableConverter))]
+    public readonly struct NullableConvertedValue
+    {
+        public int Number { get; init; }
+    }
+
+    public sealed class ThrowingNullableConverter : TypeConverter
+    {
+        public ThrowingNullableConverter() => throw new InvalidOperationException("Nullable converter must not be constructed.");
+    }
+
+    public sealed class DictionaryStructOptions : KafkaConsumerOption
+    {
+        public LookupDictionary<Position> Positions { get; } = new() { ThrowOnLookup = false, ["existing"] = new Position(5) };
+        public Dictionary<string, Position?> Optional { get; init; } = new() { ["existing"] = new Position(5) };
+        public IReadOnlyDictionary<string, Position> ReadOnly { get; init; } = new Dictionary<string, Position> { ["existing"] = new Position(5) };
+    }
+
     public sealed class DictionaryLookupOptions : KafkaConsumerOption
     {
         public LookupDictionary<int> Numbers { get; } = [];
@@ -421,6 +540,17 @@ public sealed class OptionBindingCompatibilityTests
     {
         public bool ThrowOnLookup { get; init; } = true;
         public int Lookups { get; private set; }
+        public int Writes { get; private set; }
+
+        T IDictionary<string, T>.this[string key]
+        {
+            get => this[key];
+            set
+            {
+                Writes++;
+                this[key] = value;
+            }
+        }
 
         bool IDictionary<string, T>.TryGetValue(string key, out T value)
         {

@@ -56,6 +56,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private void AppendBody(StringBuilder body, ITypeSymbol type, string method)
     {
+        if (IsNullable(type))
+        {
+            body.Append("        if (IsNullValue(section)) return readOnly ? option : default;\n");
+        }
         var converter = GetCustomConverter(type);
         var conversion = converter is null ? OptionBindingGenerator.GetConversion(type) : null;
         if (conversion is not null)
@@ -269,18 +273,19 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             return getter;
         }
-        var conversion = ScalarConversionCondition(type);
+        var conversion = ScalarConversionCondition(type, child);
         if (conversion == "true")
         {
             return "default";
         }
         if (conversion != FalseLiteral)
         {
-            return $"({child}.Value is not null || !global::System.Linq.Enumerable.Any({child}.GetChildren())) && ({conversion}) ? default : {getter}";
+            var nullValue = IsNullable(type) ? $"IsNullValue({child}) || " : string.Empty;
+            return $"{nullValue}({child}.Value is not null || !global::System.Linq.Enumerable.Any({child}.GetChildren())) && ({conversion}) ? default : {getter}";
         }
         if (IsNullable(type))
         {
-            return $"{child}.Value == string.Empty || ({child}.Value is null && !global::System.Linq.Enumerable.Any({child}.GetChildren())) ? default : {getter}";
+            return $"IsNullValue({child}) || ({child}.Value is null && !global::System.Linq.Enumerable.Any({child}.GetChildren())) ? default : {getter}";
         }
         return getter;
     }
@@ -337,7 +342,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             body.Append($"        if (!global::Microsoft.Extensions.Configuration.ConfigurationExtensions.Exists(section)) {missingStatement};\n");
         }
-        var conversion = ScalarConversionCondition(parameterType);
+        var conversion = ScalarConversionCondition(parameterType, "section");
         if (conversion != "true")
         {
             var nullableEmpty = IsNullable(parameterType) ? " && section.Value != string.Empty" : string.Empty;
@@ -517,7 +522,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private void AppendSequenceItems(StringBuilder body, ITypeSymbol element, bool copy, bool readOnlySet)
     {
-        var scalarConversion = ScalarConversionCondition(element);
+        var scalarConversion = ScalarConversionCondition(element, "child");
         var nonNullableArray = copy && element.IsValueType && !IsNullable(element) && scalarConversion != FalseLiteral;
         if (nonNullableArray)
         {
@@ -609,7 +614,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private void AppendItems(StringBuilder body, ITypeSymbol element, string binding)
     {
         body.Append("        foreach (var child in section.GetChildren())\n        {\n            try\n            {\n                ");
-        var scalarConversion = ScalarConversionCondition(element);
+        var scalarConversion = ScalarConversionCondition(element, "child");
         if (scalarConversion != "true")
         {
             body.Append($"if (!({scalarConversion}) && !global::System.String.IsNullOrEmpty(child.Value) && !global::System.Linq.Enumerable.Any(child.GetChildren())) continue;\n                ");
@@ -618,12 +623,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         body.Append(binding).Append("\n            }\n            catch (global::System.Exception exception) when (exception is not UnsupportedRuntimeTypeException)\n            {\n            }\n        }\n");
     }
 
-    private string ScalarConversionCondition(ITypeSymbol type)
+    private string ScalarConversionCondition(ITypeSymbol type, string section)
     {
         var converter = GetCustomConverter(type);
         if (converter is not null)
         {
-            return $"((global::System.ComponentModel.TypeConverter){converter}).CanConvertFrom(typeof(string))";
+            var nullValue = IsNullable(type) ? $"global::System.String.IsNullOrEmpty({section}.Value) || " : string.Empty;
+            return $"{nullValue}((global::System.ComponentModel.TypeConverter){converter}).CanConvertFrom(typeof(string))";
         }
 
         return CanConvertScalar(type) ? "true" : FalseLiteral;
