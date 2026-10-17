@@ -22,8 +22,8 @@ public sealed class DeactivateWolverineModuleBehavior<TRequest, TResult>(
     /// <param name="result">The request result, if one was produced.</param>
     /// <param name="exception">The exception thrown during request processing, if any.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
-    /// <returns>A completed task.</returns>
-    public Task FinallyAsync(
+    /// <returns>The supplied result unchanged after releasing module routing.</returns>
+    public Task<Result?> FinallyAsync(
         TRequest request,
         TResult? result,
         Exception? exception,
@@ -33,6 +33,6 @@ public sealed class DeactivateWolverineModuleBehavior<TRequest, TResult>(
             .GetRequiredService<WolverineModuleExecutionContext>()
             .Exit(typeof(TRequest));
 
-        return Task.CompletedTask;
+        return Task.FromResult<Result?>(result);
     }
 }

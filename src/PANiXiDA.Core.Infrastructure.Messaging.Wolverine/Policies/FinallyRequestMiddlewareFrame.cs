@@ -54,6 +54,8 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
         var exceptionLocalName = $"__finallyException_{uniqueSuffix}";
         var exceptionDispatchName = $"__finallyExceptionDispatch_{uniqueSuffix}";
         var cleanupExceptionsName = $"__cleanupExceptions_{uniqueSuffix}";
+        var exceptionHandledName = $"__exceptionHandled_{uniqueSuffix}";
+        var cleanupFailedName = $"__cleanupFailed_{uniqueSuffix}";
 
         writer.WriteLine(string.Empty);
         writer.WriteLine(
@@ -68,19 +70,21 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
         writer.Write("BLOCK:catch (global::System.Exception ex)");
         writer.WriteLine($"{exceptionLocalName} = ex;");
         writer.WriteLine($"{exceptionDispatchName} = global::System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex);");
-        writer.WriteLine("throw;");
         writer.FinishBlock();
 
         writer.Write("BLOCK:finally");
         writer.WriteLine($"global::System.Collections.Generic.List<global::System.Exception>? {cleanupExceptionsName} = null;");
+        writer.WriteLine($"bool {exceptionHandledName} = false;");
+        writer.WriteLine($"bool {cleanupFailedName} = false;");
         foreach (var middleware in middlewareDescriptors)
         {
             writer.Write("BLOCK:try");
-            WriteInvocation(writer, middleware, resultVariable.Usage, exceptionLocalName);
+            WriteInvocation(writer, middleware, resultVariable.Usage, exceptionLocalName, exceptionHandledName);
             writer.FinishBlock();
 
             var cleanupExceptionName = $"__cleanupException_{uniqueSuffix}";
             writer.Write($"BLOCK:catch (global::System.Exception {cleanupExceptionName})");
+            writer.WriteLine($"{cleanupFailedName} = true;");
             writer.Write($"BLOCK:if (!global::System.Object.ReferenceEquals({cleanupExceptionName}, {exceptionLocalName}))");
             writer.WriteLine($"{cleanupExceptionsName} ??= new();");
             writer.WriteLine($"{cleanupExceptionsName}.Add({cleanupExceptionName});");
@@ -88,7 +92,7 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
             writer.FinishBlock();
         }
 
-        WriteRethrow(writer, exceptionLocalName, exceptionDispatchName, cleanupExceptionsName);
+        WriteRethrow(writer, exceptionLocalName, exceptionDispatchName, cleanupExceptionsName, exceptionHandledName, cleanupFailedName);
         writer.FinishBlock();
     }
 
@@ -96,11 +100,15 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
         ISourceWriter writer,
         string exceptionLocalName,
         string exceptionDispatchName,
-        string cleanupExceptionsName)
+        string cleanupExceptionsName,
+        string exceptionHandledName,
+        string cleanupFailedName)
     {
         writer.Write("BLOCK:try");
         writer.WriteComment("Restore the processing stack before propagating or aggregating cleanup failures.");
+        writer.Write($"BLOCK:if (!{exceptionHandledName} || {cleanupFailedName})");
         writer.WriteLine($"{exceptionDispatchName}?.Throw();");
+        writer.FinishBlock();
         writer.FinishBlock();
 
         writer.Write("BLOCK:finally");
@@ -129,7 +137,8 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
         ISourceWriter writer,
         RequestMiddlewareDescriptor middleware,
         string resultLocalName,
-        string exceptionLocalName)
+        string exceptionLocalName,
+        string exceptionHandledName)
     {
         var middlewareVariableName =
             RequestMiddlewareCodeGeneration.BuildVariableName(
@@ -137,10 +146,42 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
                 middleware.UniqueSuffix);
         var middlewareTypeName =
             RequestMiddlewareCodeGeneration.GetCodeTypeName(middleware.Type);
+        var returnedResultName = $"__finallyResult_{middleware.UniqueSuffix}";
 
         writer.WriteLine(
             $"var {middlewareVariableName} = new {middlewareTypeName}({middleware.ConstructorArguments});");
         writer.WriteLine(
-            $"await {middlewareVariableName}.{nameof(IFinallyRequestBehavior<,>.FinallyAsync)}({requestVariable.Usage}, {resultLocalName}, {exceptionLocalName}, {cancellationVariable.Usage}).ConfigureAwait(false);");
+            $"var {returnedResultName} = await {middlewareVariableName}.{nameof(IFinallyRequestBehavior<,>.FinallyAsync)}({requestVariable.Usage}, {resultLocalName}, {exceptionLocalName}, {cancellationVariable.Usage}).ConfigureAwait(false);");
+        writer.Write($"BLOCK:if (!global::System.Object.ReferenceEquals({returnedResultName}, {resultLocalName}))");
+        writer.Write($"BLOCK:if ({returnedResultName} is null || {resultLocalName} is {{ IsFailure: true }})");
+        writer.WriteLine("throw new global::System.InvalidOperationException(\"Finally behaviors must preserve existing failure results and must not discard an existing result.\");");
+        writer.FinishBlock();
+
+        WriteResultAssignment(writer, returnedResultName, resultLocalName);
+        writer.Write($"BLOCK:if ({exceptionLocalName} is not null && {returnedResultName}.IsFailure)");
+        writer.WriteLine($"{exceptionHandledName} = true;");
+        writer.FinishBlock();
+        writer.FinishBlock();
+    }
+
+    private void WriteResultAssignment(ISourceWriter writer, string returnedResultName, string resultLocalName)
+    {
+        if (resultVariable.VariableType == typeof(Result))
+        {
+            writer.WriteLine($"{resultLocalName} = {returnedResultName};");
+            return;
+        }
+
+        var resultTypeName = RequestMiddlewareCodeGeneration.GetCodeTypeName(resultVariable.VariableType);
+        var typedResultName = $"__typedFinallyResult_{uniqueSuffix}";
+        writer.Write($"BLOCK:if ({returnedResultName} is {resultTypeName} {typedResultName})");
+        writer.WriteLine($"{resultLocalName} = {typedResultName};");
+        writer.FinishBlock();
+        writer.Write($"BLOCK:else if ({returnedResultName}.IsFailure)");
+        writer.WriteLine($"{resultLocalName} = {RequestMiddlewareCodeGeneration.BuildFailureResultCode(resultVariable.VariableType, returnedResultName)};");
+        writer.FinishBlock();
+        writer.Write("BLOCK:else");
+        writer.WriteLine("throw new global::System.InvalidOperationException(\"A successful finally result must match the declared request result type.\");");
+        writer.FinishBlock();
     }
 }
