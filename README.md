@@ -44,7 +44,7 @@ Reference the package with its analyzer assets enabled:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="5.0.*" />
+  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="5.1.*" />
 </ItemGroup>
 ```
 
@@ -339,9 +339,10 @@ after:   PersistOutgoingMessagesBehavior
 after:   CommitTransactionBehavior
 after:   FlushOutgoingMessagesBehavior
 finally: CleanupTransactionBehavior
+finally: ConcurrencyExceptionBehavior
 ```
 
-The modular overload activates module routing before authorization and releases it after transaction cleanup.
+The modular overload activates module routing before authorization and releases it after transaction cleanup, before concurrency handling.
 
 Request handlers implement `IRequestHandler<TRequest, TResult>` (including
 `ICommandHandler` and `IQueryHandler`). Custom before behaviors implement
@@ -362,9 +363,16 @@ A failed before behavior skips the remaining before behaviors and the handler.
 After behaviors still run with the failure result, and Finally receives that same result.
 If processing throws, Finally receives the exception and the last produced result
 (or null if no result was produced). Finally behaviors run in registration order,
-including when an earlier Finally behavior throws.
+including when an earlier Finally behavior throws. `FinallyAsync` returns `Task<Result?>`;
+custom behaviors must return the current result or a replacement. Untyped failures are
+converted to the declared `Result<T>` before the next behavior; existing failures are preserved.
 
-Failures from processing and Finally behaviors are preserved. A single exception is
+`ConcurrencyExceptionBehavior` converts direct Application `ConcurrencyException` failures
+to `Error.Conflict` only after all cleanup succeeds. Other exceptions and cleanup failures
+remain unhandled. For background requests, this conversion completes processing without
+exception-based retries; remove the behavior if conflicts should trigger retries.
+
+Unhandled processing exceptions and Finally failures are preserved. A single exception is
 rethrown unchanged, including its stack trace and cancellation semantics. Multiple
 failures are reported in an `AggregateException`. Existing aggregates remain intact;
 the original processing exception is not added again if cleanup rethrows it or a

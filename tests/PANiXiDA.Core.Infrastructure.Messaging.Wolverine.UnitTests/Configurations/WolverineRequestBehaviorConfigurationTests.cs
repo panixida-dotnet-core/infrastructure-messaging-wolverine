@@ -32,8 +32,8 @@ public sealed class WolverineRequestBehaviorConfigurationTests
                 typeof(ValidationBehavior<TestQuery, Result<TestQueryView>, TestRequestHandler<TestQuery, Result<TestQueryView>>>)]
             : [typeof(ValidationBehavior<TestQuery, Result<TestQueryView>, TestRequestHandler<TestQuery, Result<TestQueryView>>>)];
         Type[] expectedFinally = useModules
-            ? [typeof(DeactivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>>)]
-            : [];
+            ? [typeof(DeactivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>>), typeof(ConcurrencyExceptionBehavior<TestQuery, Result<TestQueryView>>)]
+            : [typeof(ConcurrencyExceptionBehavior<TestQuery, Result<TestQueryView>>)];
         before.Select(behavior => behavior.Type).ShouldBe(expectedBefore);
         after.ShouldBeEmpty();
         finallyBehaviors.Select(behavior => behavior.Type).ShouldBe(expectedFinally);
@@ -82,7 +82,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
         ]);
-        registry.FinallyMiddlewareTypes.ShouldBe([typeof(CleanupTransactionBehavior<,>)]);
+        registry.FinallyMiddlewareTypes.ShouldBe([typeof(CleanupTransactionBehavior<,>), typeof(ConcurrencyExceptionBehavior<,>)]);
     }
 
     [Fact(DisplayName = "CreateModularDefault wraps the built-in pipeline with module activation")]
@@ -109,7 +109,8 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         registry.FinallyMiddlewareTypes.ShouldBe(
         [
             typeof(CleanupTransactionBehavior<,>),
-            typeof(DeactivateWolverineModuleBehavior<,>)
+            typeof(DeactivateWolverineModuleBehavior<,>),
+            typeof(ConcurrencyExceptionBehavior<,>)
         ]);
     }
 
@@ -148,7 +149,8 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         registry.FinallyMiddlewareTypes.ShouldBe(
         [
             typeof(CleanupTransactionBehavior<,>),
-            typeof(TestFinallyBehavior<,>)
+            typeof(TestFinallyBehavior<,>),
+            typeof(ConcurrencyExceptionBehavior<,>)
         ]);
     }
 

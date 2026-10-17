@@ -8,7 +8,7 @@ public sealed class ThrowFinallyBehavior<TRequest, TResult>(IntegrationTestJourn
     where TRequest : IRequest<TResult>
     where TResult : Result
 {
-    public Task FinallyAsync(TRequest request, TResult? result, Exception? exception, CancellationToken cancellationToken)
+    public Task<Result?> FinallyAsync(TRequest request, TResult? result, Exception? exception, CancellationToken cancellationToken)
     {
         journal.Add("behavior.throwFinally");
         throw new PlannedCommandException();
