@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using PANiXiDA.Core.Application.Authentication.Abstractions;
 using PANiXiDA.Core.Application.Messaging.Mediator.Behaviors;
+using PANiXiDA.Core.Application.Persistence.Errors;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Behaviors;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Fixtures;
@@ -32,6 +33,56 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
 public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture fixture)
     : IClassFixture<PostgreSqlContainerFixture>
 {
+    [Theory(DisplayName = "Default mediator pipelines return conflicts only after all cleanup succeeds")]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public async Task ConcurrencyShouldBecomeConflictAfterCleanup(bool useModules, bool typed, bool failCleanup)
+    {
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: useModules,
+            configureRequestBehaviors: behaviors =>
+            {
+                if (failCleanup)
+                {
+                    behaviors.Finally.Add(typeof(ThrowFinallyBehavior<,>));
+                }
+                behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>));
+            });
+        var id = Guid.NewGuid();
+        async Task<Result> ExecuteAsync() => typed
+            ? await app.ExecuteWithMediatorAsync((mediator, token) => mediator.QueryAsync(new ConcurrencyQuery(), token), TestContext.Current.CancellationToken)
+            : await app.ExecuteWithMediatorAsync((mediator, token) => mediator.SendAsync(new ConcurrencyCommand(id), token), TestContext.Current.CancellationToken);
+
+        if (failCleanup)
+        {
+            var exception = await Record.ExceptionAsync(ExecuteAsync);
+            var aggregate = (exception as AggregateException ?? exception?.InnerException as AggregateException).ShouldNotBeNull();
+            aggregate.InnerExceptions[0].ShouldBeSameAs(app.Journal.FinallyException);
+            aggregate.InnerExceptions[1].ShouldBeOfType<PlannedCommandException>();
+        }
+        else
+        {
+            var result = await ExecuteAsync();
+            result.ShouldBeSameAs(app.Journal.FinallyResult);
+            (result is Result<IntegrationRecordView>).ShouldBe(typed);
+        }
+
+        app.Journal.FinallyResult.ShouldNotBeNull().Errors.Single().Type.ShouldBe(ErrorType.Conflict);
+        app.Journal.FinallyException.ShouldBeOfType<ConcurrencyException>();
+        app.Journal.Entries.ShouldNotContain("unitOfWork.commit");
+        if (!typed)
+        {
+            app.Journal.Entries.ShouldContain("unitOfWork.rollback");
+            (await app.CountRecordsAsync(id)).ShouldBe(0);
+        }
+    }
+
     [Theory(DisplayName = "Rejected requests pass the same failure to After and Finally without invoking the handler")]
     [InlineData(false, false)]
     [InlineData(false, true)]

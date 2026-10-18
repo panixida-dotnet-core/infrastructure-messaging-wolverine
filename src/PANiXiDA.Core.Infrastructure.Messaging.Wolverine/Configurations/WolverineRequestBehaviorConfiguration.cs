@@ -53,6 +53,7 @@ public sealed class WolverineRequestBehaviorConfiguration
         configuration.After.Add(typeof(FlushOutgoingMessagesBehavior<,>));
 
         configuration.Finally.Add(typeof(CleanupTransactionBehavior<,>));
+        configuration.Finally.Add(typeof(ConcurrencyExceptionBehavior<,>));
 
         return configuration;
     }
@@ -73,6 +74,7 @@ public sealed class WolverineRequestBehaviorConfiguration
 
         configuration.Finally.Add(typeof(CleanupTransactionBehavior<,>));
         configuration.Finally.Add(typeof(DeactivateWolverineModuleBehavior<,>));
+        configuration.Finally.Add(typeof(ConcurrencyExceptionBehavior<,>));
 
         return configuration;
     }

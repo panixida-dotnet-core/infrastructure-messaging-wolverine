@@ -330,17 +330,19 @@ public sealed class FinallyRequestMiddlewareFailureTests
             this.state = state;
         }
 
-        public Task FinallyAsync(TestCommand request, Result? result, Exception? exception, CancellationToken cancellationToken)
+        public async Task<Result?> FinallyAsync(TestCommand request, Result? result, Exception? exception, CancellationToken cancellationToken)
         {
-            return state.CleanupAsync("first", exception, state.FirstException);
+            await state.CleanupAsync("first", exception, state.FirstException);
+            return result;
         }
     }
 
     public sealed class SecondFinallyBehavior(FailureState state) : IFinallyRequestBehavior<TestCommand, Result>
     {
-        public Task FinallyAsync(TestCommand request, Result? result, Exception? exception, CancellationToken cancellationToken)
+        public async Task<Result?> FinallyAsync(TestCommand request, Result? result, Exception? exception, CancellationToken cancellationToken)
         {
-            return state.CleanupAsync("second", exception, state.SecondException);
+            await state.CleanupAsync("second", exception, state.SecondException);
+            return result;
         }
     }
 

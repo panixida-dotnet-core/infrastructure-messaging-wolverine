@@ -4,12 +4,12 @@ public sealed class SecondFinallyBehavior<TRequest, TResult> : IFinallyRequestBe
     where TRequest : IRequest<TResult>
     where TResult : Result
 {
-    public Task FinallyAsync(
+    public Task<Result?> FinallyAsync(
         TRequest request,
         TResult? result,
         Exception? exception,
         CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return Task.FromResult<Result?>(result);
     }
 }
