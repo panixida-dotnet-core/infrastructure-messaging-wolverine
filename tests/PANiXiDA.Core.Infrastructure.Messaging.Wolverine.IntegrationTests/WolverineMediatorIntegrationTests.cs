@@ -33,34 +33,40 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
 public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture fixture)
     : IClassFixture<PostgreSqlContainerFixture>
 {
-    [Theory(DisplayName = "A conflict during deferred saving rolls back business changes and outgoing messages")]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SaveConflictShouldRollbackChangesAndOutgoingMessages(bool useModules)
+    [Theory(DisplayName = "A conflict during deferred saving does not persist business changes or outgoing messages")]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task SaveConflictShouldNotPersistChangesOrOutgoingMessages(bool useModules, bool useTransaction)
     {
-        // Arrange
         await using var app = await fixture.CreateApplicationAsync(
             useModuleRouting: useModules,
             configureRequestBehaviors: behaviors => behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>)));
+        app.Journal.UseTransactions = useTransaction;
         var id = Guid.NewGuid();
         var exception = new ConcurrencyException("Planned save conflict");
         app.Journal.SaveException = exception;
 
-        // Act
         var result = await app.ExecuteWithMediatorAsync(
             (mediator, token) => mediator.SendAsync(
                 new CreateIntegrationRecordAndPublishEventCommand(id, "save-conflict"), token),
             TestContext.Current.CancellationToken);
 
-        // Assert
         result.Errors.Single().Type.ShouldBe(ErrorType.Conflict);
         app.Journal.FinallyException.ShouldBeSameAs(exception);
         (await app.CountRecordsAsync(id)).ShouldBe(0);
         (await app.CountHandledEventsAsync(id)).ShouldBe(0);
         (await app.CountRowsAsync(WolverineStorageConstants.IncomingEnvelopesTable)).ShouldBe(0);
         (await app.CountRowsAsync(WolverineStorageConstants.OutgoingEnvelopesTable)).ShouldBe(0);
-        ShouldContainInOrder(app.Journal.Entries,
-            "unitOfWork.begin", "handler.command", "unitOfWork.save", "unitOfWork.rollback");
+        ShouldContainInOrder(app.Journal.Entries, "handler.command", "unitOfWork.save");
+        app.Journal.Entries.Contains("unitOfWork.begin").ShouldBe(useTransaction);
+        app.Journal.Entries.Contains("unitOfWork.rollback").ShouldBe(useTransaction);
+        if (useTransaction)
+        {
+            ShouldContainInOrder(app.Journal.Entries,
+                "unitOfWork.begin", "handler.command", "unitOfWork.save", "unitOfWork.rollback");
+        }
         app.Journal.Entries.Count(entry => entry == "unitOfWork.save").ShouldBe(1);
         app.Journal.Entries.ShouldNotContain("unitOfWork.commit");
         app.Journal.Entries.ShouldNotContain("handler.event");
@@ -532,10 +538,15 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             "handler.command");
     }
 
-    [Fact(DisplayName = "Event published from command handler is handled after successful commit")]
-    public async Task EventPublishedFromCommandHandlerShouldBeHandledAfterSuccessfulCommit()
+    [Theory(DisplayName = "Command data and outgoing events are saved with or without an explicit transaction")]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task EventPublishedFromCommandHandlerShouldBeHandledAfterSaving(bool useModules, bool useTransaction)
     {
-        await using var app = await fixture.CreateApplicationAsync();
+        await using var app = await fixture.CreateApplicationAsync(useModuleRouting: useModules);
+        app.Journal.UseTransactions = useTransaction;
         var cancellationToken = TestContext.Current.CancellationToken;
         var id = Guid.NewGuid();
 
@@ -558,10 +569,16 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             TimeSpan.FromSeconds(10));
         ShouldContainInOrder(
             app.Journal.Entries,
-            "unitOfWork.begin",
             "handler.command",
-            "unitOfWork.commit",
+            "unitOfWork.save",
             "handler.event");
+        app.Journal.Entries.Count(entry => entry == "unitOfWork.save").ShouldBe(1);
+        app.Journal.Entries.Contains("unitOfWork.begin").ShouldBe(useTransaction);
+        app.Journal.Entries.Contains("unitOfWork.commit").ShouldBe(useTransaction);
+        if (useTransaction)
+        {
+            ShouldContainInOrder(app.Journal.Entries, "unitOfWork.save", "unitOfWork.commit", "handler.event");
+        }
     }
 
     [Theory(DisplayName = "Published event survives restart after commit when outbox flush is interrupted")]
@@ -602,10 +619,15 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         restarted.Journal.Entries.ShouldNotContain("handler.command");
     }
 
-    [Fact(DisplayName = "Failed command result rolls back changes and does not flush outbox")]
-    public async Task FailedCommandResultShouldRollbackChangesAndNotFlushOutbox()
+    [Theory(DisplayName = "Failed commands do not save changes with or without an explicit transaction")]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task FailedCommandResultShouldNotSaveChanges(bool useModules, bool useTransaction)
     {
-        await using var app = await fixture.CreateApplicationAsync();
+        await using var app = await fixture.CreateApplicationAsync(useModuleRouting: useModules);
+        app.Journal.UseTransactions = useTransaction;
         var cancellationToken = TestContext.Current.CancellationToken;
         var id = Guid.NewGuid();
 
@@ -617,11 +639,13 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
 
         result.IsFailure.ShouldBeTrue();
         (await app.CountRecordsAsync(id)).ShouldBe(0);
-        ShouldContainInOrder(
-            app.Journal.Entries,
-            "unitOfWork.begin",
-            "handler.command",
-            "unitOfWork.rollback");
+        app.Journal.Entries.ShouldContain("handler.command");
+        app.Journal.Entries.Contains("unitOfWork.begin").ShouldBe(useTransaction);
+        app.Journal.Entries.Contains("unitOfWork.rollback").ShouldBe(useTransaction);
+        if (useTransaction)
+        {
+            ShouldContainInOrder(app.Journal.Entries, "unitOfWork.begin", "handler.command", "unitOfWork.rollback");
+        }
         app.Journal.Entries.ShouldNotContain("unitOfWork.commit");
         app.Journal.Entries.ShouldNotContain("unitOfWork.save");
     }

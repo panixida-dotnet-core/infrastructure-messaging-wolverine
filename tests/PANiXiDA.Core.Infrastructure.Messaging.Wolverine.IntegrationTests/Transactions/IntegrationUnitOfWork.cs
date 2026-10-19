@@ -27,7 +27,7 @@ public sealed class IntegrationUnitOfWork<TDbContext>(
 
     public async Task BeginTransactionAsync(CancellationToken cancellationToken)
     {
-        if (transaction is not null)
+        if (!journal.UseTransactions || transaction is not null)
         {
             return;
         }
