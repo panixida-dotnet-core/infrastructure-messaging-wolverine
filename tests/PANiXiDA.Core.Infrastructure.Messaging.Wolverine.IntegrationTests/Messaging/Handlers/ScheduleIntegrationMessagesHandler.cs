@@ -16,7 +16,6 @@ public sealed class ScheduleIntegrationMessagesHandler(
         CancellationToken cancellationToken)
     {
         dbContext.Records.Add(new IntegrationRecord { Id = command.RecordId, Name = "scheduled" });
-        await dbContext.SaveChangesAsync(cancellationToken);
 
         await scheduler.ScheduleAtAsync(
             new CreateIntegrationRecordCommand(command.ScheduledRecordId, "delivered"),

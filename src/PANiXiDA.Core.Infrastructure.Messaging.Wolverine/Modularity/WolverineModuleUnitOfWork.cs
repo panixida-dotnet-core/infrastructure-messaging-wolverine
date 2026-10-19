@@ -5,6 +5,11 @@ internal sealed class WolverineModuleUnitOfWork(
 {
     public bool HasActiveTransaction => moduleContext.GetUnitOfWork().HasActiveTransaction;
 
+    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        return moduleContext.GetUnitOfWork().SaveChangesAsync(cancellationToken);
+    }
+
     public Task BeginTransactionAsync(CancellationToken cancellationToken)
     {
         return moduleContext.GetUnitOfWork().BeginTransactionAsync(cancellationToken);

@@ -85,6 +85,7 @@ public sealed class ServiceCollectionExtensionsTests
 
         await unitOfWork.BeginTransactionAsync(TestContext.Current.CancellationToken);
         unitOfWork.HasActiveTransaction.ShouldBeTrue();
+        await unitOfWork.SaveChangesAsync(TestContext.Current.CancellationToken);
         await unitOfWork.CommitTransactionAsync(TestContext.Current.CancellationToken);
         await unitOfWork.BeginTransactionAsync(TestContext.Current.CancellationToken);
         await unitOfWork.RollbackTransactionAsync(TestContext.Current.CancellationToken);
@@ -100,6 +101,8 @@ public sealed class ServiceCollectionExtensionsTests
         await outboxDispatcher.FlushAsync(TestContext.Current.CancellationToken);
 
         moduleUnitOfWork.BeginTransactionCallCount.ShouldBe(4);
+        moduleUnitOfWork.SaveChangesCallCount.ShouldBe(1);
+        moduleUnitOfWork.LastSaveChangesCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
         moduleUnitOfWork.CommitTransactionCallCount.ShouldBe(2);
         moduleUnitOfWork.RollbackTransactionCallCount.ShouldBe(1);
         moduleUnitOfWork.DisposeTransactionCallCount.ShouldBe(1);

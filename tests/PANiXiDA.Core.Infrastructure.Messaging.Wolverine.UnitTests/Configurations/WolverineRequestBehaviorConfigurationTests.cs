@@ -56,7 +56,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         after.Select(behavior => behavior.Type).ShouldBe(
         [
             typeof(PublishDomainEventsBehavior<TestCommand, Result>),
-            typeof(PersistOutgoingMessagesBehavior<TestCommand, Result>),
+            typeof(SaveChangesBehavior<TestCommand, Result>),
             typeof(CommitTransactionBehavior<TestCommand, Result>),
             typeof(FlushOutgoingMessagesBehavior<TestCommand, Result>)
         ]);
@@ -78,7 +78,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         registry.AfterMiddlewareTypes.ShouldBe(
         [
             typeof(PublishDomainEventsBehavior<,>),
-            typeof(PersistOutgoingMessagesBehavior<,>),
+            typeof(SaveChangesBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
         ]);
@@ -102,7 +102,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         registry.AfterMiddlewareTypes.ShouldBe(
         [
             typeof(PublishDomainEventsBehavior<,>),
-            typeof(PersistOutgoingMessagesBehavior<,>),
+            typeof(SaveChangesBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
         ]);
@@ -141,7 +141,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         registry.AfterMiddlewareTypes.ShouldBe(
         [
             typeof(PublishDomainEventsBehavior<,>),
-            typeof(PersistOutgoingMessagesBehavior<,>),
+            typeof(SaveChangesBehavior<,>),
             typeof(TestAfterBehavior<,>),
             typeof(CommitTransactionBehavior<,>),
             typeof(FlushOutgoingMessagesBehavior<,>)

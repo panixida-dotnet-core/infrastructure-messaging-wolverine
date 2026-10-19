@@ -4,6 +4,17 @@ public sealed class TestUnitOfWork : IUnitOfWork
 {
     public bool HasActiveTransaction { get; set; }
 
+    public int SaveChangesCallCount { get; private set; }
+
+    public CancellationToken LastSaveChangesCancellationToken { get; private set; }
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        SaveChangesCallCount++;
+        LastSaveChangesCancellationToken = cancellationToken;
+        return Task.CompletedTask;
+    }
+
     public Exception? RollbackException { get; init; }
 
     public Exception? DisposeException { get; init; }

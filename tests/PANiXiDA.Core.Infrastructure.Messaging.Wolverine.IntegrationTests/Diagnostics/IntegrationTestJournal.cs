@@ -14,6 +14,8 @@ public sealed class IntegrationTestJournal
 
     public Exception? FinallyException { get; set; }
 
+    public Exception? SaveException { get; set; }
+
     public void Add(string entry)
     {
         entries.Enqueue(entry);

@@ -44,7 +44,7 @@ Reference the package with its analyzer assets enabled:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="5.1.*" />
+  <PackageReference Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="6.0.*" />
 </ItemGroup>
 ```
 
@@ -108,7 +108,9 @@ The first assembly passed to `AddModule<TDbContext>()` contains the module's req
 
 The module persistence registration must expose keyed `IUnitOfWork` services under the corresponding DbContext types. `PANiXiDA.Core.Infrastructure.Persistence.Ef` does this automatically for write DbContexts. During a mediator request, the package activates the owning module and routes the existing non-generic `IUnitOfWork` and `IEventBus` abstractions to that module's transaction and EF Core outbox.
 
-Before a successful command commits, `PersistOutgoingMessagesBehavior` saves the active module's DbContext, including tracked message envelopes and business changes. It runs after domain event publication and before `CommitTransactionBehavior`; `FlushOutgoingMessagesBehavior` releases messages only after commit. Custom request pipelines must preserve this order. `IUnitOfWork.CommitTransactionAsync()` itself only completes the transaction.
+Before a successful command with an active transaction commits, Application's `SaveChangesBehavior` calls `IUnitOfWork.SaveChangesAsync`, saving the active module's DbContext, including tracked message envelopes and business changes. It runs after domain event publication and before `CommitTransactionBehavior`; `FlushOutgoingMessagesBehavior` releases messages only after commit. Custom request pipelines must preserve this order. `IUnitOfWork.CommitTransactionAsync()` itself only completes the transaction.
+
+Version 6 requires Application 6 and replaces `PersistOutgoingMessagesBehavior` with `SaveChangesBehavior` in both default and modular pipelines. Implement `SaveChangesAsync` in custom units of work and register business changes in command handlers for this common save step. The unit of work and outbox must use the same scoped DbContext. `PersistOutgoingMessagesBehavior` and `IOutboxDispatcher.SaveChangesAsync` remain available for custom flows; do not add the old behavior alongside the new one, as this would save twice.
 
 Custom `IOutboxDispatcher` implementations must implement `SaveChangesAsync(CancellationToken cancellationToken)`. Persist pending messages before commit, or return a completed task if they were already persisted in the current transaction.
 
@@ -335,7 +337,7 @@ before:  AuthorizationBehavior (handlers implementing IRequireAuthorization)
 before:  ValidationBehavior
 before:  BeginTransactionBehavior
 after:   PublishDomainEventsBehavior
-after:   PersistOutgoingMessagesBehavior
+after:   SaveChangesBehavior
 after:   CommitTransactionBehavior
 after:   FlushOutgoingMessagesBehavior
 finally: CleanupTransactionBehavior

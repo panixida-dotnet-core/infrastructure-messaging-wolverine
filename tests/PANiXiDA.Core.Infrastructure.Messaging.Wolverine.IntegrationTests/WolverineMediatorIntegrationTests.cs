@@ -33,6 +33,39 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
 public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture fixture)
     : IClassFixture<PostgreSqlContainerFixture>
 {
+    [Theory(DisplayName = "A conflict during deferred saving rolls back business changes and outgoing messages")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveConflictShouldRollbackChangesAndOutgoingMessages(bool useModules)
+    {
+        // Arrange
+        await using var app = await fixture.CreateApplicationAsync(
+            useModuleRouting: useModules,
+            configureRequestBehaviors: behaviors => behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>)));
+        var id = Guid.NewGuid();
+        var exception = new ConcurrencyException("Planned save conflict");
+        app.Journal.SaveException = exception;
+
+        // Act
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, token) => mediator.SendAsync(
+                new CreateIntegrationRecordAndPublishEventCommand(id, "save-conflict"), token),
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        result.Errors.Single().Type.ShouldBe(ErrorType.Conflict);
+        app.Journal.FinallyException.ShouldBeSameAs(exception);
+        (await app.CountRecordsAsync(id)).ShouldBe(0);
+        (await app.CountHandledEventsAsync(id)).ShouldBe(0);
+        (await app.CountRowsAsync(WolverineStorageConstants.IncomingEnvelopesTable)).ShouldBe(0);
+        (await app.CountRowsAsync(WolverineStorageConstants.OutgoingEnvelopesTable)).ShouldBe(0);
+        ShouldContainInOrder(app.Journal.Entries,
+            "unitOfWork.begin", "handler.command", "unitOfWork.save", "unitOfWork.rollback");
+        app.Journal.Entries.Count(entry => entry == "unitOfWork.save").ShouldBe(1);
+        app.Journal.Entries.ShouldNotContain("unitOfWork.commit");
+        app.Journal.Entries.ShouldNotContain("handler.event");
+    }
+
     [Theory(DisplayName = "Default mediator pipelines return conflicts only after all cleanup succeeds")]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
@@ -324,10 +357,12 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         queryResult.IsSuccess.ShouldBeTrue();
         queryResult.Value.ShouldBe(new IntegrationRecordView(id, name));
         app.Journal.Entries.ShouldBe(journalBeforeQuery);
+        app.Journal.Entries.Count(entry => entry == "unitOfWork.save").ShouldBe(1);
         ShouldContainInOrder(
             app.Journal.Entries,
             "unitOfWork.begin",
             "handler.command",
+            "unitOfWork.save",
             "unitOfWork.commit");
     }
 
@@ -398,6 +433,7 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         ShouldContainInOrder(
             app.Journal.Entries,
             $"unitOfWork.begin:{nameof(SecondModuleDbContext)}",
+            $"unitOfWork.save:{nameof(SecondModuleDbContext)}",
             $"unitOfWork.commit:{nameof(SecondModuleDbContext)}");
     }
 
@@ -587,6 +623,7 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             "handler.command",
             "unitOfWork.rollback");
         app.Journal.Entries.ShouldNotContain("unitOfWork.commit");
+        app.Journal.Entries.ShouldNotContain("unitOfWork.save");
     }
 
     [Fact(DisplayName = "Outbox and handler changes roll back in one transaction when command throws")]

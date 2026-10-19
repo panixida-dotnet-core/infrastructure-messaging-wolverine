@@ -9,7 +9,7 @@ public sealed class CreateIntegrationRecordHandler(
     IntegrationDbContext dbContext,
     IntegrationTestJournal journal) : ICommandHandler<CreateIntegrationRecordCommand, Result>
 {
-    public async Task<Result> HandleAsync(
+    public Task<Result> HandleAsync(
         CreateIntegrationRecordCommand command,
         CancellationToken cancellationToken)
     {
@@ -21,8 +21,6 @@ public sealed class CreateIntegrationRecordHandler(
             Name = command.Name,
         });
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return Result.Success();
+        return Task.FromResult(Result.Success());
     }
 }

@@ -14,6 +14,17 @@ public sealed class IntegrationUnitOfWork<TDbContext>(
 
     public bool HasActiveTransaction => transaction is not null;
 
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        journal.Add("unitOfWork.save");
+        journal.Add($"unitOfWork.save:{typeof(TDbContext).Name}");
+        if (journal.SaveException is { } exception)
+        {
+            throw exception;
+        }
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task BeginTransactionAsync(CancellationToken cancellationToken)
     {
         if (transaction is not null)
@@ -74,6 +85,7 @@ public sealed class IntegrationUnitOfWork<TDbContext>(
         try
         {
             await action(cancellationToken);
+            await SaveChangesAsync(cancellationToken);
             await CommitTransactionAsync(cancellationToken);
         }
         catch
