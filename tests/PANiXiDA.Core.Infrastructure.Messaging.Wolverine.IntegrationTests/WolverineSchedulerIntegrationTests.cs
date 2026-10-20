@@ -85,12 +85,14 @@ public sealed class WolverineSchedulerIntegrationTests(PostgreSqlContainerFixtur
         await using (var scope = app.Host.Services.CreateAsyncScope())
         {
             var dispatcher = scope.ServiceProvider.GetRequiredKeyedService<IOutboxDispatcher>(typeof(SecondModuleDbContext));
+            var unitOfWork = scope.ServiceProvider.GetRequiredKeyedService<IUnitOfWork>(typeof(SecondModuleDbContext));
             var scheduler = new WolverineScheduler(dispatcher);
 
             await scheduler.ScheduleAsync(
                 new SharedModuleEvent(id, "scheduled fan-out", FailSecondModuleHandler: false),
                 TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
-            await dispatcher.SaveChangesAsync(TestContext.Current.CancellationToken);
+            (await CountEnvelopesAsync(app)).ShouldBe(0);
+            await unitOfWork.SaveChangesAsync(TestContext.Current.CancellationToken);
             (await CountEnvelopesAsync(app)).ShouldBeGreaterThan(0);
             await dispatcher.FlushAsync(TestContext.Current.CancellationToken);
         }

@@ -35,12 +35,6 @@ public sealed class EfCoreOutboxDispatcher<TDbContext>(IDbContextOutbox<TDbConte
     }
 
     /// <inheritdoc />
-    public Task SaveChangesAsync(CancellationToken cancellationToken)
-    {
-        return outbox.DbContext.SaveChangesAsync(cancellationToken);
-    }
-
-    /// <inheritdoc />
     public Task FlushAsync(CancellationToken cancellationToken)
     {
         return outbox.FlushOutgoingMessagesAsync();
