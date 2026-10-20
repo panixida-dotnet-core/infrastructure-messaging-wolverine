@@ -8,6 +8,68 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Generators.
 
 public sealed class RequestBehaviorMetadataGeneratorTests
 {
+    [Theory(DisplayName = "After and finally bindings use the actual handler only when the behavior requires it")]
+    [InlineData("HandlerAfter", false)]
+    [InlineData("HandlerAfter", true)]
+    [InlineData("HandlerFinally", false)]
+    [InlineData("HandlerFinally", true)]
+    public void Generator_Should_BindHandlerAwareBehaviors_When_AfterOrFinallyStageIsUsed(string behaviorName, bool closed)
+    {
+        var source = Generate(Source + """
+            public interface ITransactionalHandler;
+            public sealed class PublicHandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.ICommandHandler<Request, Result>
+            {
+                public Task<Result> HandleAsync(Request request, CancellationToken token) => Task.FromResult(Result.Success());
+            }
+            public sealed class TransactionalHandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.ICommandHandler<Request, Result>,
+                ITransactionalHandler
+            {
+                public Task<Result> HandleAsync(Request request, CancellationToken token) => Task.FromResult(Result.Success());
+            }
+            public sealed class OtherTransactionalHandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.ICommandHandler<Request, Result>,
+                ITransactionalHandler
+            {
+                public Task<Result> HandleAsync(Request request, CancellationToken token) => Task.FromResult(Result.Success());
+            }
+            public sealed class HandlerAfter<TRequest, TResult, THandler> : IAfterRequestBehavior<TRequest, TResult>
+                where TRequest : IRequest<TResult> where TResult : Result
+                where THandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.IRequestHandler<TRequest, TResult>, ITransactionalHandler
+            {
+                public Task AfterAsync(TRequest request, TResult result, CancellationToken token) => Task.CompletedTask;
+            }
+            public sealed class HandlerFinally<TRequest, TResult, THandler> : IFinallyRequestBehavior<TRequest, TResult>
+                where TRequest : IRequest<TResult> where TResult : Result
+                where THandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.IRequestHandler<TRequest, TResult>, ITransactionalHandler
+            {
+                public Task<Result?> FinallyAsync(TRequest request, TResult? result, System.Exception? exception, CancellationToken token)
+                    => Task.FromResult<Result?>(result);
+            }
+            public static class Registrations
+            {
+                public static System.Type After => typeof(HandlerAfter<Request, Result, TransactionalHandler>);
+                public static System.Type Finally => typeof(HandlerFinally<Request, Result, TransactionalHandler>);
+            }
+            """);
+        var closedName = $"{behaviorName}<global::Request, global::PANiXiDA.Core.ResultPattern.Result, global::TransactionalHandler>";
+        var registeredName = closed ? closedName : $"{behaviorName}<,,>";
+        var bindings = source.Split('\n').Where(line => line.Contains(
+            $"RegisterBinding(typeof(global::{registeredName}), typeof(global::Request),")).ToArray();
+
+        bindings.Length.ShouldBe(3);
+        bindings.Single(line => line.EndsWith(", typeof(global::PublicHandler));", StringComparison.Ordinal))
+            .ShouldContain(", null, typeof(global::PublicHandler)");
+        bindings.Single(line => line.EndsWith(", typeof(global::TransactionalHandler));", StringComparison.Ordinal))
+            .ShouldContain($", typeof(global::{closedName}), typeof(global::TransactionalHandler)");
+        bindings.Single(line => line.EndsWith(", typeof(global::OtherTransactionalHandler));", StringComparison.Ordinal))
+            .ShouldContain(closed
+                ? ", null, typeof(global::OtherTransactionalHandler)"
+                : $", typeof(global::{behaviorName}<global::Request, global::PANiXiDA.Core.ResultPattern.Result, global::OtherTransactionalHandler>), typeof(global::OtherTransactionalHandler)");
+        var independentBindings = source.Split('\n').Where(line => line.Contains(
+            "RegisterBinding(typeof(global::Behavior<,>), typeof(global::Request),")).ToArray();
+        independentBindings.ShouldHaveSingleItem().ShouldEndWith(
+            "typeof(global::Behavior<global::Request, global::PANiXiDA.Core.ResultPattern.Result>));");
+    }
+
     [Fact(DisplayName = "Before bindings use the concrete handler and skip authorization only for unprotected handlers")]
     public void GeneratorShouldBindAuthorizationToActualHandler()
     {

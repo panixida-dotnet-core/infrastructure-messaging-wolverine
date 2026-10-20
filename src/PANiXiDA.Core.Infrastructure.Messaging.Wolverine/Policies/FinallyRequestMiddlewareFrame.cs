@@ -23,13 +23,15 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
     internal static FinallyRequestMiddlewareFrame? TryCreate(
         Type requestType,
         Variable resultVariable,
+        Type handlerType,
         IReadOnlyList<Type> middlewareTypes)
     {
         var descriptors = RequestMiddlewareDescriptor.Resolve(
             requestType,
             resultVariable.VariableType,
             typeof(IFinallyRequestBehavior<,>),
-            middlewareTypes);
+            middlewareTypes,
+            handlerType);
 
         if (descriptors.Length == 0)
         {

@@ -79,6 +79,7 @@ public sealed class RequestMiddlewareFrameTests
         var frame = AfterRequestMiddlewareFrame.TryCreate(
             typeof(TestCommand),
             resultVariable,
+            typeof(TestRequestHandler<TestCommand, Result>),
             [typeof(ClosedCommandAfterBehavior)])
             ?? throw new InvalidOperationException("After frame was not created.");
 
@@ -92,6 +93,7 @@ public sealed class RequestMiddlewareFrameTests
         var frame = FinallyRequestMiddlewareFrame.TryCreate(
             typeof(TestCommand),
             resultVariable,
+            typeof(TestRequestHandler<TestCommand, Result>),
             [typeof(TestFinallyBehavior<,>)])
             ?? throw new InvalidOperationException("Finally frame was not created.");
 
@@ -118,6 +120,7 @@ public sealed class RequestMiddlewareFrameTests
         var frame = AfterRequestMiddlewareFrame.TryCreate(
             typeof(OtherCommand),
             resultVariable,
+            typeof(TestRequestHandler<OtherCommand, Result>),
             [typeof(ClosedCommandAfterBehavior)]);
 
         frame.ShouldBeNull();

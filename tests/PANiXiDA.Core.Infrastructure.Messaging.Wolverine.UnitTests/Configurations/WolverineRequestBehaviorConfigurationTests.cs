@@ -7,6 +7,37 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class WolverineRequestBehaviorConfigurationTests
 {
+    [Theory(DisplayName = "Unmarked command handlers skip all transaction stages and retain deferred saving")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnmarkedCommandPipelineShouldExcludeTransactionBehaviors(bool useModules)
+    {
+        var configuration = useModules
+            ? WolverineRequestBehaviorConfiguration.CreateModularDefault()
+            : WolverineRequestBehaviorConfiguration.CreateDefault();
+        var registry = configuration.Build();
+        var handlerType = typeof(UnmarkedRequestHandler<TestCommand, Result>);
+
+        var before = RequestMiddlewareDescriptor.Resolve(
+            typeof(TestCommand), typeof(Result),
+            typeof(IBeforeRequestBehavior<,,>), registry.BeforeMiddlewareTypes, handlerType);
+        var after = RequestMiddlewareDescriptor.Resolve(
+            typeof(TestCommand), typeof(Result),
+            typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes, handlerType);
+        var finallyBehaviors = RequestMiddlewareDescriptor.Resolve(
+            typeof(TestCommand), typeof(Result),
+            typeof(IFinallyRequestBehavior<,>), registry.FinallyMiddlewareTypes, handlerType);
+
+        before.Select(behavior => behavior.Type.GetGenericTypeDefinition()).ShouldNotContain(typeof(BeginTransactionBehavior<,,>));
+        after.Select(behavior => behavior.Type).ShouldBe(
+        [
+            typeof(PublishDomainEventsBehavior<TestCommand, Result>),
+            typeof(SaveChangesBehavior<TestCommand, Result>),
+            typeof(FlushOutgoingMessagesBehavior<TestCommand, Result>)
+        ]);
+        finallyBehaviors.Select(behavior => behavior.Type.GetGenericTypeDefinition()).ShouldNotContain(typeof(CleanupTransactionBehavior<,,>));
+    }
+
     [Theory(DisplayName = "Query pipelines exclude domain event publication, transactions, and outbox behaviors")]
     [InlineData(false)]
     [InlineData(true)]
@@ -22,10 +53,10 @@ public sealed class WolverineRequestBehaviorConfigurationTests
             typeof(IBeforeRequestBehavior<,,>), registry.BeforeMiddlewareTypes, typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>));
         var after = RequestMiddlewareDescriptor.Resolve(
             typeof(TestQuery), typeof(Result<TestQueryView>),
-            typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes);
+            typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes, typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>));
         var finallyBehaviors = RequestMiddlewareDescriptor.Resolve(
             typeof(TestQuery), typeof(Result<TestQueryView>),
-            typeof(IFinallyRequestBehavior<,>), registry.FinallyMiddlewareTypes);
+            typeof(IFinallyRequestBehavior<,>), registry.FinallyMiddlewareTypes, typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>));
 
         Type[] expectedBefore = useModules
             ? [typeof(ActivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>, TestRequestHandler<TestQuery, Result<TestQueryView>>>),
@@ -51,13 +82,13 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var after = RequestMiddlewareDescriptor.Resolve(
             typeof(TestCommand), typeof(Result),
-            typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes);
+            typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes, typeof(TestRequestHandler<TestCommand, Result>));
 
         after.Select(behavior => behavior.Type).ShouldBe(
         [
             typeof(PublishDomainEventsBehavior<TestCommand, Result>),
             typeof(SaveChangesBehavior<TestCommand, Result>),
-            typeof(CommitTransactionBehavior<TestCommand, Result>),
+            typeof(CommitTransactionBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>),
             typeof(FlushOutgoingMessagesBehavior<TestCommand, Result>)
         ]);
     }
@@ -79,10 +110,10 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         [
             typeof(PublishDomainEventsBehavior<,>),
             typeof(SaveChangesBehavior<,>),
-            typeof(CommitTransactionBehavior<,>),
+            typeof(CommitTransactionBehavior<,,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
         ]);
-        registry.FinallyMiddlewareTypes.ShouldBe([typeof(CleanupTransactionBehavior<,>), typeof(ConcurrencyExceptionBehavior<,>)]);
+        registry.FinallyMiddlewareTypes.ShouldBe([typeof(CleanupTransactionBehavior<,,>), typeof(ConcurrencyExceptionBehavior<,>)]);
     }
 
     [Fact(DisplayName = "CreateModularDefault wraps the built-in pipeline with module activation")]
@@ -103,12 +134,12 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         [
             typeof(PublishDomainEventsBehavior<,>),
             typeof(SaveChangesBehavior<,>),
-            typeof(CommitTransactionBehavior<,>),
+            typeof(CommitTransactionBehavior<,,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
         ]);
         registry.FinallyMiddlewareTypes.ShouldBe(
         [
-            typeof(CleanupTransactionBehavior<,>),
+            typeof(CleanupTransactionBehavior<,,>),
             typeof(DeactivateWolverineModuleBehavior<,>),
             typeof(ConcurrencyExceptionBehavior<,>)
         ]);
@@ -124,10 +155,10 @@ public sealed class WolverineRequestBehaviorConfigurationTests
             typeof(BeginTransactionBehavior<,,>));
         configuration.After.InsertBefore(
             typeof(TestAfterBehavior<,>),
-            typeof(CommitTransactionBehavior<,>));
+            typeof(CommitTransactionBehavior<,,>));
         configuration.Finally.InsertAfter(
             typeof(TestFinallyBehavior<,>),
-            typeof(CleanupTransactionBehavior<,>));
+            typeof(CleanupTransactionBehavior<,,>));
 
         var registry = configuration.Build();
 
@@ -143,12 +174,12 @@ public sealed class WolverineRequestBehaviorConfigurationTests
             typeof(PublishDomainEventsBehavior<,>),
             typeof(SaveChangesBehavior<,>),
             typeof(TestAfterBehavior<,>),
-            typeof(CommitTransactionBehavior<,>),
+            typeof(CommitTransactionBehavior<,,>),
             typeof(FlushOutgoingMessagesBehavior<,>)
         ]);
         registry.FinallyMiddlewareTypes.ShouldBe(
         [
-            typeof(CleanupTransactionBehavior<,>),
+            typeof(CleanupTransactionBehavior<,,>),
             typeof(TestFinallyBehavior<,>),
             typeof(ConcurrencyExceptionBehavior<,>)
         ]);

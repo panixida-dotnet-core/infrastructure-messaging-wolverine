@@ -5,7 +5,7 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messagin
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Handlers;
 
-public sealed class ConcurrencyCommandHandler(IntegrationDbContext dbContext) : ICommandHandler<ConcurrencyCommand, Result>
+public sealed class ConcurrencyCommandHandler(IntegrationDbContext dbContext) : ICommandHandler<ConcurrencyCommand, Result>, IRequireTransaction
 {
     public async Task<Result> HandleAsync(ConcurrencyCommand command, CancellationToken cancellationToken)
     {

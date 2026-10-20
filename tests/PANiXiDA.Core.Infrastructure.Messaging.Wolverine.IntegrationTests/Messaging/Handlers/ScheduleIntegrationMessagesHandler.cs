@@ -9,7 +9,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Mess
 
 public sealed class ScheduleIntegrationMessagesHandler(
     IntegrationDbContext dbContext,
-    IScheduler scheduler) : ICommandHandler<ScheduleIntegrationMessagesCommand, Result>
+    IScheduler scheduler) : ICommandHandler<ScheduleIntegrationMessagesCommand, Result>, IRequireTransaction
 {
     public async Task<Result> HandleAsync(
         ScheduleIntegrationMessagesCommand command,
