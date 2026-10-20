@@ -110,7 +110,7 @@ The module persistence registration must expose keyed `IUnitOfWork` services und
 
 After a successful command, `SaveChangesBehavior` saves business changes and outbox messages through `IUnitOfWork.SaveChangesAsync`, with or without an explicit transaction. It runs after domain event collection and before `CommitTransactionBehavior`; `FlushOutgoingMessagesBehavior` releases messages after saving and transaction commit. Custom request pipelines must preserve this order. `IUnitOfWork.CommitTransactionAsync()` itself only completes the transaction.
 
-`SaveChangesBehavior` is registered in both default and modular pipelines. The unit of work and outbox must use the same scoped DbContext. `PersistOutgoingMessagesBehavior` and `IOutboxDispatcher.SaveChangesAsync` remain available for custom flows; do not combine both saving behaviors, as this would save twice.
+`SaveChangesBehavior` is registered in both default and modular pipelines. The unit of work and outbox must use the same scoped DbContext. `IOutboxDispatcher.SaveChangesAsync` is available for explicit persistence outside the command pipeline.
 
 Custom `IOutboxDispatcher` implementations must implement `SaveChangesAsync(CancellationToken cancellationToken)`. Persist pending messages before commit, or return a completed task if they were already persisted in the current transaction.
 

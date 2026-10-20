@@ -14,8 +14,6 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
 
     public CancellationToken LastSaveChangesCancellationToken { get; private set; }
 
-    public Exception? SaveChangesException { get; set; }
-
     public object? LastPublishedEvent { get; private set; }
 
     public CancellationToken LastFlushCancellationToken { get; private set; }
@@ -67,7 +65,7 @@ public sealed class TestOutboxDispatcher : IOutboxDispatcher
         SaveChangesCallCount++;
         LastSaveChangesCancellationToken = cancellationToken;
 
-        return SaveChangesException is null ? Task.CompletedTask : Task.FromException(SaveChangesException);
+        return Task.CompletedTask;
     }
 
     public Task FlushAsync(CancellationToken cancellationToken)

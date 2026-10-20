@@ -10,7 +10,6 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Messag
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Messaging.Handlers;
 
 using Wolverine;
-using Wolverine.EntityFrameworkCore;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
 
@@ -87,12 +86,13 @@ public sealed class WolverineSchedulerIntegrationTests(PostgreSqlContainerFixtur
         {
             var dispatcher = scope.ServiceProvider.GetRequiredKeyedService<IOutboxDispatcher>(typeof(SecondModuleDbContext));
             var scheduler = new WolverineScheduler(dispatcher);
-            var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox<SecondModuleDbContext>>();
 
             await scheduler.ScheduleAsync(
                 new SharedModuleEvent(id, "scheduled fan-out", FailSecondModuleHandler: false),
                 TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
-            await outbox.SaveChangesAndFlushMessagesAsync(TestContext.Current.CancellationToken);
+            await dispatcher.SaveChangesAsync(TestContext.Current.CancellationToken);
+            (await CountEnvelopesAsync(app)).ShouldBeGreaterThan(0);
+            await dispatcher.FlushAsync(TestContext.Current.CancellationToken);
         }
 
         (await app.CountHandledEventsAsync(id)).ShouldBe(0);
