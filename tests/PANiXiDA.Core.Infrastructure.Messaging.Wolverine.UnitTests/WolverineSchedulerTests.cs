@@ -34,7 +34,6 @@ public sealed class WolverineSchedulerTests
         }
 
         proxy.LastDispatchCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
-        proxy.SaveChangesCallCount.ShouldBe(0);
         proxy.FlushCallCount.ShouldBe(0);
     }
 

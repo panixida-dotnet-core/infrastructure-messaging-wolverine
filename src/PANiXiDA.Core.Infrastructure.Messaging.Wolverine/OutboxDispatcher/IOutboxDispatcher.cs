@@ -43,23 +43,6 @@ public interface IOutboxDispatcher
     Task SendAsync(ICommand<Result> command, DeliveryOptions options, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Saves pending outbox messages before committing the current transaction.
-    /// </summary>
-    /// <remarks>
-    /// EF Core implementations also save other tracked changes in the same DbContext.
-    /// Implementations that persist messages immediately can return a completed task.
-    /// This operation must not commit the transaction or release messages for delivery.
-    /// The modular dispatcher requires an active mediator module. Outside the mediator pipeline,
-    /// use the keyed dispatcher for the required module; native handlers rely on Wolverine's transaction middleware.
-    /// </remarks>
-    /// <param name="cancellationToken">The token used to cancel saving changes.</param>
-    /// <returns>A task that represents the asynchronous save operation.</returns>
-    /// <exception cref="InvalidOperationException">
-    /// No mediator module is active when saving through the unkeyed modular dispatcher.
-    /// </exception>
-    Task SaveChangesAsync(CancellationToken cancellationToken);
-
-    /// <summary>
     /// Flushes all outgoing messages accumulated in the current outbox.
     /// </summary>
     /// <remarks>

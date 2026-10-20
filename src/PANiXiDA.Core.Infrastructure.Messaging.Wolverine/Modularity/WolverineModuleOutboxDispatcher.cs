@@ -47,18 +47,6 @@ internal sealed class WolverineModuleOutboxDispatcher(
         return serviceProvider.GetRequiredService<IMessageContext>().SendAsync(command, options).AsTask();
     }
 
-    public Task SaveChangesAsync(CancellationToken cancellationToken)
-    {
-        if (moduleContext.TryGetOutboxDispatcher(out var outboxDispatcher))
-        {
-            return outboxDispatcher.SaveChangesAsync(cancellationToken);
-        }
-
-        throw new InvalidOperationException(
-            "No Wolverine module is active in the current request scope. " +
-            "Use the keyed module outbox dispatcher to save changes outside the mediator pipeline.");
-    }
-
     public Task FlushAsync(CancellationToken cancellationToken)
     {
         if (moduleContext.TryGetOutboxDispatcher(out var outboxDispatcher))

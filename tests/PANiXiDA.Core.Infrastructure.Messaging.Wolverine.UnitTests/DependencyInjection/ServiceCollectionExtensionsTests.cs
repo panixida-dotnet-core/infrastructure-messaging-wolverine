@@ -85,6 +85,7 @@ public sealed class ServiceCollectionExtensionsTests
 
         await unitOfWork.BeginTransactionAsync(TestContext.Current.CancellationToken);
         unitOfWork.HasActiveTransaction.ShouldBeTrue();
+        await unitOfWork.SaveChangesAsync(TestContext.Current.CancellationToken);
         await unitOfWork.CommitTransactionAsync(TestContext.Current.CancellationToken);
         await unitOfWork.BeginTransactionAsync(TestContext.Current.CancellationToken);
         await unitOfWork.RollbackTransactionAsync(TestContext.Current.CancellationToken);
@@ -96,16 +97,15 @@ public sealed class ServiceCollectionExtensionsTests
         await eventBus.PublishAsync(
             new TestDomainEvent(Guid.NewGuid()),
             TestContext.Current.CancellationToken);
-        await outboxDispatcher.SaveChangesAsync(TestContext.Current.CancellationToken);
         await outboxDispatcher.FlushAsync(TestContext.Current.CancellationToken);
 
         moduleUnitOfWork.BeginTransactionCallCount.ShouldBe(4);
+        moduleUnitOfWork.SaveChangesCallCount.ShouldBe(1);
+        moduleUnitOfWork.LastSaveChangesCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
         moduleUnitOfWork.CommitTransactionCallCount.ShouldBe(2);
         moduleUnitOfWork.RollbackTransactionCallCount.ShouldBe(1);
         moduleUnitOfWork.DisposeTransactionCallCount.ShouldBe(1);
         moduleOutboxDispatcher.PublishCallCount.ShouldBe(1);
-        moduleOutboxDispatcher.SaveChangesCallCount.ShouldBe(1);
-        moduleOutboxDispatcher.LastSaveChangesCancellationToken.ShouldBe(TestContext.Current.CancellationToken);
         moduleOutboxDispatcher.FlushCallCount.ShouldBe(1);
 
         moduleContext.Exit(typeof(TestCommand));
@@ -177,32 +177,6 @@ public sealed class ServiceCollectionExtensionsTests
         using var provider = services.BuildServiceProvider();
         provider.GetKeyedServices<IOutboxDispatcher>(typeof(TestDbContext))
             .ShouldHaveSingleItem().ShouldBeSameAs(existingOutbox);
-    }
-
-    [Theory(DisplayName = "Explicit outbox saving requires an active module even when a native message context exists")]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ModularSaveChangesShouldRequireActiveModule(bool hasMessageContext)
-    {
-        var services = new ServiceCollection();
-        var moduleConfiguration = new WolverineModuleConfiguration()
-            .AddModule<TestDbContext>(typeof(TestCommand).Assembly);
-        services.AddWolverineMediator(moduleConfiguration.Build());
-        if (hasMessageContext)
-        {
-            var messageContext = MessageContextProxy.Create(out _);
-            services.AddScoped(_ => messageContext);
-        }
-
-        await using var provider = services.BuildServiceProvider();
-        await using var scope = provider.CreateAsyncScope();
-        var outboxDispatcher = scope.ServiceProvider.GetRequiredService<IOutboxDispatcher>();
-
-        var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
-            outboxDispatcher.SaveChangesAsync(TestContext.Current.CancellationToken));
-
-        exception.Message.ShouldContain("No Wolverine module is active");
-        exception.Message.ShouldContain("keyed module outbox dispatcher");
     }
 
     [Theory(DisplayName = "Modular event bus propagates synchronous and asynchronous publication failures")]

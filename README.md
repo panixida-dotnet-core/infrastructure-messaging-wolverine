@@ -100,7 +100,7 @@ var outbox = scope.ServiceProvider.GetRequiredKeyedService<IOutboxDispatcher>(
     typeof(OrdersWriteDbContext));
 ```
 
-This selects the module's EF Core outbox directly. Within an explicit transaction, call `outbox.SaveChangesAsync(cancellationToken)` before commit and `outbox.FlushAsync(cancellationToken)` after commit.
+This selects the module's EF Core outbox directly. Resolve the module's keyed `IUnitOfWork` from the same scope to save changes. Within an explicit transaction, call `unitOfWork.SaveChangesAsync(cancellationToken)` before commit and `outbox.FlushAsync(cancellationToken)` after commit.
 
 Handlers for the same event type are separated into independent local queues and transactions. Durable message identity includes the destination so fan-out handlers have independent inbox records, retries, and failure handling.
 
@@ -108,19 +108,19 @@ The first assembly passed to `AddModule<TDbContext>()` contains the module's req
 
 The module persistence registration must expose keyed `IUnitOfWork` services under the corresponding DbContext types. `PANiXiDA.Core.Infrastructure.Persistence.Ef` does this automatically for write DbContexts. During a mediator request, the package activates the owning module and routes the existing non-generic `IUnitOfWork` and `IEventBus` abstractions to that module's transaction and EF Core outbox.
 
-Before a successful command commits, `PersistOutgoingMessagesBehavior` saves the active module's DbContext, including tracked message envelopes and business changes. It runs after domain event publication and before `CommitTransactionBehavior`; `FlushOutgoingMessagesBehavior` releases messages only after commit. Custom request pipelines must preserve this order. `IUnitOfWork.CommitTransactionAsync()` itself only completes the transaction.
+After a successful command, `SaveChangesBehavior` saves business changes and outbox messages through `IUnitOfWork.SaveChangesAsync`, with or without an explicit transaction. It runs after domain event collection and before `CommitTransactionBehavior`; `FlushOutgoingMessagesBehavior` releases messages after saving and transaction commit. Custom request pipelines must preserve this order. `IUnitOfWork.CommitTransactionAsync()` itself only completes the transaction.
 
-Custom `IOutboxDispatcher` implementations must implement `SaveChangesAsync(CancellationToken cancellationToken)`. Persist pending messages before commit, or return a completed task if they were already persisted in the current transaction.
+`SaveChangesBehavior` is registered in both default and modular pipelines. The unit of work and outbox must use the same scoped DbContext.
 
-They must also implement `SendAsync` and the `PublishAsync` overload accepting Wolverine `DeliveryOptions`. Preserve those options and add messages to the same transactional outbox without committing or flushing it.
+Custom `IOutboxDispatcher` implementations must implement `SendAsync` and the `PublishAsync` overload accepting Wolverine `DeliveryOptions`. Preserve those options and add messages to the same transactional outbox without committing or flushing it.
 
-Calls to `SaveChangesAsync` and `FlushAsync` require an explicit cancellation token. Pass `CancellationToken.None` when cancellation is not needed.
+Calls to `IUnitOfWork.SaveChangesAsync` and `IOutboxDispatcher.FlushAsync` require an explicit cancellation token. Pass `CancellationToken.None` when cancellation is not needed.
 
 For ordinary Wolverine messages, including events, module selection is not based on the message assembly. Wolverine detects the transaction from the concrete handler's DbContext dependency. This allows handlers for one shared event contract to commit or roll back independently in different module schemas. A transactional handler must depend on exactly one write DbContext.
 
 `IEventBus` and `IScheduler` share `IOutboxDispatcher`, which uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published or scheduled by a native handler therefore share its selected DbContext transaction.
 
-Without an active mediator module, the modular dispatcher's `SaveChangesAsync` throws `InvalidOperationException`: it cannot select a DbContext to save. Native handlers rely on Wolverine's transaction middleware to save changes and flush messages, so `FlushAsync` remains a no-op in that context. Outside the mediator pipeline, use the keyed module dispatcher to save and flush explicitly.
+Native handlers rely on Wolverine's transaction middleware to save changes and flush messages, so the modular dispatcher's `FlushAsync` is a no-op without an active mediator module.
 
 Do not synchronously invoke a command from another module while the first module transaction is active. Separate DbContexts use separate local database transactions, so such a call cannot be atomic. Publish an event through the outbox and let the receiving module handle it independently.
 
@@ -138,7 +138,7 @@ The adapters do not check messages or delivery options for null, reject negative
 Inside mediator requests, scheduled messages use the active module's EF Core outbox and commit or roll back with its business changes.
 Native Wolverine handlers use their enlisted message context. The configured PostgreSQL storage and durable queues preserve scheduled messages across restarts.
 
-Outside handlers in modular setups, construct `WolverineScheduler` with the module's keyed `IOutboxDispatcher` resolved using `typeof(AppDbContext)`. Single-context setups can use the registered `IScheduler`. Save and commit through the same `IDbContextOutbox<AppDbContext>`/DbContext transaction; scheduling alone does not commit changes.
+Outside handlers in modular setups, construct `WolverineScheduler` with the module's keyed `IOutboxDispatcher` resolved using `typeof(AppDbContext)`. Single-context setups can use the registered `IScheduler`. Save and commit through `IUnitOfWork` using the same scoped DbContext, then call `IOutboxDispatcher.FlushAsync`; scheduling alone does not commit changes.
 The adapter uses typed DI registrations and introduces no runtime reflection or code generation; full Native AOT support remains limited by Wolverine and EF Core.
 
 ### Recurring Commands
@@ -335,7 +335,7 @@ before:  AuthorizationBehavior (handlers implementing IRequireAuthorization)
 before:  ValidationBehavior
 before:  BeginTransactionBehavior
 after:   PublishDomainEventsBehavior
-after:   PersistOutgoingMessagesBehavior
+after:   SaveChangesBehavior
 after:   CommitTransactionBehavior
 after:   FlushOutgoingMessagesBehavior
 finally: CleanupTransactionBehavior
