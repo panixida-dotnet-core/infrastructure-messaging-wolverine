@@ -7,7 +7,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Mess
 
 public sealed class ReturnFailureHandler(
     IntegrationDbContext dbContext,
-    IntegrationTestJournal journal) : ICommandHandler<ReturnFailureCommand, Result>
+    IntegrationTestJournal journal) : ICommandHandler<ReturnFailureCommand, Result>, IRequireTransaction
 {
     public Task<Result> HandleAsync(
         ReturnFailureCommand command,

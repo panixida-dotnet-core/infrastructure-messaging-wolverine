@@ -15,6 +15,7 @@ internal sealed class AfterRequestMiddlewareFrame(
     internal static AfterRequestMiddlewareFrame? TryCreate(
         Type requestType,
         Variable resultVariable,
+        Type handlerType,
         IReadOnlyList<Type> middlewareTypes)
     {
         var resultType = resultVariable.VariableType;
@@ -23,7 +24,8 @@ internal sealed class AfterRequestMiddlewareFrame(
             requestType,
             resultType,
             typeof(IAfterRequestBehavior<,>),
-            middlewareTypes);
+            middlewareTypes,
+            handlerType);
 
         if (descriptors.Length == 0)
         {

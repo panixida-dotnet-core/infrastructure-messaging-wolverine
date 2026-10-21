@@ -43,10 +43,11 @@ internal static class RequestMiddlewareRegistrationValidator
         if (behaviorType.IsGenericTypeDefinition)
         {
             var genericArguments = behaviorType.GetGenericArguments();
-            if (genericArguments.Length != parameterCount)
+            if (genericArguments.Length != parameterCount && genericArguments.Length != 3)
             {
+                var expectedParameters = parameterCount == 2 ? "2 or 3" : $"exactly {parameterCount}";
                 throw new InvalidOperationException(
-                    $"{stageName} middleware '{behaviorType.FullName}' must have exactly {parameterCount} generic parameters.");
+                    $"{stageName} middleware '{behaviorType.FullName}' must have {expectedParameters} generic parameters.");
             }
         }
     }

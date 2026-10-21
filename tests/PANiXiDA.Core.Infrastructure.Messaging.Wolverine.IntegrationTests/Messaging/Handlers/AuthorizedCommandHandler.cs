@@ -5,7 +5,7 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messagin
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Handlers;
 
 public sealed class AuthorizedCommandHandler(IntegrationTestJournal journal)
-    : ICommandHandler<AuthorizedCommand, Result>, IRequireAuthorization
+    : ICommandHandler<AuthorizedCommand, Result>, IRequireTransaction, IRequireAuthorization
 {
     public static IReadOnlyCollection<string> AllPermissions => ["records.create"];
     public static IReadOnlyCollection<string> AnyPermissions => ["records.manage", "records.edit"];

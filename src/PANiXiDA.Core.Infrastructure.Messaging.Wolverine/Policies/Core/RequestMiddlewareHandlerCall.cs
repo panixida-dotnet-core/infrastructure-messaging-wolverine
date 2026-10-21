@@ -31,9 +31,9 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
         before = BeforeRequestMiddlewareFrame.TryCreate(
             requestType, ReturnVariable!, HandlerType, registry.BeforeMiddlewareTypes);
         after = AfterRequestMiddlewareFrame.TryCreate(
-            requestType, ReturnVariable!, registry.AfterMiddlewareTypes);
+            requestType, ReturnVariable!, HandlerType, registry.AfterMiddlewareTypes);
         finallyFrame = FinallyRequestMiddlewareFrame.TryCreate(
-            requestType, ReturnVariable!, registry.FinallyMiddlewareTypes);
+            requestType, ReturnVariable!, HandlerType, registry.FinallyMiddlewareTypes);
     }
 
     public override IEnumerable<Variable> FindVariables(IMethodVariables chain)

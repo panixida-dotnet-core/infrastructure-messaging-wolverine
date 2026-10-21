@@ -33,6 +33,41 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
 public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture fixture)
     : IClassFixture<PostgreSqlContainerFixture>
 {
+    [Theory(DisplayName = "Unmarked handlers save successful commands without transactions and preserve explicit saves on failure")]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public async Task UnmarkedHandlerShouldRunWithoutTransaction(bool useModules, bool fail, bool saveImmediately)
+    {
+        await using var app = await fixture.CreateApplicationAsync(useModuleRouting: useModules);
+        var id = Guid.NewGuid();
+
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, token) => mediator.SendAsync(new CreateRecordWithoutTransactionCommand(id, fail, saveImmediately), token),
+            TestContext.Current.CancellationToken);
+
+        result.IsFailure.ShouldBe(fail);
+        (await app.CountRecordsAsync(id)).ShouldBe(!fail || saveImmediately ? 1 : 0);
+        if (!fail)
+        {
+            await WolverineIntegrationApp.WaitUntilAsync(
+                async () => await app.CountHandledEventsAsync(id) == 1,
+                TimeSpan.FromSeconds(10));
+            ShouldContainInOrder(app.Journal.Entries, "handler.command", "unitOfWork.save", "handler.event");
+        }
+        else
+        {
+            (await app.CountHandledEventsAsync(id)).ShouldBe(0);
+        }
+        app.Journal.Entries.Count(entry => entry == "unitOfWork.save").ShouldBe(fail ? 0 : 1);
+        app.Journal.Entries.ShouldNotContain("unitOfWork.begin");
+        app.Journal.Entries.ShouldNotContain("unitOfWork.commit");
+        app.Journal.Entries.ShouldNotContain("unitOfWork.rollback");
+    }
+
     [Theory(DisplayName = "A conflict during deferred saving does not persist business changes or outgoing messages")]
     [InlineData(false, false)]
     [InlineData(false, true)]
@@ -168,7 +203,7 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             configureRequestBehaviors: behaviors =>
             {
                 behaviors.After.Add(typeof(ObserveAfterBehavior<,>));
-                behaviors.Finally.InsertBefore(typeof(ThrowFinallyBehavior<,>), typeof(CleanupTransactionBehavior<,>));
+                behaviors.Finally.InsertBefore(typeof(ThrowFinallyBehavior<,>), typeof(CleanupTransactionBehavior<,,>));
                 behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>));
             });
 
@@ -191,7 +226,7 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
             useModuleRouting: useModules,
             configureRequestBehaviors: behaviors =>
             {
-                behaviors.Finally.InsertBefore(typeof(ThrowFinallyBehavior<,>), typeof(CleanupTransactionBehavior<,>));
+                behaviors.Finally.InsertBefore(typeof(ThrowFinallyBehavior<,>), typeof(CleanupTransactionBehavior<,,>));
                 behaviors.Finally.Add(typeof(ObserveFinallyBehavior<,>));
             });
         var id = Guid.NewGuid();
@@ -700,7 +735,7 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
     public async Task KafkaBrokerShouldReceiveEventAfterOutboxFlushAndHandleItOnce(bool useConventions, string? groupProtocol)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var kafka = new KafkaBuilder("apache/kafka-native:4.0.0")
+        await using var kafka = new KafkaBuilder("apache/kafka:4.0.0")
             .WithVendor(KafkaVendor.ApacheSoftwareFoundation)
             .WithKRaft()
             .Build();

@@ -1,3 +1,4 @@
+using PANiXiDA.Core.Application.Persistence;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Database;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Database.Entities;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Messaging.Commands;
@@ -7,7 +8,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Me
 
 public sealed class CreateSecondModuleRecordHandler(
     SecondModuleDbContext dbContext,
-    IEventBus eventBus) : ICommandHandler<CreateSecondModuleRecordCommand, Result>
+    IEventBus eventBus) : ICommandHandler<CreateSecondModuleRecordCommand, Result>, IRequireTransaction
 {
     public async Task<Result> HandleAsync(
         CreateSecondModuleRecordCommand command,

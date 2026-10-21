@@ -1,6 +1,6 @@
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Behaviors;
 
-public sealed class TestRequestHandler<TRequest, TResult> : IRequestHandler<TRequest, TResult>
+public sealed class TestRequestHandler<TRequest, TResult> : IRequestHandler<TRequest, TResult>, IRequireTransaction
     where TRequest : IRequest<TResult>
     where TResult : Result
 {

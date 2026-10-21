@@ -7,7 +7,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Mess
 
 public sealed class CreateIntegrationRecordHandler(
     IntegrationDbContext dbContext,
-    IntegrationTestJournal journal) : ICommandHandler<CreateIntegrationRecordCommand, Result>
+    IntegrationTestJournal journal) : ICommandHandler<CreateIntegrationRecordCommand, Result>, IRequireTransaction
 {
     public Task<Result> HandleAsync(
         CreateIntegrationRecordCommand command,

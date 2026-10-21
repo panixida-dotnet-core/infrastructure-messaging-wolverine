@@ -18,7 +18,7 @@ public sealed class FinallyRequestMiddlewareFailureTests
     private static readonly Lazy<Func<FailureState, Task>> Pipeline = new(() => Compile(
         typeof(FirstFinallyBehavior), typeof(SecondFinallyBehavior)));
     private static readonly Lazy<Func<FailureState, Task>> TransactionPipeline = new(() => Compile(
-        typeof(CleanupTransactionBehavior<TestCommand, Result>), typeof(SecondFinallyBehavior)));
+        typeof(CleanupTransactionBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>), typeof(SecondFinallyBehavior)));
 
     [Theory(DisplayName = "Generated finally middleware preserves all processing and cleanup failures")]
     [InlineData(false, false, false)]
@@ -247,7 +247,8 @@ public sealed class FinallyRequestMiddlewareFailureTests
     private static Func<FailureState, Task> Compile(params Type[] behaviors)
     {
         var frame = FinallyRequestMiddlewareFrame.TryCreate(
-            typeof(TestCommand), new Variable(typeof(Result), "result"), behaviors)!;
+            typeof(TestCommand), new Variable(typeof(Result), "result"),
+            typeof(TestRequestHandler<TestCommand, Result>), behaviors)!;
         _ = frame.FindVariables(new TestMethodVariables()).ToArray();
         using var writer = new SourceWriter();
         frame.Wrap(writer, () => writer.WriteLine("await state.HandleAsync();"));

@@ -257,7 +257,7 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         foreach (var contract in contracts.Where(contract => behavior.AllInterfaces.Any(item =>
                      SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract))))
         {
-            if (contract.Arity == 2)
+            if (contract.Arity == 2 && behavior.Arity != 3)
             {
                 AddBinding(compilation, registrations, behavior, pair, contracts, contract, null);
                 continue;
@@ -281,11 +281,13 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
     {
         INamedTypeSymbol[] arguments = handler is null ? [pair.Request, pair.Result] : [pair.Request, pair.Result, handler];
         var closed = Close(compilation, behavior, arguments);
-        var supported = closed is not null && closed.AllInterfaces.Any(item =>
-            SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract) &&
-            IsAssignable(compilation, pair.Request, item.TypeArguments[0]) &&
-            IsAssignable(compilation, pair.Result, item.TypeArguments[1]) &&
-            (handler is null || SymbolEqualityComparer.Default.Equals(handler, item.TypeArguments[2])));
+        var supported = closed is not null &&
+            (handler is null || closed.Arity != 3 || SymbolEqualityComparer.Default.Equals(handler, closed.TypeArguments[2])) &&
+            closed.AllInterfaces.Any(item =>
+                SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract) &&
+                IsAssignable(compilation, pair.Request, item.TypeArguments[0]) &&
+                IsAssignable(compilation, pair.Result, item.TypeArguments[1]) &&
+                (contract.Arity != 3 || SymbolEqualityComparer.Default.Equals(handler, item.TypeArguments[2])));
         if (supported)
         {
             AddBehavior(registrations, closed!, contracts);

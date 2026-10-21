@@ -203,7 +203,9 @@ public sealed class FinallyRequestMiddlewareResultTests
         Type first = typed ? typeof(ReplaceBehavior<TestQuery, Result<TestQueryView>>) : typeof(ReplaceBehavior<TestCommand, Result>);
         Type last = typed ? typeof(ObserveBehavior<TestQuery, Result<TestQueryView>>) : typeof(ObserveBehavior<TestCommand, Result>);
         Type conflict = typed ? typeof(ConcurrencyExceptionBehavior<TestQuery, Result<TestQueryView>>) : typeof(ConcurrencyExceptionBehavior<TestCommand, Result>);
+        Type handlerType = typed ? typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>) : typeof(TestRequestHandler<TestCommand, Result>);
         var frame = FinallyRequestMiddlewareFrame.TryCreate(requestType, new Variable(resultType, "result"),
+            handlerType,
             conflictFirst ? [conflict, first, last] : [first, conflict, last])!;
         _ = frame.FindVariables(new MethodVariables(requestType)).ToArray();
         using var writer = new SourceWriter();

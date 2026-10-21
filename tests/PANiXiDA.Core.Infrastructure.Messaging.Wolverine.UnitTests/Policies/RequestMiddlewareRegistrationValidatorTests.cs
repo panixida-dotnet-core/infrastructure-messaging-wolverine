@@ -4,6 +4,17 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class RequestMiddlewareRegistrationValidatorTests
 {
+    [Theory(DisplayName = "After and finally registration reject more than three generic parameters")]
+    [InlineData(typeof(IAfterRequestBehavior<,>), "After")]
+    [InlineData(typeof(IFinallyRequestBehavior<,>), "Finally")]
+    public void ValidateBehaviorRegistrationShouldRejectInvalidAfterAndFinallyArity(Type contract, string stage)
+    {
+        var exception = Should.Throw<InvalidOperationException>(() =>
+            RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(typeof(FourParameterBeforeBehavior<,,,>), contract, stage));
+
+        exception.Message.ShouldEndWith("' must have 2 or 3 generic parameters.");
+    }
+
     [Fact(DisplayName = "ValidateBehaviorRegistration rejects invalid expected interface type")]
     public void ValidateBehaviorRegistrationShouldRejectInvalidExpectedInterfaceType()
     {

@@ -328,7 +328,8 @@ Kafka consumers use durable inbox and map incoming topic messages to the configu
 
 ## Request Behaviors
 
-The default command behavior pipeline is:
+The default behavior registration order is shown below. Behaviors are applied only
+when their generic constraints are satisfied.
 
 ```text
 before:  AuthorizationBehavior (handlers implementing IRequireAuthorization)
@@ -345,10 +346,10 @@ finally: ConcurrencyExceptionBehavior
 The modular overload activates module routing before authorization and releases it after transaction cleanup, before concurrency handling.
 
 Request handlers implement `IRequestHandler<TRequest, TResult>` (including
-`ICommandHandler` and `IQueryHandler`). Custom before behaviors implement
-`IBeforeRequestBehavior<TRequest, TResult, THandler>`; after/finally behaviors use
-two type parameters. The generator binds before behaviors to the actual handler type
-and honors their generic constraints.
+`ICommandHandler` and `IQueryHandler`). For `Before`, `After`, and `Finally`,
+the generator binds behavior implementations declaring `<TRequest, TResult, THandler>`
+to the actual handler and honors their generic constraints.
+`After` and `Finally` also support implementations with only `<TRequest, TResult>`.
 
 Implement `IRequireAuthorization` from `PANiXiDA.Core.Application.Authentication.Abstractions`
 on a handler to require authentication. Its static `AllPermissions` requires every listed
@@ -416,11 +417,11 @@ builder.Host.UseWolverineMediator<AppDbContext>(
 
         behaviors.After.InsertBefore(
             typeof(AuditRequestResultBehavior<,>),
-            typeof(CommitTransactionBehavior<,>));
+            typeof(CommitTransactionBehavior<,,>));
 
         behaviors.Finally.InsertAfter(
             typeof(ReleaseRequestLockBehavior<,>),
-            typeof(CleanupTransactionBehavior<,>));
+            typeof(CleanupTransactionBehavior<,,>));
     },
     typeof(CreateUserHandler).Assembly);
 ```
