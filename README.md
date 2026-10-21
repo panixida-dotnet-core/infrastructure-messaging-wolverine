@@ -342,15 +342,13 @@ finally: CleanupTransactionBehavior
 finally: ConcurrencyExceptionBehavior
 ```
 
-Transaction behaviors apply only to command handlers implementing `IRequireTransaction`.
-Successful commands still save changes and flush outgoing messages without this marker.
 The modular overload activates module routing before authorization and releases it after transaction cleanup, before concurrency handling.
 
 Request handlers implement `IRequestHandler<TRequest, TResult>` (including
-`ICommandHandler` and `IQueryHandler`). Custom before behaviors implement
-`IBeforeRequestBehavior<TRequest, TResult, THandler>`; after/finally interfaces use
-two type parameters, while their implementations may also declare `THandler` as the third.
-The generator binds three-parameter behaviors to the actual handler and honors their constraints.
+`ICommandHandler` and `IQueryHandler`). For `Before`, `After`, and `Finally`,
+the generator binds behavior implementations declaring `<TRequest, TResult, THandler>`
+to the actual handler and honors their generic constraints.
+`After` and `Finally` also support implementations with only `<TRequest, TResult>`.
 
 Implement `IRequireAuthorization` from `PANiXiDA.Core.Application.Authentication.Abstractions`
 on a handler to require authentication. Its static `AllPermissions` requires every listed
