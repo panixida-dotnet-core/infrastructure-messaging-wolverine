@@ -92,23 +92,26 @@ public sealed class RequestMiddlewareCodeGenerationTests
         closedMiddlewareType.ShouldBeNull();
     }
 
-    [Fact(DisplayName = "TryResolveClosedMiddlewareType throws for open generic middleware with invalid parameter count")]
-    public void TryResolveClosedMiddlewareTypeShouldThrowForOpenGenericMiddlewareWithInvalidParameterCount()
+    [Theory(DisplayName = "TryResolveClosedMiddlewareType throws for open generic middleware with invalid parameter count")]
+    [InlineData(typeof(IBeforeRequestBehavior<,,>), "exactly 3")]
+    [InlineData(typeof(IAfterRequestBehavior<,>), "2 or 3")]
+    [InlineData(typeof(IFinallyRequestBehavior<,>), "2 or 3")]
+    public void TryResolveClosedMiddlewareTypeShouldThrowForOpenGenericMiddlewareWithInvalidParameterCount(Type behaviorInterfaceType, string expectedParameters)
     {
-        static void act()
+        void act()
         {
             RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
                 typeof(FourParameterBeforeBehavior<,,,>),
                 typeof(TestCommand),
                 typeof(Result),
-                typeof(IBeforeRequestBehavior<,,>),
+                behaviorInterfaceType,
                 out _);
         }
 
         var exception = Should.Throw<InvalidOperationException>(act);
 
         exception.Message.ShouldStartWith("Open generic middleware '");
-        exception.Message.ShouldEndWith("' must have exactly 3 generic parameters.");
+        exception.Message.ShouldEndWith($"' must have {expectedParameters} generic parameters.");
     }
 
     [Fact(DisplayName = "TryResolveClosedMiddlewareType returns false when generic constraints do not match")]
