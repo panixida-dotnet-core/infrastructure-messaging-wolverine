@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options;
 
 using Wolverine;
@@ -75,15 +76,7 @@ public sealed class WolverineScheduleConfiguration(WolverineOptions wolverineOpt
         where TOption : RecurringCommandOption, new()
         where TCommand : class, ICommand<Result>
     {
-        var section = configuration.GetSection(sectionName);
-        if (!section.Exists())
-        {
-            throw new InvalidOperationException($"Configuration section '{sectionName}' was not found.");
-        }
-
-        var option = section.Get<TOption>()
-            ?? throw new InvalidOperationException(
-                $"Configuration section '{sectionName}' could not be bound to '{typeof(TOption).FullName}'.");
+        var option = OptionBindingRegistry.GetRequired<TOption>(configuration, sectionName);
 
         if (!option.Enabled)
         {
