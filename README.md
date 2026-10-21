@@ -328,7 +328,8 @@ Kafka consumers use durable inbox and map incoming topic messages to the configu
 
 ## Request Behaviors
 
-The default command behavior pipeline is:
+The default behavior registration order is shown below. Behaviors are applied only
+when their generic constraints are satisfied.
 
 ```text
 before:  AuthorizationBehavior (handlers implementing IRequireAuthorization)
