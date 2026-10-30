@@ -120,6 +120,8 @@ For ordinary Wolverine messages, including events, module selection is not based
 
 `IEventBus` and `IScheduler` share `IOutboxDispatcher`, which uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published or scheduled by a native handler therefore share its selected DbContext transaction.
 
+Native domain-event handlers also run the shared Application `PublishDomainEventsBehavior` after successful handler completion and before EF saves and commits. Aggregates tracked through `IAggregateTracker` publish pending events through `IEventBus` automatically; handlers do not need to publish or clear aggregate events themselves. Publication or persistence failures propagate so the native transaction rolls back both data and outgoing events. Queries keep their existing behavior, and commands continue to use the command-specific behavior without a second publication pass. No EF `IDomainEventScraper` registration is required.
+
 Native handlers rely on Wolverine's transaction middleware to save changes and flush messages, so the modular dispatcher's `FlushAsync` is a no-op without an active mediator module.
 
 Do not synchronously invoke a command from another module while the first module transaction is active. Separate DbContexts use separate local database transactions, so such a call cannot be atomic. Publish an event through the outbox and let the receiving module handle it independently.

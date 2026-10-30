@@ -6,6 +6,8 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Mess
 
 public sealed class IntegrationCurrentUser : ICurrentUser
 {
+    public string? AccessToken => null;
+
     public bool IsAuthenticated { get; set; }
     public Guid? UserId => null;
     public string? UserName => null;
