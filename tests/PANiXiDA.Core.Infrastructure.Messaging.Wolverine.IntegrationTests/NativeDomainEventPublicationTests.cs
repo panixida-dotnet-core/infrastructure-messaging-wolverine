@@ -1,4 +1,10 @@
+using Microsoft.Extensions.DependencyInjection;
+
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Database;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Database.Entities;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Fixtures;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Queries;
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Support;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Messaging.Events;
 
 using Wolverine.Tracking;
@@ -8,6 +14,33 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
 public sealed class NativeDomainEventPublicationTests(PostgreSqlContainerFixture fixture)
     : IClassFixture<PostgreSqlContainerFixture>
 {
+    [Theory(DisplayName = "Query pipelines leave tracked domain events untouched")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task QueryPipelinesShouldNotPublishOrClearTrackedEvents(bool useModules)
+    {
+        await using var app = await fixture.CreateApplicationAsync(useModuleRouting: useModules);
+        await using var scope = app.Host.Services.CreateAsyncScope();
+        var ct = TestContext.Current.CancellationToken;
+        var id = Guid.NewGuid();
+        var dbContext = scope.ServiceProvider.GetRequiredService<IntegrationDbContext>();
+        dbContext.Records.Add(new IntegrationRecord { Id = id, Name = "query" });
+        await dbContext.SaveChangesAsync(ct);
+        var tracker = scope.ServiceProvider.GetRequiredService<IAggregateTracker>();
+        var aggregate = new TestEventAggregate(id);
+        var domainEvent = new SharedModuleFollowUpEvent(id);
+        aggregate.Raise(domainEvent);
+        tracker.Track(aggregate);
+        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+
+        var result = await mediator.QueryAsync(new GetIntegrationRecordQuery(id), ct);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Id.ShouldBe(id);
+        aggregate.GetDomainEvents().ShouldHaveSingleItem().ShouldBeSameAs(domainEvent);
+        tracker.GetAll().ShouldHaveSingleItem().ShouldBeSameAs(aggregate);
+    }
+
     [Fact(DisplayName = "Native event handlers publish tracked aggregate events exactly once")]
     public async Task NativeEventsShouldPublishTrackedAggregateEventsOnce()
     {

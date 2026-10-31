@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
+using PANiXiDA.Core.Application.Messaging.Mediator.Behaviors;
+
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 
 /// <summary>
@@ -58,6 +60,12 @@ public static class RequestBehaviorMetadata
 
         closedBehavior = null!;
         if (!GetBehavior(behavior).Contracts.Contains(contract) || !typeof(IRequest<Result>).IsAssignableFrom(request))
+        {
+            return false;
+        }
+
+        if (behavior == typeof(PublishDomainEventsBehavior<,>) &&
+            (!typeof(ICommand<Result>).IsAssignableFrom(request) || typeof(IQuery<Result>).IsAssignableFrom(request)))
         {
             return false;
         }

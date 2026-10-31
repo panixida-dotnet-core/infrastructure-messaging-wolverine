@@ -7,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
-using PANiXiDA.Core.Application.Messaging.Mediator.Behaviors;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Modularity;
@@ -471,9 +470,7 @@ public static class HostBuilderExtensions
         configureRequestBehaviors?.Invoke(configuration);
 
         options.Policies.Add(new RequestMiddlewareChainPolicy(configuration.Build()));
-        options.Policies.AddMiddleware<PublishDomainEventsBehavior>(chain =>
-            typeof(DomainEvent).IsAssignableFrom(chain.MessageType) &&
-            !RequestMiddlewareChainPolicy.IsRequestMessageType(chain.MessageType));
+        options.Policies.Add(new DomainEventPublicationPolicy());
     }
 
     private static void ValidateMessageStoreConnectionString(
