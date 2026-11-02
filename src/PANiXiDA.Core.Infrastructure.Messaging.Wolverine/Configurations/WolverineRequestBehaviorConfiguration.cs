@@ -12,15 +12,15 @@ public sealed class WolverineRequestBehaviorConfiguration
     internal WolverineRequestBehaviorConfiguration()
     {
         Before = new WolverineRequestBehaviorStageConfiguration(
-            typeof(IBeforeRequestBehavior<,,>),
+            typeof(IBeforeMessageBehavior<>),
             "Before");
 
         After = new WolverineRequestBehaviorStageConfiguration(
-            typeof(IAfterRequestBehavior<,>),
+            typeof(IAfterMessageBehavior<,>),
             "After");
 
         Finally = new WolverineRequestBehaviorStageConfiguration(
-            typeof(IFinallyRequestBehavior<,>),
+            typeof(IFinallyMessageBehavior<,>),
             "Finally");
     }
 

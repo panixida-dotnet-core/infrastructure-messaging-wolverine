@@ -22,7 +22,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
     {
         var handlerType = includeHandler ? typeof(TestRequestHandler<TestCommand, Result>) : null;
         void act() => RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-            typeof(TestBeforeBehavior<,,>), typeof(UnregisteredRequest), typeof(Result), typeof(IBeforeRequestBehavior<,,>), out _, handlerType);
+            typeof(TestBeforeBehavior<,,>), typeof(UnregisteredRequest), typeof(Result), typeof(IBeforeMessageBehavior<>), out _, handlerType);
 
         var exception = Should.Throw<InvalidOperationException>(act);
 
@@ -39,7 +39,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(TestBeforeBehavior<,,>),
             typeof(TestCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,,>),
+            typeof(IBeforeMessageBehavior<>),
             out var closedMiddlewareType, typeof(TestRequestHandler<TestCommand, Result>));
 
         resolved.ShouldBeTrue();
@@ -53,7 +53,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(BaseCommandBeforeBehavior),
             typeof(DerivedCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,,>),
+            typeof(IBeforeMessageBehavior<>),
             out var closedMiddlewareType, typeof(TestRequestHandler<BaseCommand, Result>));
 
         resolved.ShouldBeTrue();
@@ -67,7 +67,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(ClosedCommandBeforeBehavior),
             typeof(OtherCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,,>),
+            typeof(IBeforeMessageBehavior<>),
             out var closedMiddlewareType, typeof(TestRequestHandler<OtherCommand, Result>));
 
         resolved.ShouldBeFalse();
@@ -85,7 +85,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
             middlewareType,
             typeof(TestCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,,>),
+            typeof(IBeforeMessageBehavior<>),
             out var closedMiddlewareType, typeof(TestRequestHandler<TestCommand, Result>));
 
         resolved.ShouldBeFalse();
@@ -93,9 +93,9 @@ public sealed class RequestMiddlewareCodeGenerationTests
     }
 
     [Theory(DisplayName = "TryResolveClosedMiddlewareType throws for open generic middleware with invalid parameter count")]
-    [InlineData(typeof(IBeforeRequestBehavior<,,>), "exactly 3")]
-    [InlineData(typeof(IAfterRequestBehavior<,>), "2 or 3")]
-    [InlineData(typeof(IFinallyRequestBehavior<,>), "2 or 3")]
+    [InlineData(typeof(IBeforeMessageBehavior<>), "1, 2 or 3")]
+    [InlineData(typeof(IAfterMessageBehavior<,>), "2 or 3")]
+    [InlineData(typeof(IFinallyMessageBehavior<,>), "2 or 3")]
     public void TryResolveClosedMiddlewareTypeShouldThrowForOpenGenericMiddlewareWithInvalidParameterCount(Type behaviorInterfaceType, string expectedParameters)
     {
         void act()
@@ -121,7 +121,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(ConstrainedBeforeBehavior<,,>),
             typeof(int),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,,>),
+            typeof(IBeforeMessageBehavior<>),
             out var closedMiddlewareType, typeof(TestRequestHandler<TestCommand, Result>));
 
         resolved.ShouldBeFalse();
@@ -135,7 +135,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(TestAfterBehavior<TestCommand, Result>),
             typeof(TestCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,,>),
+            typeof(IBeforeMessageBehavior<>),
             out var closedMiddlewareType, typeof(TestRequestHandler<TestCommand, Result>));
 
         resolved.ShouldBeFalse();
@@ -149,7 +149,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
             typeof(PlainGenericMiddleware<,,>),
             typeof(TestCommand),
             typeof(Result),
-            typeof(IBeforeRequestBehavior<,,>),
+            typeof(IBeforeMessageBehavior<>),
             out var closedMiddlewareType, typeof(TestRequestHandler<TestCommand, Result>));
 
         resolved.ShouldBeFalse();

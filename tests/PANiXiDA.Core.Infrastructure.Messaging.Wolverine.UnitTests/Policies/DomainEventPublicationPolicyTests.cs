@@ -42,7 +42,7 @@ public sealed class DomainEventPublicationPolicyTests
             typeof(PublishDomainEventsBehavior<,>),
             typeof(TestQuery),
             typeof(Result<TestQueryView>),
-            typeof(IAfterRequestBehavior<,>),
+            typeof(IAfterMessageBehavior<,>),
             out var closedType);
 
         supported.ShouldBeFalse();

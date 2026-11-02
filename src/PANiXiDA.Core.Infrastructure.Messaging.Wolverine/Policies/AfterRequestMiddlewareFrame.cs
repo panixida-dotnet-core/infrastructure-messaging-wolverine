@@ -23,7 +23,7 @@ internal sealed class AfterRequestMiddlewareFrame(
         var descriptors = RequestMiddlewareDescriptor.Resolve(
             requestType,
             resultType,
-            typeof(IAfterRequestBehavior<,>),
+            typeof(IAfterMessageBehavior<,>),
             middlewareTypes,
             handlerType);
 
@@ -63,6 +63,6 @@ internal sealed class AfterRequestMiddlewareFrame(
         writer.WriteLine(
             $"var {middlewareVariableName} = new {middlewareTypeName}({middleware.ConstructorArguments});");
         writer.WriteLine(
-            $"await {middlewareVariableName}.{nameof(IAfterRequestBehavior<,>.AfterAsync)}({requestVariable.Usage}, {resultVariable.Usage}, {cancellationVariable.Usage}).ConfigureAwait(false);");
+            $"await {middlewareVariableName}.{nameof(IAfterMessageBehavior<,>.AfterAsync)}({requestVariable.Usage}, {resultVariable.Usage}, {cancellationVariable.Usage}).ConfigureAwait(false);");
     }
 }

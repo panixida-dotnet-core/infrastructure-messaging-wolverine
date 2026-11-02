@@ -64,8 +64,7 @@ public static class RequestBehaviorMetadata
             return false;
         }
 
-        if (behavior == typeof(PublishDomainEventsBehavior<,>) &&
-            (!typeof(ICommand<Result>).IsAssignableFrom(request) || typeof(IQuery<Result>).IsAssignableFrom(request)))
+        if (behavior == typeof(PublishDomainEventsBehavior<,>) && typeof(IQuery<Result>).IsAssignableFrom(request))
         {
             return false;
         }

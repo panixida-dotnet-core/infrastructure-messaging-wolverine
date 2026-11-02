@@ -15,13 +15,13 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
 {
     private const string ApplicationAssembly = "PANiXiDA.Core.Application";
     private const string AdapterAssembly = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine";
-    private const string ContractNamespace = "PANiXiDA.Core.Application.Messaging.Mediator.Behaviors.Abstractions.";
+    private const string ContractNamespace = "PANiXiDA.Core.Application.Messaging.Behaviors.Abstractions.";
     private const string ResultName = "PANiXiDA.Core.ResultPattern.Result";
     private static readonly string[] contractNames =
     [
-        ContractNamespace + "IBeforeRequestBehavior`3",
-        ContractNamespace + "IAfterRequestBehavior`2",
-        ContractNamespace + "IFinallyRequestBehavior`2"
+        ContractNamespace + "IBeforeMessageBehavior`1",
+        ContractNamespace + "IAfterMessageBehavior`2",
+        ContractNamespace + "IFinallyMessageBehavior`2"
     ];
 
     /// <inheritdoc />
@@ -257,7 +257,7 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         foreach (var contract in contracts.Where(contract => behavior.AllInterfaces.Any(item =>
                      SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract))))
         {
-            if (contract.Arity == 2 && behavior.Arity != 3)
+            if (behavior.Arity != 3)
             {
                 AddBinding(compilation, registrations, behavior, pair, contracts, contract, null);
                 continue;
@@ -279,15 +279,19 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         INamedTypeSymbol contract,
         INamedTypeSymbol? handler)
     {
-        INamedTypeSymbol[] arguments = handler is null ? [pair.Request, pair.Result] : [pair.Request, pair.Result, handler];
+        INamedTypeSymbol[] arguments = behavior.Arity switch
+        {
+            1 => [pair.Request],
+            3 when handler is not null => [pair.Request, pair.Result, handler],
+            _ => [pair.Request, pair.Result]
+        };
         var closed = Close(compilation, behavior, arguments);
         var supported = closed is not null &&
             (handler is null || closed.Arity != 3 || SymbolEqualityComparer.Default.Equals(handler, closed.TypeArguments[2])) &&
             closed.AllInterfaces.Any(item =>
                 SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, contract) &&
                 IsAssignable(compilation, pair.Request, item.TypeArguments[0]) &&
-                IsAssignable(compilation, pair.Result, item.TypeArguments[1]) &&
-                (contract.Arity != 3 || SymbolEqualityComparer.Default.Equals(handler, item.TypeArguments[2])));
+                (contract.Arity == 1 || IsAssignable(compilation, pair.Result, item.TypeArguments[1])));
         if (supported)
         {
             AddBehavior(registrations, closed!, contracts);

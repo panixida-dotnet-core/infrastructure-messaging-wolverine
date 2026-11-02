@@ -23,16 +23,16 @@ internal static class RequestMiddlewareCodeGeneration
         var parameterCount = behaviorInterfaceType.GetGenericArguments().Length;
         var middlewareParameterCount = middlewareType.GetGenericArguments().Length;
         if (middlewareType.IsGenericTypeDefinition &&
-            middlewareParameterCount != parameterCount && middlewareParameterCount != 3)
+            (middlewareParameterCount < parameterCount || middlewareParameterCount > 3))
         {
-            var expectedParameters = parameterCount == 2 ? "2 or 3" : $"exactly {parameterCount}";
+            var expectedParameters = parameterCount == 1 ? "1, 2 or 3" : "2 or 3";
             throw new InvalidOperationException(
                 $"Open generic middleware '{middlewareType.FullName}' must have {expectedParameters} generic parameters.");
         }
 
         return RequestBehaviorMetadata.TryResolve(
             middlewareType, requestType, resultType, behaviorInterfaceType, out closedMiddlewareType,
-            parameterCount == 3 || middlewareParameterCount == 3 ? handlerType : null);
+            middlewareParameterCount == 3 ? handlerType : null);
     }
 
     internal static IReadOnlyList<Type> ResolveConstructor(Type middlewareType)

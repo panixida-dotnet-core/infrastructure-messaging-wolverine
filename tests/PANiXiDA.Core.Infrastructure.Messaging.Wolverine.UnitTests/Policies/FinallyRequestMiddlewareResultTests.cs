@@ -262,7 +262,7 @@ public sealed class FinallyRequestMiddlewareResultTests
         }
     }
 
-    public sealed class ReplaceBehavior<TRequest, TResult>(ResultState state) : IFinallyRequestBehavior<TRequest, TResult>
+    public sealed class ReplaceBehavior<TRequest, TResult>(ResultState state) : IFinallyMessageBehavior<TRequest, TResult>
         where TRequest : IRequest<TResult> where TResult : Result
     {
         public Task<Result?> FinallyAsync(TRequest request, TResult? result, Exception? exception, CancellationToken cancellationToken)
@@ -277,7 +277,7 @@ public sealed class FinallyRequestMiddlewareResultTests
         }
     }
 
-    public sealed class ObserveBehavior<TRequest, TResult>(ResultState state) : IFinallyRequestBehavior<TRequest, TResult>
+    public sealed class ObserveBehavior<TRequest, TResult>(ResultState state) : IFinallyMessageBehavior<TRequest, TResult>
         where TRequest : IRequest<TResult> where TResult : Result
     {
         public Task<Result?> FinallyAsync(TRequest request, TResult? result, Exception? exception, CancellationToken cancellationToken)

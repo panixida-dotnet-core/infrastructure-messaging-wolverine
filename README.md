@@ -120,7 +120,7 @@ For ordinary Wolverine messages, including events, module selection is not based
 
 `IEventBus` and `IScheduler` share `IOutboxDispatcher`, which uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published or scheduled by a native handler therefore share its selected DbContext transaction.
 
-Native domain-event handlers run the same `PublishDomainEventsBehavior<TMessage, TResult>` as commands. The event adapter supplies `Result.Success()` only after successful handler completion and invokes the behavior before EF saves and commits. Queries and plain requests are excluded before behavior construction; the behavior also ignores them when called directly. Aggregates tracked through `IAggregateTracker` publish through `IEventBus` automatically. Publication or persistence failures propagate so the native transaction rolls back data and outgoing events together. There is one publication behavior: no non-generic adapter behavior, manual publication loop, or EF `IDomainEventScraper` registration is required.
+Native domain-event handlers run the same `PublishDomainEventsBehavior<TMessage, TResult>` as requests. The event adapter supplies `Result.Success()` only after successful handler completion and invokes the behavior before EF saves and commits. Queries are excluded before behavior construction, and the behavior also ignores them when called directly. Aggregates tracked through `IAggregateTracker` publish through `IEventBus` automatically. Publication or persistence failures propagate so the native transaction rolls back data and outgoing events together.
 
 Native handlers rely on Wolverine's transaction middleware to save changes and flush messages, so the modular dispatcher's `FlushAsync` is a no-op without an active mediator module.
 
@@ -349,9 +349,15 @@ The modular overload activates module routing before authorization and releases 
 
 Request handlers implement `IRequestHandler<TRequest, TResult>` (including
 `ICommandHandler` and `IQueryHandler`). For `Before`, `After`, and `Finally`,
-the generator binds behavior implementations declaring `<TRequest, TResult, THandler>`
+the generator binds behavior implementations declaring `<TMessage, TResult, THandler>`
 to the actual handler and honors their generic constraints.
-`After` and `Finally` also support implementations with only `<TRequest, TResult>`.
+The stage contracts are `IBeforeMessageBehavior<TMessage>`, `IAfterMessageBehavior<TMessage, TResult>`,
+and `IFinallyMessageBehavior<TMessage, TResult>` from
+`PANiXiDA.Core.Application.Messaging.Behaviors.Abstractions`.
+`Before` implementations support `<TMessage>`, `<TMessage, TResult>`, or
+`<TMessage, TResult, THandler>`. `After` and `Finally` support the latter two forms.
+The adapter obtains the result type from the request and handler, including when the before contract
+only accepts the message. A failed before result is converted to the declared request result type.
 
 Implement `IRequireAuthorization` from `PANiXiDA.Core.Application.Authentication.Abstractions`
 on a handler to require authentication. Its static `AllPermissions` requires every listed

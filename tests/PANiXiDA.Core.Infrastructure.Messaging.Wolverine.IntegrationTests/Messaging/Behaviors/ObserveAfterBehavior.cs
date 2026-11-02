@@ -3,11 +3,11 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Diagnost
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Behaviors;
 
 public sealed class ObserveAfterBehavior<TRequest, TResult>(IntegrationTestJournal journal)
-    : IAfterRequestBehavior<TRequest, TResult>
+    : IAfterMessageBehavior<TRequest, TResult>
     where TRequest : IRequest<TResult>
     where TResult : Result
 {
-    public Task AfterAsync(TRequest request, TResult result, CancellationToken cancellationToken)
+    public Task AfterAsync(TRequest message, TResult result, CancellationToken cancellationToken)
     {
         journal.Add("behavior.after");
         journal.AfterResult = result;

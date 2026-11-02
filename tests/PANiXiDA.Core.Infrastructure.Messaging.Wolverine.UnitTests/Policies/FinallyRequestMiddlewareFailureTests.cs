@@ -317,7 +317,7 @@ public sealed class FinallyRequestMiddlewareFailureTests
         }
     }
 
-    public sealed class FirstFinallyBehavior : IFinallyRequestBehavior<TestCommand, Result>
+    public sealed class FirstFinallyBehavior : IFinallyMessageBehavior<TestCommand, Result>
     {
         private readonly FailureState state;
 
@@ -338,7 +338,7 @@ public sealed class FinallyRequestMiddlewareFailureTests
         }
     }
 
-    public sealed class SecondFinallyBehavior(FailureState state) : IFinallyRequestBehavior<TestCommand, Result>
+    public sealed class SecondFinallyBehavior(FailureState state) : IFinallyMessageBehavior<TestCommand, Result>
     {
         public async Task<Result?> FinallyAsync(TestCommand request, Result? result, Exception? exception, CancellationToken cancellationToken)
         {
