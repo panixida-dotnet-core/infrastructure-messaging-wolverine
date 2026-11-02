@@ -4,13 +4,15 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class RequestMiddlewareRegistrationValidatorTests
 {
-    [Theory(DisplayName = "After and finally registration reject more than three generic parameters")]
-    [InlineData(typeof(IAfterMessageBehavior<,>), "After")]
-    [InlineData(typeof(IFinallyMessageBehavior<,>), "Finally")]
-    public void ValidateBehaviorRegistrationShouldRejectInvalidAfterAndFinallyArity(Type contract, string stage)
+    [Theory(DisplayName = "After and finally registration reject incompatible generic parameter counts")]
+    [InlineData(typeof(FourParameterBeforeBehavior<,,,>), typeof(IAfterMessageBehavior<,>), "After")]
+    [InlineData(typeof(FourParameterBeforeBehavior<,,,>), typeof(IFinallyMessageBehavior<,>), "Finally")]
+    [InlineData(typeof(MessageBeforeBehavior<>), typeof(IAfterMessageBehavior<,>), "After")]
+    [InlineData(typeof(MessageBeforeBehavior<>), typeof(IFinallyMessageBehavior<,>), "Finally")]
+    public void ValidateBehaviorRegistrationShouldRejectInvalidAfterAndFinallyArity(Type behavior, Type contract, string stage)
     {
         var exception = Should.Throw<InvalidOperationException>(() =>
-            RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(typeof(FourParameterBeforeBehavior<,,,>), contract, stage));
+            RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(behavior, contract, stage));
 
         exception.Message.ShouldEndWith("' must have 2 or 3 generic parameters.");
     }

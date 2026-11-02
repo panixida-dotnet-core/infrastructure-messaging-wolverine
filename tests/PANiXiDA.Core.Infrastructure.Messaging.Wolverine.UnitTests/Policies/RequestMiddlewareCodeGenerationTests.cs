@@ -93,15 +93,17 @@ public sealed class RequestMiddlewareCodeGenerationTests
     }
 
     [Theory(DisplayName = "TryResolveClosedMiddlewareType throws for open generic middleware with invalid parameter count")]
-    [InlineData(typeof(IBeforeMessageBehavior<>), "1, 2 or 3")]
-    [InlineData(typeof(IAfterMessageBehavior<,>), "2 or 3")]
-    [InlineData(typeof(IFinallyMessageBehavior<,>), "2 or 3")]
-    public void TryResolveClosedMiddlewareTypeShouldThrowForOpenGenericMiddlewareWithInvalidParameterCount(Type behaviorInterfaceType, string expectedParameters)
+    [InlineData(typeof(FourParameterBeforeBehavior<,,,>), typeof(IBeforeMessageBehavior<>), "1, 2 or 3")]
+    [InlineData(typeof(FourParameterBeforeBehavior<,,,>), typeof(IAfterMessageBehavior<,>), "2 or 3")]
+    [InlineData(typeof(FourParameterBeforeBehavior<,,,>), typeof(IFinallyMessageBehavior<,>), "2 or 3")]
+    [InlineData(typeof(MessageBeforeBehavior<>), typeof(IAfterMessageBehavior<,>), "2 or 3")]
+    [InlineData(typeof(MessageBeforeBehavior<>), typeof(IFinallyMessageBehavior<,>), "2 or 3")]
+    public void TryResolveClosedMiddlewareTypeShouldThrowForOpenGenericMiddlewareWithInvalidParameterCount(Type middlewareType, Type behaviorInterfaceType, string expectedParameters)
     {
         void act()
         {
             RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
-                typeof(FourParameterBeforeBehavior<,,,>),
+                middlewareType,
                 typeof(TestCommand),
                 typeof(Result),
                 behaviorInterfaceType,

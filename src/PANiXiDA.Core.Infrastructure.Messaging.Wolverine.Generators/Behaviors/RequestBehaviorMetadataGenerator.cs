@@ -279,10 +279,10 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         INamedTypeSymbol contract,
         INamedTypeSymbol? handler)
     {
-        INamedTypeSymbol[] arguments = behavior.Arity switch
+        INamedTypeSymbol[] arguments = (behavior.Arity, handler) switch
         {
-            1 => [pair.Request],
-            3 when handler is not null => [pair.Request, pair.Result, handler],
+            (1, _) => [pair.Request],
+            (_, { } actualHandler) => [pair.Request, pair.Result, actualHandler],
             _ => [pair.Request, pair.Result]
         };
         var closed = Close(compilation, behavior, arguments);
