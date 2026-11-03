@@ -15,9 +15,11 @@ public sealed class NativeDomainEventPublicationTests(PostgreSqlContainerFixture
     : IClassFixture<PostgreSqlContainerFixture>
 {
     [Theory(DisplayName = "Query pipelines leave tracked domain events untouched")]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task QueryPipelinesShouldNotPublishOrClearTrackedEvents(bool useModules)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task QueryPipelinesShouldNotPublishOrClearTrackedEvents(bool useModules, bool failValidation)
     {
         await using var app = await fixture.CreateApplicationAsync(useModuleRouting: useModules);
         await using var scope = app.Host.Services.CreateAsyncScope();
@@ -33,10 +35,14 @@ public sealed class NativeDomainEventPublicationTests(PostgreSqlContainerFixture
         tracker.Track(aggregate);
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-        var result = await mediator.QueryAsync(new GetIntegrationRecordQuery(id), ct);
+        var result = await mediator.QueryAsync(new GetIntegrationRecordQuery(failValidation ? Guid.Empty : id), ct);
 
-        result.IsSuccess.ShouldBeTrue();
-        result.Value.Id.ShouldBe(id);
+        result.IsFailure.ShouldBe(failValidation);
+        if (!failValidation)
+        {
+            result.Value.Id.ShouldBe(id);
+        }
+
         aggregate.GetDomainEvents().ShouldHaveSingleItem().ShouldBeSameAs(domainEvent);
         tracker.GetAll().ShouldHaveSingleItem().ShouldBeSameAs(aggregate);
     }

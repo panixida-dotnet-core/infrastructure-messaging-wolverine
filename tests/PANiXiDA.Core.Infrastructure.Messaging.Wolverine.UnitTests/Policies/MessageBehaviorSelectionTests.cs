@@ -5,8 +5,8 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class MessageBehaviorSelectionTests
 {
-    [Fact(DisplayName = "Query pipelines exclude domain event publication before behavior construction")]
-    public void QueryPipelinesShouldExcludePublicationBehavior()
+    [Fact(DisplayName = "Behavior selection follows generated constraints without publisher-specific query exclusions")]
+    public void QueryPipelinesShouldSelectPublicationBehaviorThroughItsContract()
     {
         var supported = RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
             typeof(PublishDomainEventsBehavior<,>),
@@ -15,7 +15,7 @@ public sealed class MessageBehaviorSelectionTests
             typeof(IAfterMessageBehavior<,>),
             out var closedType);
 
-        supported.ShouldBeFalse();
-        closedType.ShouldBeNull();
+        supported.ShouldBeTrue();
+        closedType.ShouldBe(typeof(PublishDomainEventsBehavior<TestQuery, Result<TestQueryView>>));
     }
 }

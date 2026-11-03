@@ -364,6 +364,7 @@ The same `configureRequestBehaviors` callback registers behaviors for requests a
 Their generic constraints determine applicability: a behavior constrained to `ICommand<TResult>`
 runs only for commands, while one constrained to `IMessage` can run for requests and events.
 Adding a behavior to the registry requires no separate policy or frame.
+Behavior-specific rules, including skipping query publication, live in the behavior implementation.
 
 Each native handler returning `void`, `Task`, or `ValueTask` receives its own before/after/finally
 pipeline. Its internal `Result` is not returned or published as a Wolverine response.

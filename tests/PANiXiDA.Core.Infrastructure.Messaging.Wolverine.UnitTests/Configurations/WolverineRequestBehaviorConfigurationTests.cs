@@ -38,7 +38,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         finallyBehaviors.Select(behavior => behavior.Type.GetGenericTypeDefinition()).ShouldNotContain(typeof(CleanupTransactionBehavior<,,>));
     }
 
-    [Theory(DisplayName = "Query pipelines exclude domain event publication, transactions, and outbox behaviors")]
+    [Theory(DisplayName = "Query pipelines select message behaviors while excluding command-specific transactions and outbox behaviors")]
     [InlineData(false)]
     [InlineData(true)]
     public void QueryPipelineShouldExcludeCommandBehaviors(bool useModules)
@@ -66,7 +66,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
             ? [typeof(DeactivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>>), typeof(ConcurrencyExceptionBehavior<TestQuery, Result<TestQueryView>>)]
             : [typeof(ConcurrencyExceptionBehavior<TestQuery, Result<TestQueryView>>)];
         before.Select(behavior => behavior.Type).ShouldBe(expectedBefore);
-        after.ShouldBeEmpty();
+        after.Select(behavior => behavior.Type).ShouldBe([typeof(PublishDomainEventsBehavior<TestQuery, Result<TestQueryView>>)]);
         finallyBehaviors.Select(behavior => behavior.Type).ShouldBe(expectedFinally);
     }
 
