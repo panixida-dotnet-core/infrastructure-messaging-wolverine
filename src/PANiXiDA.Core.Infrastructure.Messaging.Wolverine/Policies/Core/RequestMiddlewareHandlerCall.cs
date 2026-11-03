@@ -11,14 +11,17 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
     private readonly AfterRequestMiddlewareFrame? after;
     private readonly FinallyRequestMiddlewareFrame? finallyFrame;
     private readonly Variable resultVariable;
+    private readonly bool isRequest;
 
     internal RequestMiddlewareHandlerCall(
         Type requestType,
         MethodCall handlerCall,
-        RequestMiddlewareRegistry registry) : base(handlerCall.HandlerType, handlerCall.Method)
+        RequestMiddlewareRegistry registry,
+        bool isRequest = true) : base(handlerCall.HandlerType, handlerCall.Method)
     {
         this.handlerCall = handlerCall;
-        resultVariable = ReturnVariable ?? new Variable(typeof(Result), $"__messageResult_{Guid.NewGuid():N}");
+        this.isRequest = isRequest;
+        resultVariable = isRequest ? ReturnVariable! : new Variable(typeof(Result), $"__messageResult_{Guid.NewGuid():N}");
         IsAsync = true;
         Target = handlerCall.Target;
         IsLocal = handlerCall.IsLocal;
@@ -54,6 +57,11 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
     public override void GenerateCode(GeneratedMethod method, ISourceWriter writer)
     {
         writer.WriteLine($"{RequestMiddlewareCodeGeneration.GetCodeTypeName(resultVariable.VariableType)} {resultVariable.Usage} = default!;");
+        if (!isRequest && ReturnVariable is not null)
+        {
+            writer.WriteLine($"{RequestMiddlewareCodeGeneration.GetCodeTypeName(ReturnVariable.VariableType)} {ReturnVariable.Usage} = default!;");
+        }
+
         if (finallyFrame is null)
         {
             GenerateBody(method, writer);
@@ -63,7 +71,7 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
             finallyFrame.Wrap(writer, () => GenerateBody(method, writer));
         }
 
-        if (ReturnVariable is null)
+        if (!isRequest)
         {
             writer.Write($"BLOCK:if ({resultVariable.Usage}.IsFailure)");
             writer.WriteLine($"throw new global::System.InvalidOperationException(\"Message behavior pipeline failed: \" + global::System.String.Join(\"; \", {resultVariable.Usage}.Errors));");
@@ -85,11 +93,11 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
         writer.Write($"BLOCK:if ({resultVariable.Usage} is null)");
         if (ReturnVariable is not null)
         {
-            handlerCall.AssignResultTo(resultVariable);
+            handlerCall.AssignResultTo(ReturnVariable);
         }
 
         handlerCall.GenerateCode(method, writer);
-        if (ReturnVariable is null)
+        if (!isRequest)
         {
             writer.WriteLine($"{resultVariable.Usage} = global::PANiXiDA.Core.ResultPattern.Result.Success();");
         }

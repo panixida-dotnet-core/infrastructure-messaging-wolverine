@@ -353,8 +353,9 @@ Generic constraints determine applicability; behavior-specific rules stay inside
 Before implementations support `<TMessage>`, `<TMessage, TResult>`, or `<TMessage, TResult, THandler>`;
 After/Finally support the latter two forms. The generator binds these parameters to the message and handler.
 
-Native `void`/`Task`/`ValueTask` handlers use an internal `Result`. Domain events are published before
-Wolverine commits; failed results become exceptions after finally behaviors, preserving rollback and retries.
+Native handlers use an internal `Result` and preserve returned cascading messages, including `Task<T>` and
+`ValueTask<T>`. Domain events are published before Wolverine commits; failed results become exceptions
+after finally behaviors, preserving rollback and retries.
 
 Implement `IRequireAuthorization` from `PANiXiDA.Core.Application.Authentication.Abstractions`
 on a handler to require authentication. Its static `AllPermissions` requires every listed
