@@ -2,6 +2,8 @@
 using JasperFx.CodeGeneration;
 using JasperFx.CodeGeneration.Model;
 
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
+
 using Wolverine.Configuration;
 using Wolverine.Runtime.Handlers;
 
@@ -17,8 +19,14 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
         for (var i = 0; i < chains.Count; i++)
         {
             if (chains[i] is not HandlerChain chain ||
-                !IsRequestMessageType(chain.MessageType))
+                !RequestBehaviorMetadata.TryGetMessage(chain.MessageType, chain.Handlers.FirstOrDefault()?.HandlerType, out var isRequest))
             {
+                continue;
+            }
+
+            if (!isRequest)
+            {
+                ApplyToNativeChain(chain);
                 continue;
             }
 
@@ -29,6 +37,25 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
             }
 
             ApplyToChain(chain, resultVariable);
+        }
+    }
+
+    private void ApplyToNativeChain(HandlerChain chain)
+    {
+        for (var index = 0; index < chain.Handlers.Count; index++)
+        {
+            var handler = chain.Handlers[index];
+            if (handler is RequestMiddlewareHandlerCall)
+            {
+                continue;
+            }
+
+            if (handler.ReturnVariable is not null)
+            {
+                throw new InvalidOperationException("Native message handlers must return void, Task or ValueTask.");
+            }
+
+            chain.Handlers[index] = new RequestMiddlewareHandlerCall(chain.MessageType, handler, registry);
         }
     }
 
@@ -46,9 +73,9 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
         }
     }
 
-    internal static bool IsRequestMessageType(Type messageType)
+    internal static bool IsRequestMessageType(Type messageType, Type? handlerType = null)
     {
-        return typeof(IRequest<Result>).IsAssignableFrom(messageType);
+        return RequestBehaviorMetadata.TryGetMessage(messageType, handlerType, out var isRequest) && isRequest;
     }
 
     private static Variable? ResolveResultVariable(HandlerChain chain)

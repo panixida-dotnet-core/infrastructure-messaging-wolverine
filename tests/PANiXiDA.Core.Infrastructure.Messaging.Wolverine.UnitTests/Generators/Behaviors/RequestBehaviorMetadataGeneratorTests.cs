@@ -8,6 +8,84 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Generators.
 
 public sealed class RequestBehaviorMetadataGeneratorTests
 {
+    [Theory(DisplayName = "Event behaviors bind to the actual event handler through generated metadata")]
+    [InlineData("EventBefore")]
+    [InlineData("EventAfter")]
+    [InlineData("EventFinally")]
+    public void GeneratorShouldBindEventBehaviors(string behaviorName)
+    {
+        var source = Generate(Source + """
+            public record Event : PANiXiDA.Core.Domain.DomainEvents.DomainEvent;
+            public interface IMarked;
+            public sealed class PublicEventHandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<Event>
+            {
+                public Task HandleAsync(Event message, CancellationToken token) => Task.CompletedTask;
+            }
+            public sealed class MarkedEventHandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<Event>, IMarked
+            {
+                public Task HandleAsync(Event message, CancellationToken token) => Task.CompletedTask;
+            }
+            public sealed class EventBefore<TMessage, TResult, THandler> : IBeforeMessageBehavior<TMessage>
+                where TMessage : PANiXiDA.Core.Domain.DomainEvents.DomainEvent where TResult : Result
+                where THandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<TMessage>, IMarked
+            {
+                public Task<Result> BeforeAsync(TMessage message, CancellationToken token) => Task.FromResult(Result.Success());
+            }
+            public sealed class EventAfter<TMessage, TResult, THandler> : IAfterMessageBehavior<TMessage, TResult>
+                where TMessage : PANiXiDA.Core.Domain.DomainEvents.DomainEvent where TResult : Result
+                where THandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<TMessage>, IMarked
+            {
+                public Task AfterAsync(TMessage message, TResult result, CancellationToken token) => Task.CompletedTask;
+            }
+            public sealed class EventFinally<TMessage, TResult, THandler> : IFinallyMessageBehavior<TMessage, TResult>
+                where TMessage : PANiXiDA.Core.Domain.DomainEvents.DomainEvent where TResult : Result
+                where THandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<TMessage>, IMarked
+            {
+                public Task<Result?> FinallyAsync(TMessage message, TResult? result, System.Exception? exception, CancellationToken token)
+                    => Task.FromResult<Result?>(result);
+            }
+            """);
+
+        var bindings = source.Split('\n').Where(line => line.Contains(
+            $"RegisterBinding(typeof(global::{behaviorName}<,,>), typeof(global::Event),")).ToArray();
+        bindings.Length.ShouldBe(2);
+        bindings.Single(line => line.EndsWith(", typeof(global::PublicEventHandler));", StringComparison.Ordinal))
+            .ShouldContain(", null, typeof(global::PublicEventHandler)");
+        bindings.Single(line => line.EndsWith(", typeof(global::MarkedEventHandler));", StringComparison.Ordinal))
+            .ShouldContain($", typeof(global::{behaviorName}<global::Event, global::PANiXiDA.Core.ResultPattern.Result, global::MarkedEventHandler>)");
+        source.ShouldContain("RegisterMessage(typeof(global::Event), false)");
+        source.ShouldContain("RegisterMessage(typeof(global::Request), true)");
+    }
+
+    [Fact(DisplayName = "Generated message registration rejects a missing type")]
+    public void RegisterMessageShouldRejectMissingType()
+    {
+        Should.Throw<ArgumentNullException>(() => RequestBehaviorMetadata.RegisterMessage(null!, false));
+    }
+
+    [Fact(DisplayName = "Events from domain-only contract assemblies receive generated behavior bindings")]
+    public void GeneratorShouldDiscoverDomainOnlyContracts()
+    {
+        var contracts = CSharpCompilation.Create("MessageContracts",
+            [CSharpSyntaxTree.ParseText("public sealed record ExternalEvent : PANiXiDA.Core.Domain.DomainEvents.DomainEvent;",
+                cancellationToken: TestContext.Current.CancellationToken)], References(true),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using var stream = new MemoryStream();
+        var emit = contracts.Emit(stream, cancellationToken: TestContext.Current.CancellationToken);
+        emit.Success.ShouldBeTrue(string.Join(Environment.NewLine, emit.Diagnostics));
+        var reference = MetadataReference.CreateFromImage(stream.ToArray());
+
+        var source = Generate(Source + """
+            public sealed class ExternalHandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<ExternalEvent>
+            {
+                public Task HandleAsync(ExternalEvent message, CancellationToken token) => Task.CompletedTask;
+            }
+            """, additionalReference: reference);
+
+        source.ShouldContain("RegisterMessage(typeof(global::ExternalEvent), false)");
+        source.ShouldContain("PublishDomainEventsBehavior<global::ExternalEvent, global::PANiXiDA.Core.ResultPattern.Result>");
+    }
+
     [Theory(DisplayName = "Message behavior bindings use the actual handler only when the implementation requires it")]
     [InlineData("HandlerBefore", false)]
     [InlineData("HandlerBefore", true)]

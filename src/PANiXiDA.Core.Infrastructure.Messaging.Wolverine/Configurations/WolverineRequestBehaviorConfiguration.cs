@@ -5,7 +5,7 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 
 /// <summary>
-/// Configures PANiXiDA request behaviors applied to Wolverine request handlers.
+/// Configures PANiXiDA message behaviors applied to Wolverine message handlers.
 /// </summary>
 public sealed class WolverineRequestBehaviorConfiguration
 {
@@ -25,7 +25,7 @@ public sealed class WolverineRequestBehaviorConfiguration
     }
 
     /// <summary>
-    /// Gets the configuration for behaviors executed before request handlers.
+    /// Gets the configuration for behaviors executed before message handlers.
     /// </summary>
     public WolverineRequestBehaviorStageConfiguration Before { get; }
 
@@ -35,7 +35,7 @@ public sealed class WolverineRequestBehaviorConfiguration
     public WolverineRequestBehaviorStageConfiguration After { get; }
 
     /// <summary>
-    /// Gets the configuration for behaviors executed when request processing completes or fails.
+    /// Gets the configuration for behaviors executed when message processing completes or fails.
     /// </summary>
     public WolverineRequestBehaviorStageConfiguration Finally { get; }
 

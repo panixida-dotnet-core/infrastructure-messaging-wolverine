@@ -10,6 +10,7 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
     private readonly BeforeRequestMiddlewareFrame? before;
     private readonly AfterRequestMiddlewareFrame? after;
     private readonly FinallyRequestMiddlewareFrame? finallyFrame;
+    private readonly Variable resultVariable;
 
     internal RequestMiddlewareHandlerCall(
         Type requestType,
@@ -17,6 +18,7 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
         RequestMiddlewareRegistry registry) : base(handlerCall.HandlerType, handlerCall.Method)
     {
         this.handlerCall = handlerCall;
+        resultVariable = ReturnVariable ?? new Variable(typeof(Result), $"__messageResult_{Guid.NewGuid():N}");
         IsAsync = true;
         Target = handlerCall.Target;
         IsLocal = handlerCall.IsLocal;
@@ -29,11 +31,11 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
         }
 
         before = BeforeRequestMiddlewareFrame.TryCreate(
-            requestType, ReturnVariable!, HandlerType, registry.BeforeMiddlewareTypes);
+            requestType, resultVariable, HandlerType, registry.BeforeMiddlewareTypes);
         after = AfterRequestMiddlewareFrame.TryCreate(
-            requestType, ReturnVariable!, HandlerType, registry.AfterMiddlewareTypes);
+            requestType, resultVariable, HandlerType, registry.AfterMiddlewareTypes);
         finallyFrame = FinallyRequestMiddlewareFrame.TryCreate(
-            requestType, ReturnVariable!, HandlerType, registry.FinallyMiddlewareTypes);
+            requestType, resultVariable, HandlerType, registry.FinallyMiddlewareTypes);
     }
 
     public override IEnumerable<Variable> FindVariables(IMethodVariables chain)
@@ -51,7 +53,7 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
 
     public override void GenerateCode(GeneratedMethod method, ISourceWriter writer)
     {
-        writer.WriteLine($"{RequestMiddlewareCodeGeneration.GetCodeTypeName(ReturnVariable!.VariableType)} {ReturnVariable.Usage} = default!;");
+        writer.WriteLine($"{RequestMiddlewareCodeGeneration.GetCodeTypeName(resultVariable.VariableType)} {resultVariable.Usage} = default!;");
         if (finallyFrame is null)
         {
             GenerateBody(method, writer);
@@ -59,6 +61,13 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
         else
         {
             finallyFrame.Wrap(writer, () => GenerateBody(method, writer));
+        }
+
+        if (ReturnVariable is null)
+        {
+            writer.Write($"BLOCK:if ({resultVariable.Usage}.IsFailure)");
+            writer.WriteLine($"throw new global::System.InvalidOperationException(\"Message behavior pipeline failed: \" + global::System.String.Join(\"; \", {resultVariable.Usage}.Errors));");
+            writer.FinishBlock();
         }
 
         Next?.GenerateCode(method, writer);
@@ -73,9 +82,18 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
         handlerCall.ActivityEventBeforeCall = ActivityEventBeforeCall;
         handlerCall.ActivityEventAfterCall = ActivityEventAfterCall;
         Array.Copy(Arguments, handlerCall.Arguments, Arguments.Length);
-        writer.Write($"BLOCK:if ({ReturnVariable!.Usage} is null)");
-        handlerCall.AssignResultTo(ReturnVariable);
+        writer.Write($"BLOCK:if ({resultVariable.Usage} is null)");
+        if (ReturnVariable is not null)
+        {
+            handlerCall.AssignResultTo(resultVariable);
+        }
+
         handlerCall.GenerateCode(method, writer);
+        if (ReturnVariable is null)
+        {
+            writer.WriteLine($"{resultVariable.Usage} = global::PANiXiDA.Core.ResultPattern.Result.Success();");
+        }
+
         writer.FinishBlock();
 
         after?.GenerateCode(method, writer);

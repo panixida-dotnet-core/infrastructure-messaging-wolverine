@@ -1,5 +1,7 @@
 using System.Reflection;
 
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
+
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
@@ -20,6 +22,7 @@ public sealed class RequestMiddlewareCodeGenerationTests
     [InlineData(true)]
     public void TryResolveClosedMiddlewareTypeShouldRejectMissingGeneratedBinding(bool includeHandler)
     {
+        RequestBehaviorMetadata.RegisterMessage(typeof(UnregisteredRequest), isRequest: true);
         var handlerType = includeHandler ? typeof(TestRequestHandler<TestCommand, Result>) : null;
         void act() => RequestMiddlewareCodeGeneration.TryResolveClosedMiddlewareType(
             typeof(TestBeforeBehavior<,,>), typeof(UnregisteredRequest), typeof(Result), typeof(IBeforeMessageBehavior<>), out _, handlerType);
