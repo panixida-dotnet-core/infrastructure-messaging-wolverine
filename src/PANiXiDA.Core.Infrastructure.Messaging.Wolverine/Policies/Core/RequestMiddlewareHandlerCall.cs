@@ -21,6 +21,11 @@ internal sealed class RequestMiddlewareHandlerCall : MethodCall
     {
         this.handlerCall = handlerCall;
         this.isRequest = isRequest;
+        if (!isRequest)
+        {
+            ReturnVariable?.OverrideName($"__cascadingMessage_{Guid.NewGuid():N}");
+        }
+
         resultVariable = isRequest ? ReturnVariable! : new Variable(typeof(Result), $"__messageResult_{Guid.NewGuid():N}");
         IsAsync = true;
         Target = handlerCall.Target;

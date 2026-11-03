@@ -30,3 +30,12 @@ public static class ValueTaskCascadingEventHandler
         return ValueTask.FromResult(new PipelineEvent(@event.EventId));
     }
 }
+
+[MaximumAttempts(1)]
+public static class SameNameCascadingEventHandler
+{
+    public static PipelineEvent Handle(Events.Mapped.PipelineEvent @event)
+    {
+        return new PipelineEvent(@event.EventId);
+    }
+}

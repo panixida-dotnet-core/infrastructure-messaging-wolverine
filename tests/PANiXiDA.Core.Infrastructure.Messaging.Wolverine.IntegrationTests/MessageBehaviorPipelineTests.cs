@@ -19,6 +19,8 @@ public sealed class MessageBehaviorPipelineTests(PostgreSqlContainerFixture fixt
     [InlineData(true, 1)]
     [InlineData(false, 2)]
     [InlineData(true, 2)]
+    [InlineData(false, 3)]
+    [InlineData(true, 3)]
     public async Task NativeMappersShouldPreserveCascadingMessages(bool useModules, int returnKind)
     {
         await using var app = await fixture.CreateApplicationAsync(
@@ -29,7 +31,8 @@ public sealed class MessageBehaviorPipelineTests(PostgreSqlContainerFixture fixt
             {
                 0 => context.PublishAsync(new CascadingEvent(id)).AsTask(),
                 1 => context.PublishAsync(new AsyncCascadingEvent(id)).AsTask(),
-                _ => context.PublishAsync(new ValueTaskCascadingEvent(id)).AsTask()
+                2 => context.PublishAsync(new ValueTaskCascadingEvent(id)).AsTask(),
+                _ => context.PublishAsync(new Messaging.Events.Mapped.PipelineEvent(id)).AsTask()
             });
 
         tracked.FindSingleTrackedMessageOfType<PipelineEvent>().EventId.ShouldBe(id);
