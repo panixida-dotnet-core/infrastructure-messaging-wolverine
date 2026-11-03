@@ -120,8 +120,6 @@ For ordinary Wolverine messages, including events, module selection is not based
 
 `IEventBus` and `IScheduler` share `IOutboxDispatcher`, which uses the keyed module outbox inside the mediator request pipeline and the current Wolverine message context inside native handlers. The inbox record, handler changes, and messages published or scheduled by a native handler therefore share its selected DbContext transaction.
 
-Requests and native `IMessage` handlers use the same behavior registry and pipeline. `PublishDomainEventsBehavior<TMessage, TResult>` is selected through that registry, just like custom behaviors. Native handlers supply an internal `Result.Success()` after successful completion, and applicable after behaviors run before Wolverine saves and commits. Queries skip domain-event publication. Aggregates tracked through `IAggregateTracker` publish through `IEventBus` automatically. Publication or persistence failures propagate so the native transaction rolls back data and outgoing events together.
-
 Native handlers rely on Wolverine's transaction middleware to save changes and flush messages, so the modular dispatcher's `FlushAsync` is a no-op without an active mediator module.
 
 Do not synchronously invoke a command from another module while the first module transaction is active. Separate DbContexts use separate local database transactions, so such a call cannot be atomic. Publish an event through the outbox and let the receiving module handle it independently.
@@ -347,30 +345,16 @@ finally: ConcurrencyExceptionBehavior
 
 The modular overload activates module routing before authorization and releases it after transaction cleanup, before concurrency handling.
 
-Request handlers implement `IRequestHandler<TRequest, TResult>` (including
-`ICommandHandler` and `IQueryHandler`); event handlers implement `IEventHandler<TEvent>`.
-For `Before`, `After`, and `Finally`,
-the generator binds behavior implementations declaring `<TMessage, TResult, THandler>`
-to the actual handler and honors their generic constraints.
-The stage contracts are `IBeforeMessageBehavior<TMessage>`, `IAfterMessageBehavior<TMessage, TResult>`,
-and `IFinallyMessageBehavior<TMessage, TResult>` from
-`PANiXiDA.Core.Application.Messaging.Behaviors.Abstractions`.
-`Before` implementations support `<TMessage>`, `<TMessage, TResult>`, or
-`<TMessage, TResult, THandler>`. `After` and `Finally` support the latter two forms.
-The adapter obtains the result type from the request and handler, including when the before contract
-only accepts the message. A failed before result is converted to the declared request result type.
+Requests use `IRequestHandler<TRequest, TResult>`; events use `IEventHandler<TEvent>`.
+Both share `configureRequestBehaviors` and the `IBeforeMessageBehavior<TMessage>`,
+`IAfterMessageBehavior<TMessage, TResult>`, and `IFinallyMessageBehavior<TMessage, TResult>` contracts.
+Generic constraints determine applicability; behavior-specific rules stay inside the behavior.
 
-The same `configureRequestBehaviors` callback registers behaviors for requests and events.
-Their generic constraints determine applicability: a behavior constrained to `ICommand<TResult>`
-runs only for commands, while one constrained to `IMessage` can run for requests and events.
-Adding a behavior to the registry requires no separate policy or frame.
-Behavior-specific rules, including skipping query publication, live in the behavior implementation.
+Before implementations support `<TMessage>`, `<TMessage, TResult>`, or `<TMessage, TResult, THandler>`;
+After/Finally support the latter two forms. The generator binds these parameters to the message and handler.
 
-Each native handler returning `void`, `Task`, or `ValueTask` receives its own before/after/finally
-pipeline. Its internal `Result` is not returned or published as a Wolverine response.
-A failed result stops the handler and becomes an exception after finally behaviors complete,
-so Wolverine's failure handling and transaction rollback remain active. Handler and behavior
-exceptions reach finally behaviors; native persistence and commit remain in Wolverine's outer middleware.
+Native `void`/`Task`/`ValueTask` handlers use an internal `Result`. Domain events are published before
+Wolverine commits; failed results become exceptions after finally behaviors, preserving rollback and retries.
 
 Implement `IRequireAuthorization` from `PANiXiDA.Core.Application.Authentication.Abstractions`
 on a handler to require authentication. Its static `AllPermissions` requires every listed
@@ -406,9 +390,7 @@ behaviors from running.
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 
-Message classification and closed generic behavior bindings are generated at compile time.
-Runtime lookup uses the generated tables rather than discovering implementations or constructing generic types.
-The metadata and generated bindings support NativeAOT; the complete adapter still uses Wolverine runtime compilation.
+Generated bindings support NativeAOT; the complete adapter still uses Wolverine runtime compilation.
 
 The bundled source generator prepares message behavior metadata and scoped
 FluentValidation registrations. Keep analyzer assets enabled in the host and reference
