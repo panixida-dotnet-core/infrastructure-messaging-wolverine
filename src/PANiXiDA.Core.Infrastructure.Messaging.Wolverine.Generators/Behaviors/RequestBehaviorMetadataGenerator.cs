@@ -100,11 +100,11 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
             .ToArray();
         var pairs = FindRequestPairs(compilation, types, requestContract, messageContract, resultBase);
         var registrations = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var pair in pairs.Where(pair => CanReference(compilation, pair.Request)))
+        foreach (var message in pairs.Select(pair => pair.Request).Where(message => CanReference(compilation, message)))
         {
-            var isRequest = pair.Request.AllInterfaces.Any(contract =>
+            var isRequest = message.AllInterfaces.Any(contract =>
                 SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, requestContract));
-            registrations.Add($"RegisterMessage(typeof({TypeName(pair.Request)}), {(isRequest ? "true" : "false")});");
+            registrations.Add($"RegisterMessage(typeof({TypeName(message)}), {(isRequest ? "true" : "false")});");
         }
 
         foreach (var behavior in behaviors)

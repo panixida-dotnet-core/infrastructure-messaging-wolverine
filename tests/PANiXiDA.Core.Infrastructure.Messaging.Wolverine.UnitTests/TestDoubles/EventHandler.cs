@@ -11,11 +11,13 @@ public sealed class EventHandler : IEventHandler<TestDomainEvent>
 
     public static Task Handle(TestDomainEvent @event)
     {
+        _ = @event;
         return Task.CompletedTask;
     }
 
     public static ValueTask HandleValueTask(TestDomainEvent @event)
     {
+        _ = @event;
         return ValueTask.CompletedTask;
     }
 
@@ -26,6 +28,7 @@ public sealed class EventHandler : IEventHandler<TestDomainEvent>
 
     public static string Invalid(TestDomainEvent @event)
     {
+        _ = @event;
         return "unsupported";
     }
 }
