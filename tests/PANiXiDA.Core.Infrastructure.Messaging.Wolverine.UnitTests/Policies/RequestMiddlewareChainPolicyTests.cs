@@ -42,15 +42,16 @@ public sealed class RequestMiddlewareChainPolicyTests
         chain.Handlers.ShouldAllBe(handler => handler is RequestMiddlewareHandlerCall);
     }
 
-    [Fact(DisplayName = "Native handlers reject response values without a request result contract")]
-    public void ApplyShouldRejectUnsupportedNativeResponse()
+    [Fact(DisplayName = "Native handlers retain their cascading return values in the common pipeline")]
+    public void ApplyShouldPreserveNativeResponse()
     {
         var policy = new RequestMiddlewareChainPolicy(RequestMiddlewareRegistry.Empty);
         var chain = CreateHandlerChain(typeof(TestDoubles.EventHandler), nameof(TestDoubles.EventHandler.Invalid));
 
-        var exception = Should.Throw<InvalidOperationException>(() => policy.Apply([chain], null!, null!));
+        policy.Apply([chain], null!, null!);
 
-        exception.Message.ShouldContain("void, Task or ValueTask");
+        var handler = chain.Handlers.ShouldHaveSingleItem().ShouldBeOfType<RequestMiddlewareHandlerCall>();
+        handler.ReturnVariable.ShouldNotBeNull().VariableType.ShouldBe(typeof(string));
     }
 
     [Fact(DisplayName = "Apply wraps the handler once for all request middleware stages")]

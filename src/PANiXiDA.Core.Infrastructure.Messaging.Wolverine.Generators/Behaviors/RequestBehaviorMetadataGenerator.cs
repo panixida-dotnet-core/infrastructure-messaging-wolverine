@@ -231,11 +231,14 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
         var eventHandlerContract = compilation.GetTypeByMetadataName(
             "PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler`1");
         var resultBase = compilation.GetTypeByMetadataName(ResultName);
-        var handlers = types.Where(type => !HasTypeParameter(type) && !type.IsAbstract &&
-            type.AllInterfaces.Any(contract =>
+        var messageContract = compilation.GetTypeByMetadataName("PANiXiDA.Core.Domain.Abstractions.IMessage")!;
+        var requestContract = compilation.GetTypeByMetadataName("PANiXiDA.Core.Application.Messaging.Mediator.Contracts.IRequest`1");
+        var handlers = types.Where(type => !HasTypeParameter(type) && (!type.IsAbstract || type.IsStatic))
+            .Select(type => (Type: type, Messages: NativeMessageParameters(compilation, type, messageContract).ToArray()))
+            .Where(handler => handler.Messages.Length > 0 || handler.Type.AllInterfaces.Any(contract =>
                 SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, handlerContract) ||
                 SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, eventHandlerContract)))
-            .OrderBy(TypeName, StringComparer.Ordinal)
+            .OrderBy(handler => TypeName(handler.Type), StringComparer.Ordinal)
             .ToArray();
 
         foreach (var pair in pairs
@@ -248,13 +251,17 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
                 continue;
             }
 
-            var matchingHandlers = handlers.Where(handler => handler.AllInterfaces.Any(item =>
+            var isRequest = pair.Request.AllInterfaces.Any(contract =>
+                SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, requestContract));
+            var matchingHandlers = handlers.Where(handler => handler.Type.AllInterfaces.Any(item =>
                 SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, handlerContract) &&
                     IsAssignable(compilation, pair.Request, item.TypeArguments[0]) &&
                     SymbolEqualityComparer.Default.Equals(pair.Result, item.TypeArguments[1]) ||
                 SymbolEqualityComparer.Default.Equals(item.OriginalDefinition, eventHandlerContract) &&
                     IsAssignable(compilation, pair.Request, item.TypeArguments[0]) &&
-                    SymbolEqualityComparer.Default.Equals(pair.Result, resultBase)))
+                    SymbolEqualityComparer.Default.Equals(pair.Result, resultBase)) ||
+                !isRequest && handler.Messages.Any(message => IsAssignable(compilation, pair.Request, message)))
+                .Select(handler => handler.Type)
                 .ToArray();
 
             foreach (var behavior in behaviors)
@@ -262,6 +269,20 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
                 AddBehaviorBindings(compilation, registrations, behavior, pair, contracts, matchingHandlers);
             }
         }
+    }
+
+    private static IEnumerable<INamedTypeSymbol> NativeMessageParameters(
+        CSharpCompilation compilation,
+        INamedTypeSymbol type,
+        INamedTypeSymbol messageContract)
+    {
+        return type.GetMembers().OfType<IMethodSymbol>()
+            .Where(method => method.MethodKind == MethodKind.Ordinary && !method.IsImplicitlyDeclared && !method.IsGenericMethod)
+            .Where(method => method.Name is "Handle" or "HandleAsync" or "Consume" or "ConsumeAsync")
+            .SelectMany(method => method.Parameters)
+            .Select(parameter => parameter.Type)
+            .OfType<INamedTypeSymbol>()
+            .Where(parameter => IsAssignable(compilation, parameter, messageContract));
     }
 
     private static void AddBehaviorBindings(
@@ -303,7 +324,7 @@ public sealed class RequestBehaviorMetadataGenerator : IIncrementalGenerator
             (_, { } actualHandler) => [pair.Request, pair.Result, actualHandler],
             _ => [pair.Request, pair.Result]
         };
-        var closed = Close(compilation, behavior, arguments);
+        var closed = handler is { IsStatic: true } ? null : Close(compilation, behavior, arguments);
         var supported = closed is not null &&
             (handler is null || closed.Arity != 3 || SymbolEqualityComparer.Default.Equals(handler, closed.TypeArguments[2])) &&
             closed.AllInterfaces.Any(item =>

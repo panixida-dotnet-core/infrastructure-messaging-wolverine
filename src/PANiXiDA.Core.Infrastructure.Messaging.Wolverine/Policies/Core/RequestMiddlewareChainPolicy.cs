@@ -50,12 +50,7 @@ internal sealed class RequestMiddlewareChainPolicy(RequestMiddlewareRegistry reg
                 continue;
             }
 
-            if (handler.ReturnVariable is not null)
-            {
-                throw new InvalidOperationException("Native message handlers must return void, Task or ValueTask.");
-            }
-
-            chain.Handlers[index] = new RequestMiddlewareHandlerCall(chain.MessageType, handler, registry);
+            chain.Handlers[index] = new RequestMiddlewareHandlerCall(chain.MessageType, handler, registry, isRequest: false);
         }
     }
 

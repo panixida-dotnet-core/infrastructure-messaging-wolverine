@@ -57,6 +57,29 @@ public sealed class RequestBehaviorMetadataGeneratorTests
         source.ShouldContain("RegisterMessage(typeof(global::Request), true)");
     }
 
+    [Theory(DisplayName = "Convention handlers receive generated bindings without runtime generic construction")]
+    [InlineData("static ", "null", "Handle")]
+    [InlineData("static ", "null", "Consume")]
+    [InlineData("static ", "null", "ConsumeAsync")]
+    [InlineData("", "typeof(global::HandlerBefore<global::Event, global::PANiXiDA.Core.ResultPattern.Result, global::ConventionHandler>)", "Handle")]
+    public void GeneratorShouldBindConventionHandlers(string modifier, string expectedBinding, string methodName)
+    {
+        var source = Generate(Source + $$"""
+            public record Event : PANiXiDA.Core.Domain.DomainEvents.DomainEvent;
+            public {{modifier}}class ConventionHandler
+            {
+                public {{modifier}}string {{methodName}}(Event message) => "mapped";
+            }
+            public sealed class HandlerBefore<TMessage, TResult, THandler> : IBeforeMessageBehavior<TMessage>
+                where TMessage : PANiXiDA.Core.Domain.Abstractions.IMessage where TResult : Result
+            {
+                public Task<Result> BeforeAsync(TMessage message, CancellationToken token) => Task.FromResult(Result.Success());
+            }
+            """);
+
+        source.ShouldContain($"RegisterBinding(typeof(global::HandlerBefore<,,>), typeof(global::Event), typeof(global::PANiXiDA.Core.ResultPattern.Result), typeof(global::PANiXiDA.Core.Application.Messaging.Behaviors.Abstractions.IBeforeMessageBehavior<>), {expectedBinding}, typeof(global::ConventionHandler));");
+    }
+
     [Fact(DisplayName = "Generated message registration rejects a missing type")]
     public void RegisterMessageShouldRejectMissingType()
     {
