@@ -1,11 +1,11 @@
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Behaviors;
 
-public sealed class TestFinallyBehavior<TRequest, TResult> : IFinallyRequestBehavior<TRequest, TResult>
+public sealed class TestFinallyBehavior<TRequest, TResult> : IFinallyMessageBehavior<TRequest, TResult>
     where TRequest : IRequest<TResult>
     where TResult : Result
 {
     public Task<Result?> FinallyAsync(
-        TRequest request,
+        TRequest message,
         TResult? result,
         Exception? exception,
         CancellationToken cancellationToken)

@@ -8,44 +8,131 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Generators.
 
 public sealed class RequestBehaviorMetadataGeneratorTests
 {
-    [Theory(DisplayName = "After and finally bindings use the actual handler only when the behavior requires it")]
+    [Theory(DisplayName = "Event behaviors bind to the actual event handler through generated metadata")]
+    [InlineData("EventBefore")]
+    [InlineData("EventAfter")]
+    [InlineData("EventFinally")]
+    public void GeneratorShouldBindEventBehaviors(string behaviorName)
+    {
+        var source = Generate(Source + """
+            public record Event : PANiXiDA.Core.Domain.DomainEvents.DomainEvent;
+            public interface IMarked;
+            public sealed class PublicEventHandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<Event>
+            {
+                public Task HandleAsync(Event message, CancellationToken token) => Task.CompletedTask;
+            }
+            public sealed class MarkedEventHandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<Event>, IMarked
+            {
+                public Task HandleAsync(Event message, CancellationToken token) => Task.CompletedTask;
+            }
+            public sealed class EventBefore<TMessage, TResult, THandler> : IBeforeMessageBehavior<TMessage>
+                where TMessage : PANiXiDA.Core.Domain.DomainEvents.DomainEvent where TResult : Result
+                where THandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<TMessage>, IMarked
+            {
+                public Task<Result> BeforeAsync(TMessage message, CancellationToken token) => Task.FromResult(Result.Success());
+            }
+            public sealed class EventAfter<TMessage, TResult, THandler> : IAfterMessageBehavior<TMessage, TResult>
+                where TMessage : PANiXiDA.Core.Domain.DomainEvents.DomainEvent where TResult : Result
+                where THandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<TMessage>, IMarked
+            {
+                public Task AfterAsync(TMessage message, TResult result, CancellationToken token) => Task.CompletedTask;
+            }
+            public sealed class EventFinally<TMessage, TResult, THandler> : IFinallyMessageBehavior<TMessage, TResult>
+                where TMessage : PANiXiDA.Core.Domain.DomainEvents.DomainEvent where TResult : Result
+                where THandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<TMessage>, IMarked
+            {
+                public Task<Result?> FinallyAsync(TMessage message, TResult? result, System.Exception? exception, CancellationToken token)
+                    => Task.FromResult<Result?>(result);
+            }
+            """);
+
+        var bindings = source.Split('\n').Where(line => line.Contains(
+            $"RegisterBinding(typeof(global::{behaviorName}<,,>), typeof(global::Event),")).ToArray();
+        bindings.Length.ShouldBe(2);
+        bindings.Single(line => line.EndsWith(", typeof(global::PublicEventHandler));", StringComparison.Ordinal))
+            .ShouldContain(", null, typeof(global::PublicEventHandler)");
+        bindings.Single(line => line.EndsWith(", typeof(global::MarkedEventHandler));", StringComparison.Ordinal))
+            .ShouldContain($", typeof(global::{behaviorName}<global::Event, global::PANiXiDA.Core.ResultPattern.Result, global::MarkedEventHandler>)");
+        source.ShouldContain("RegisterMessage(typeof(global::Event), false)");
+        source.ShouldContain("RegisterMessage(typeof(global::Request), true)");
+    }
+
+    [Fact(DisplayName = "Generated message registration rejects a missing type")]
+    public void RegisterMessageShouldRejectMissingType()
+    {
+        Should.Throw<ArgumentNullException>(() => RequestBehaviorMetadata.RegisterMessage(null!, false));
+    }
+
+    [Fact(DisplayName = "Events from domain-only contract assemblies receive generated behavior bindings")]
+    public void GeneratorShouldDiscoverDomainOnlyContracts()
+    {
+        var contracts = CSharpCompilation.Create("MessageContracts",
+            [CSharpSyntaxTree.ParseText("public sealed record ExternalEvent : PANiXiDA.Core.Domain.DomainEvents.DomainEvent;",
+                cancellationToken: TestContext.Current.CancellationToken)], References(true),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using var stream = new MemoryStream();
+        var emit = contracts.Emit(stream, cancellationToken: TestContext.Current.CancellationToken);
+        emit.Success.ShouldBeTrue(string.Join(Environment.NewLine, emit.Diagnostics));
+        var reference = MetadataReference.CreateFromImage(stream.ToArray());
+
+        var source = Generate(Source + """
+            public sealed class ExternalHandler : PANiXiDA.Core.Application.Messaging.EventBus.Handlers.IEventHandler<ExternalEvent>
+            {
+                public Task HandleAsync(ExternalEvent message, CancellationToken token) => Task.CompletedTask;
+            }
+            """, additionalReference: reference);
+
+        source.ShouldContain("RegisterMessage(typeof(global::ExternalEvent), false)");
+        source.ShouldContain("PublishDomainEventsBehavior<global::ExternalEvent, global::PANiXiDA.Core.ResultPattern.Result>");
+    }
+
+    [Theory(DisplayName = "Message behavior bindings use the actual handler only when the implementation requires it")]
+    [InlineData("HandlerBefore", false)]
+    [InlineData("HandlerBefore", true)]
     [InlineData("HandlerAfter", false)]
     [InlineData("HandlerAfter", true)]
     [InlineData("HandlerFinally", false)]
     [InlineData("HandlerFinally", true)]
-    public void Generator_Should_BindHandlerAwareBehaviors_When_AfterOrFinallyStageIsUsed(string behaviorName, bool closed)
+    public void Generator_Should_BindHandlerAwareBehaviors_When_MessageBehaviorStageIsUsed(string behaviorName, bool closed)
     {
         var source = Generate(Source + """
             public interface ITransactionalHandler;
             public sealed class PublicHandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.ICommandHandler<Request, Result>
             {
-                public Task<Result> HandleAsync(Request request, CancellationToken token) => Task.FromResult(Result.Success());
+                public Task<Result> HandleAsync(Request message, CancellationToken token) => Task.FromResult(Result.Success());
             }
             public sealed class TransactionalHandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.ICommandHandler<Request, Result>,
                 ITransactionalHandler
             {
-                public Task<Result> HandleAsync(Request request, CancellationToken token) => Task.FromResult(Result.Success());
+                public Task<Result> HandleAsync(Request message, CancellationToken token) => Task.FromResult(Result.Success());
             }
             public sealed class OtherTransactionalHandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.ICommandHandler<Request, Result>,
                 ITransactionalHandler
             {
-                public Task<Result> HandleAsync(Request request, CancellationToken token) => Task.FromResult(Result.Success());
+                public Task<Result> HandleAsync(Request message, CancellationToken token) => Task.FromResult(Result.Success());
             }
-            public sealed class HandlerAfter<TRequest, TResult, THandler> : IAfterRequestBehavior<TRequest, TResult>
+            public sealed class HandlerBefore<TRequest, TResult, THandler> : IBeforeMessageBehavior<TRequest>
                 where TRequest : IRequest<TResult> where TResult : Result
                 where THandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.IRequestHandler<TRequest, TResult>, ITransactionalHandler
             {
-                public Task AfterAsync(TRequest request, TResult result, CancellationToken token) => Task.CompletedTask;
+                public Task<Result> BeforeAsync(TRequest message, CancellationToken token) => Task.FromResult(Result.Success());
             }
-            public sealed class HandlerFinally<TRequest, TResult, THandler> : IFinallyRequestBehavior<TRequest, TResult>
+            public sealed class HandlerAfter<TRequest, TResult, THandler> : IAfterMessageBehavior<TRequest, TResult>
                 where TRequest : IRequest<TResult> where TResult : Result
                 where THandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.IRequestHandler<TRequest, TResult>, ITransactionalHandler
             {
-                public Task<Result?> FinallyAsync(TRequest request, TResult? result, System.Exception? exception, CancellationToken token)
+                public Task AfterAsync(TRequest message, TResult result, CancellationToken token) => Task.CompletedTask;
+            }
+            public sealed class HandlerFinally<TRequest, TResult, THandler> : IFinallyMessageBehavior<TRequest, TResult>
+                where TRequest : IRequest<TResult> where TResult : Result
+                where THandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.IRequestHandler<TRequest, TResult>, ITransactionalHandler
+            {
+                public Task<Result?> FinallyAsync(TRequest message, TResult? result, System.Exception? exception, CancellationToken token)
                     => Task.FromResult<Result?>(result);
             }
             public static class Registrations
             {
+                public static System.Type Before => typeof(HandlerBefore<Request, Result, TransactionalHandler>);
                 public static System.Type After => typeof(HandlerAfter<Request, Result, TransactionalHandler>);
                 public static System.Type Finally => typeof(HandlerFinally<Request, Result, TransactionalHandler>);
             }
@@ -76,12 +163,12 @@ public sealed class RequestBehaviorMetadataGeneratorTests
         var source = Generate(Source + """
             public sealed class PublicHandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.ICommandHandler<Request, Result>
             {
-                public Task<Result> HandleAsync(Request request, CancellationToken token) => Task.FromResult(Result.Success());
+                public Task<Result> HandleAsync(Request message, CancellationToken token) => Task.FromResult(Result.Success());
             }
             public sealed class ProtectedHandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.ICommandHandler<Request, Result>,
                 PANiXiDA.Core.Application.Authentication.Abstractions.IRequireAuthorization
             {
-                public Task<Result> HandleAsync(Request request, CancellationToken token) => Task.FromResult(Result.Success());
+                public Task<Result> HandleAsync(Request message, CancellationToken token) => Task.FromResult(Result.Success());
             }
             """);
 
@@ -97,18 +184,18 @@ public sealed class RequestBehaviorMetadataGeneratorTests
             .ShouldContain("AuthorizationBehavior<global::Request, global::PANiXiDA.Core.ResultPattern.Result, global::ProtectedHandler>");
     }
 
-    [Fact(DisplayName = "Closed before behaviors are restricted to their declared handler")]
-    public void GeneratorShouldRestrictClosedBeforeBehaviorToItsHandler()
+    [Fact(DisplayName = "Closed message-only before behaviors do not require handler bindings")]
+    public void GeneratorShouldBindClosedMessageOnlyBeforeBehavior()
     {
         var source = Generate(Source + """
             public class FirstHandler : PANiXiDA.Core.Application.Messaging.Mediator.Handlers.ICommandHandler<Request, Result>
             {
-                public Task<Result> HandleAsync(Request request, CancellationToken token) => Task.FromResult(Result.Success());
+                public Task<Result> HandleAsync(Request message, CancellationToken token) => Task.FromResult(Result.Success());
             }
             public sealed class SecondHandler : FirstHandler;
-            public sealed class ClosedBefore : IBeforeRequestBehavior<Request, Result, FirstHandler>
+            public sealed class ClosedBefore : IBeforeMessageBehavior<Request>
             {
-                public Task<Result> BeforeAsync(Request request, CancellationToken token) => Task.FromResult(Result.Success());
+                public Task<Result> BeforeAsync(Request message, CancellationToken token) => Task.FromResult(Result.Success());
             }
             """);
 
@@ -116,34 +203,54 @@ public sealed class RequestBehaviorMetadataGeneratorTests
             line.Contains("RegisterBinding(typeof(global::ClosedBefore), typeof(global::Request),"))
             .ToArray();
 
-        bindings.Single(line => line.Contains("typeof(global::FirstHandler)"))
-            .ShouldContain(", typeof(global::ClosedBefore), typeof(global::FirstHandler)");
-        bindings.Single(line => line.Contains("typeof(global::SecondHandler)"))
-            .ShouldContain(", null, typeof(global::SecondHandler)");
+        bindings.ShouldHaveSingleItem().ShouldEndWith(
+            ", typeof(global::ClosedBefore));");
+    }
+
+    [Theory(DisplayName = "Before bindings infer missing result parameters from the message contract")]
+    [InlineData("MessageBefore", "<>", "<global::TypedRequest>")]
+    [InlineData("RequestBefore", "<,>", "<global::TypedRequest, global::PANiXiDA.Core.ResultPattern.Result<global::System.Int32>>")]
+    public void GeneratorShouldBindBeforeBehaviorsWithoutHandlerParameters(string behaviorName, string openArguments, string closedArguments)
+    {
+        var source = Generate(Source + """
+            public sealed record TypedRequest : ICommand<Result<int>>;
+            public sealed class MessageBefore<TMessage> : IBeforeMessageBehavior<TMessage>
+                where TMessage : PANiXiDA.Core.Domain.Abstractions.IMessage
+            {
+                public Task<Result> BeforeAsync(TMessage message, CancellationToken token) => Task.FromResult(Result.Success());
+            }
+            public sealed class RequestBefore<TMessage, TResult> : IBeforeMessageBehavior<TMessage>
+                where TMessage : IRequest<TResult> where TResult : Result
+            {
+                public Task<Result> BeforeAsync(TMessage message, CancellationToken token) => Task.FromResult(Result.Success());
+            }
+            """);
+
+        source.ShouldContain($"RegisterBinding(typeof(global::{behaviorName}{openArguments}), typeof(global::TypedRequest), typeof(global::PANiXiDA.Core.ResultPattern.Result<global::System.Int32>), typeof(global::PANiXiDA.Core.Application.Messaging.Behaviors.Abstractions.IBeforeMessageBehavior<>), typeof(global::{behaviorName}{closedArguments}));");
     }
 
     private const string Source = """
         using System.Threading;
         using System.Threading.Tasks;
         using PANiXiDA.Core.Application.Messaging.Mediator.Contracts;
-        using PANiXiDA.Core.Application.Messaging.Mediator.Behaviors.Abstractions;
+        using PANiXiDA.Core.Application.Messaging.Behaviors.Abstractions;
         using PANiXiDA.Core.ResultPattern;
         public record Request(int Value) : ICommand<Result>;
         public sealed record DerivedRequest(int Value) : Request(Value);
         public sealed class Dependency;
-        public class Behavior<TRequest, TResult>(Dependency dependency) : IAfterRequestBehavior<TRequest, TResult>
+        public class Behavior<TRequest, TResult>(Dependency dependency) : IAfterMessageBehavior<TRequest, TResult>
             where TRequest : IRequest<TResult> where TResult : Result
         {
-            public Task AfterAsync(TRequest request, TResult result, CancellationToken token) => Task.CompletedTask;
+            public Task AfterAsync(TRequest message, TResult result, CancellationToken token) => Task.CompletedTask;
         }
-        public sealed class NeedsDefaultConstructor<TRequest, TResult> : IAfterRequestBehavior<TRequest, TResult>
+        public sealed class NeedsDefaultConstructor<TRequest, TResult> : IAfterMessageBehavior<TRequest, TResult>
             where TRequest : IRequest<TResult>, new() where TResult : Result
         {
-            public Task AfterAsync(TRequest request, TResult result, CancellationToken token) => Task.CompletedTask;
+            public Task AfterAsync(TRequest message, TResult result, CancellationToken token) => Task.CompletedTask;
         }
-        public sealed class BaseBehavior : IAfterRequestBehavior<Request, Result>
+        public sealed class BaseBehavior : IAfterMessageBehavior<Request, Result>
         {
-            public Task AfterAsync(Request request, Result result, CancellationToken token) => Task.CompletedTask;
+            public Task AfterAsync(Request message, Result result, CancellationToken token) => Task.CompletedTask;
         }
         """;
 
@@ -170,7 +277,7 @@ public sealed class RequestBehaviorMetadataGeneratorTests
         changed.ShouldBe(original);
     }
 
-    [Theory(DisplayName = "Metadata lookup initializes the assembly that declares the behavior or request")]
+    [Theory(DisplayName = "Metadata lookup initializes the assembly that declares the behavior or message")]
     [InlineData(false)]
     [InlineData(true)]
     public void MetadataLookupShouldInitializeDeclaringAssembly(bool resolveBindingFirst)
@@ -192,14 +299,14 @@ public sealed class RequestBehaviorMetadataGeneratorTests
             var requestType = assembly.GetType("Request", throwOnError: true)!;
             RequestBehaviorMetadata.TryResolve(
                 typeof(PANiXiDA.Core.Application.Messaging.Mediator.Behaviors.PublishDomainEventsBehavior<,>),
-                requestType, typeof(Result), typeof(IAfterRequestBehavior<,>), out var closedBehavior).ShouldBeTrue();
+                requestType, typeof(Result), typeof(IAfterMessageBehavior<,>), out var closedBehavior).ShouldBeTrue();
             closedBehavior.ShouldNotBeNull();
         }
 
         var metadata = RequestBehaviorMetadata.GetBehavior(behaviorType);
 
         metadata.PublicConstructorCount.ShouldBe(1);
-        metadata.Contracts.ShouldContain(typeof(IAfterRequestBehavior<,>));
+        metadata.Contracts.ShouldContain(typeof(IAfterMessageBehavior<,>));
     }
 
     [Fact(DisplayName = "Generated metadata implementation is file-local and cannot collide with consumer types")]
@@ -238,7 +345,7 @@ public sealed class RequestBehaviorMetadataGeneratorTests
             namespace System.Threading.Tasks { public sealed class NotATask<T>; }
             public static class OtherHandler
             {
-                public static System.Threading.Tasks.NotATask<Result<int>> Handle(Request request) => null!;
+                public static System.Threading.Tasks.NotATask<Result<int>> Handle(Request message) => null!;
             }
             """;
 
@@ -264,9 +371,9 @@ public sealed class RequestBehaviorMetadataGeneratorTests
                     _ = typeof(T);
                     _ = typeof(int[]);
                 }
-                public static Task<(Result<int>, string[])> Handle(Request request) => null!;
-                public static ValueTask<Result> Handle(DerivedRequest request) => default;
-                public static Result[] Other(Request request) => [];
+                public static Task<(Result<int>, string[])> Handle(Request message) => null!;
+                public static ValueTask<Result> Handle(DerivedRequest message) => default;
+                public static Result[] Other(Request message) => [];
             }
             """);
 
@@ -370,7 +477,7 @@ public sealed class RequestBehaviorMetadataGeneratorTests
         nonMatchingBinding.ShouldEndWith(", null);");
     }
 
-    [Fact(DisplayName = "Metadata generator skips inaccessible and unsupported request types")]
+    [Fact(DisplayName = "Metadata generator skips inaccessible and unsupported message types")]
     public void GeneratorShouldSkipInaccessibleRequests()
     {
         var source = Generate(Source + """
@@ -381,8 +488,8 @@ public sealed class RequestBehaviorMetadataGeneratorTests
                 private sealed class HiddenRequest : IRequest<Result>;
                 private sealed class HiddenResult() : Result(true, []);
                 public static System.Type Hidden => typeof(HiddenRequest);
-                private static Result Handle(HiddenRequest request) => null!;
-                private static HiddenResult Handle(Request request) => null!;
+                private static Result Handle(HiddenRequest message) => null!;
+                private static HiddenResult Handle(Request message) => null!;
             }
             public sealed class UnrelatedRequest : IRequest<string>;
             public sealed class ArrayRequest : IRequest<Result[]>;
@@ -408,11 +515,11 @@ public sealed class RequestBehaviorMetadataGeneratorTests
     {
         const string source = """
             namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation { public class RequestBehaviorMetadata; }
-            namespace PANiXiDA.Core.Application.Messaging.Mediator.Behaviors.Abstractions
+            namespace PANiXiDA.Core.Application.Messaging.Behaviors.Abstractions
             {
-                public interface IBeforeRequestBehavior<TRequest, TResult, THandler>;
-                public interface IAfterRequestBehavior<TRequest, TResult>;
-                public interface IFinallyRequestBehavior<TRequest, TResult>;
+                public interface IBeforeMessageBehavior<TRequest>;
+                public interface IAfterMessageBehavior<TRequest, TResult>;
+                public interface IFinallyMessageBehavior<TRequest, TResult>;
             }
             namespace PANiXiDA.Core.Application.Messaging.Mediator.Handlers { public interface IRequestHandler<TRequest, TResult>; }
             namespace PANiXiDA.Core.Application.Messaging.Mediator.Contracts { public interface IRequest<T>; }

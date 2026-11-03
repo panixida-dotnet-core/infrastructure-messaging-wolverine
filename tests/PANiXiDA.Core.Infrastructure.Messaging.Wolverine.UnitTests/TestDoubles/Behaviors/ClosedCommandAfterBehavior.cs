@@ -1,9 +1,9 @@
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Behaviors;
 
-public sealed class ClosedCommandAfterBehavior : IAfterRequestBehavior<TestCommand, Result>
+public sealed class ClosedCommandAfterBehavior : IAfterMessageBehavior<TestCommand, Result>
 {
     public Task AfterAsync(
-        TestCommand request,
+        TestCommand message,
         Result result,
         CancellationToken cancellationToken)
     {

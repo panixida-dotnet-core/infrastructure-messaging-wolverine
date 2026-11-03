@@ -5,13 +5,36 @@ using System.Runtime.CompilerServices;
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 
 /// <summary>
-/// Stores compile-time request behavior metadata emitted by the package's source generator.
+/// Stores compile-time message behavior metadata emitted by the package's source generator.
 /// </summary>
 [EditorBrowsable(EditorBrowsableState.Never)]
 public static class RequestBehaviorMetadata
 {
     private static readonly ConcurrentDictionary<Type, Behavior> behaviors = new();
+    private static readonly ConcurrentDictionary<Type, bool> messages = new();
     private static readonly ConcurrentDictionary<(Type Behavior, Type Request, Type Result, Type Contract, Type? Handler), Type> bindings = new();
+
+    /// <summary>
+    /// Registers a message contract classified by the source generator.
+    /// </summary>
+    /// <param name="messageType">The message type known at compile time.</param>
+    /// <param name="isRequest">Whether the message implements the request contract.</param>
+    public static void RegisterMessage(Type messageType, bool isRequest)
+    {
+        ArgumentNullException.ThrowIfNull(messageType);
+        messages.TryAdd(messageType, isRequest);
+    }
+
+    internal static bool TryGetMessage(Type message, Type? handler, out bool isRequest)
+    {
+        RuntimeHelpers.RunModuleConstructor(message.Assembly.ManifestModule.ModuleHandle);
+        if (handler is not null)
+        {
+            RuntimeHelpers.RunModuleConstructor(handler.Assembly.ManifestModule.ModuleHandle);
+        }
+
+        return messages.TryGetValue(message, out isRequest);
+    }
 
     /// <summary>
     /// Registers the constructor and supported contracts of a behavior known at compile time.
@@ -57,7 +80,7 @@ public static class RequestBehaviorMetadata
         }
 
         closedBehavior = null!;
-        if (!GetBehavior(behavior).Contracts.Contains(contract) || !typeof(IRequest<Result>).IsAssignableFrom(request))
+        if (!GetBehavior(behavior).Contracts.Contains(contract) || !TryGetMessage(request, handler, out _))
         {
             return false;
         }

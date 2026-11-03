@@ -3,7 +3,7 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Policies.Core;
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 
 /// <summary>
-/// Configures request behaviors for one pipeline stage.
+/// Configures message behaviors for one pipeline stage.
 /// </summary>
 public sealed class WolverineRequestBehaviorStageConfiguration
 {

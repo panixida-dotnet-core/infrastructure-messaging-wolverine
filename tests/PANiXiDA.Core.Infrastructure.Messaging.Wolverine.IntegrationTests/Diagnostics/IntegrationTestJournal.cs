@@ -18,6 +18,12 @@ public sealed class IntegrationTestJournal
 
     public bool UseTransactions { get; set; } = true;
 
+    public bool RejectEvents { get; set; }
+
+    public bool FailEventAfter { get; set; }
+
+    public Type? MessageHandlerType { get; set; }
+
     public void Add(string entry)
     {
         entries.Enqueue(entry);

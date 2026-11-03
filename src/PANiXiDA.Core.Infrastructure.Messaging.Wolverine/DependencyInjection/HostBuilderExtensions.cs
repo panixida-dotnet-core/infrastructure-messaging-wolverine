@@ -61,7 +61,7 @@ public static class HostBuilderExtensions
     /// <param name="hostBuilder">The application host builder.</param>
     /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
     /// <param name="configureModules">The callback that registers module DbContexts and assemblies.</param>
-    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring message behaviors.</param>
     /// <returns>The same host builder instance for fluent configuration.</returns>
     public static IHostBuilder UseWolverineMediator(
         this IHostBuilder hostBuilder,
@@ -85,7 +85,7 @@ public static class HostBuilderExtensions
     /// <param name="configuration">The application configuration used to resolve typed Kafka options.</param>
     /// <param name="configureModules">The callback that registers module DbContexts and assemblies.</param>
     /// <param name="configureKafka">An optional callback for registering typed Kafka brokers, producers, and consumers.</param>
-    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring message behaviors.</param>
     /// <returns>The same host builder instance for fluent configuration.</returns>
     public static IHostBuilder UseWolverineMediator(
         this IHostBuilder hostBuilder,
@@ -113,12 +113,12 @@ public static class HostBuilderExtensions
     }
 
     /// <summary>
-    /// Configures Wolverine with PostgreSQL message persistence and configurable mediator request behaviors.
+    /// Configures Wolverine with PostgreSQL message persistence and configurable mediator message behaviors.
     /// </summary>
     /// <typeparam name="TDbContext">The EF Core DbContext type enrolled in Wolverine message storage.</typeparam>
     /// <param name="hostBuilder">The application host builder.</param>
     /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
-    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring message behaviors.</param>
     /// <param name="discoveryAssemblies">The assemblies where Wolverine should discover message handlers.</param>
     /// <returns>The same host builder instance for fluent configuration.</returns>
     public static IHostBuilder UseWolverineMediator<TDbContext>(
@@ -169,14 +169,14 @@ public static class HostBuilderExtensions
     }
 
     /// <summary>
-    /// Configures Wolverine with PostgreSQL message persistence, configurable mediator request behaviors, and typed Kafka topology helpers.
+    /// Configures Wolverine with PostgreSQL message persistence, configurable mediator message behaviors, and typed Kafka topology helpers.
     /// </summary>
     /// <typeparam name="TDbContext">The EF Core DbContext type enrolled in Wolverine message storage.</typeparam>
     /// <param name="hostBuilder">The application host builder.</param>
     /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
     /// <param name="configuration">The application configuration used to resolve typed Kafka options.</param>
     /// <param name="configureKafka">An optional callback for registering typed Kafka brokers, producers, and consumers.</param>
-    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring message behaviors.</param>
     /// <param name="discoveryAssemblies">The assemblies where Wolverine should discover message handlers.</param>
     /// <returns>The same host builder instance for fluent configuration.</returns>
     public static IHostBuilder UseWolverineMediator<TDbContext>(
@@ -219,7 +219,7 @@ public static class HostBuilderExtensions
     /// <param name="configuration">The application configuration containing typed Kafka and schedule options.</param>
     /// <param name="configureModules">The callback that registers module DbContexts and assemblies.</param>
     /// <param name="configureKafka">An optional callback for registering typed Kafka topology.</param>
-    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring message behaviors.</param>
     /// <param name="configureSchedules">The callback that registers typed recurring commands before the container is built.</param>
     /// <returns>The same host builder instance for fluent configuration.</returns>
     public static IHostBuilder UseWolverineMediator(
@@ -247,7 +247,7 @@ public static class HostBuilderExtensions
     /// <param name="messageStoreConnectionString">The PostgreSQL connection string used for Wolverine message storage.</param>
     /// <param name="configuration">The application configuration containing typed Kafka and schedule options.</param>
     /// <param name="configureKafka">An optional callback for registering typed Kafka topology.</param>
-    /// <param name="configureRequestBehaviors">An optional callback for configuring request behaviors.</param>
+    /// <param name="configureRequestBehaviors">An optional callback for configuring message behaviors.</param>
     /// <param name="configureSchedules">The callback that registers typed recurring commands before the container is built.</param>
     /// <param name="discoveryAssemblies">The assemblies where Wolverine should discover message handlers.</param>
     /// <returns>The same host builder instance for fluent configuration.</returns>

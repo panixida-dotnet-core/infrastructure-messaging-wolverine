@@ -20,7 +20,7 @@ internal sealed class RequestMiddlewareRegistryBuilder
     {
         RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             behaviorType,
-            typeof(IBeforeRequestBehavior<,,>),
+            typeof(IBeforeMessageBehavior<>),
             "Before");
 
         beforeMiddlewareTypes.Add(behaviorType);
@@ -47,7 +47,7 @@ internal sealed class RequestMiddlewareRegistryBuilder
     {
         RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             behaviorType,
-            typeof(IAfterRequestBehavior<,>),
+            typeof(IAfterMessageBehavior<,>),
             "After");
 
         afterMiddlewareTypes.Add(behaviorType);
@@ -74,7 +74,7 @@ internal sealed class RequestMiddlewareRegistryBuilder
     {
         RequestMiddlewareRegistrationValidator.ValidateBehaviorRegistration(
             behaviorType,
-            typeof(IFinallyRequestBehavior<,>),
+            typeof(IFinallyMessageBehavior<,>),
             "Finally");
 
         finallyMiddlewareTypes.Add(behaviorType);

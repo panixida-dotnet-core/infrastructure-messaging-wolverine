@@ -20,13 +20,13 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var before = RequestMiddlewareDescriptor.Resolve(
             typeof(TestCommand), typeof(Result),
-            typeof(IBeforeRequestBehavior<,,>), registry.BeforeMiddlewareTypes, handlerType);
+            typeof(IBeforeMessageBehavior<>), registry.BeforeMiddlewareTypes, handlerType);
         var after = RequestMiddlewareDescriptor.Resolve(
             typeof(TestCommand), typeof(Result),
-            typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes, handlerType);
+            typeof(IAfterMessageBehavior<,>), registry.AfterMiddlewareTypes, handlerType);
         var finallyBehaviors = RequestMiddlewareDescriptor.Resolve(
             typeof(TestCommand), typeof(Result),
-            typeof(IFinallyRequestBehavior<,>), registry.FinallyMiddlewareTypes, handlerType);
+            typeof(IFinallyMessageBehavior<,>), registry.FinallyMiddlewareTypes, handlerType);
 
         before.Select(behavior => behavior.Type.GetGenericTypeDefinition()).ShouldNotContain(typeof(BeginTransactionBehavior<,,>));
         after.Select(behavior => behavior.Type).ShouldBe(
@@ -38,7 +38,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
         finallyBehaviors.Select(behavior => behavior.Type.GetGenericTypeDefinition()).ShouldNotContain(typeof(CleanupTransactionBehavior<,,>));
     }
 
-    [Theory(DisplayName = "Query pipelines exclude domain event publication, transactions, and outbox behaviors")]
+    [Theory(DisplayName = "Query pipelines select message behaviors while excluding command-specific transactions and outbox behaviors")]
     [InlineData(false)]
     [InlineData(true)]
     public void QueryPipelineShouldExcludeCommandBehaviors(bool useModules)
@@ -50,13 +50,13 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var before = RequestMiddlewareDescriptor.Resolve(
             typeof(TestQuery), typeof(Result<TestQueryView>),
-            typeof(IBeforeRequestBehavior<,,>), registry.BeforeMiddlewareTypes, typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>));
+            typeof(IBeforeMessageBehavior<>), registry.BeforeMiddlewareTypes, typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>));
         var after = RequestMiddlewareDescriptor.Resolve(
             typeof(TestQuery), typeof(Result<TestQueryView>),
-            typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes, typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>));
+            typeof(IAfterMessageBehavior<,>), registry.AfterMiddlewareTypes, typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>));
         var finallyBehaviors = RequestMiddlewareDescriptor.Resolve(
             typeof(TestQuery), typeof(Result<TestQueryView>),
-            typeof(IFinallyRequestBehavior<,>), registry.FinallyMiddlewareTypes, typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>));
+            typeof(IFinallyMessageBehavior<,>), registry.FinallyMiddlewareTypes, typeof(TestRequestHandler<TestQuery, Result<TestQueryView>>));
 
         Type[] expectedBefore = useModules
             ? [typeof(ActivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>, TestRequestHandler<TestQuery, Result<TestQueryView>>>),
@@ -66,7 +66,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
             ? [typeof(DeactivateWolverineModuleBehavior<TestQuery, Result<TestQueryView>>), typeof(ConcurrencyExceptionBehavior<TestQuery, Result<TestQueryView>>)]
             : [typeof(ConcurrencyExceptionBehavior<TestQuery, Result<TestQueryView>>)];
         before.Select(behavior => behavior.Type).ShouldBe(expectedBefore);
-        after.ShouldBeEmpty();
+        after.Select(behavior => behavior.Type).ShouldBe([typeof(PublishDomainEventsBehavior<TestQuery, Result<TestQueryView>>)]);
         finallyBehaviors.Select(behavior => behavior.Type).ShouldBe(expectedFinally);
     }
 
@@ -82,7 +82,7 @@ public sealed class WolverineRequestBehaviorConfigurationTests
 
         var after = RequestMiddlewareDescriptor.Resolve(
             typeof(TestCommand), typeof(Result),
-            typeof(IAfterRequestBehavior<,>), registry.AfterMiddlewareTypes, typeof(TestRequestHandler<TestCommand, Result>));
+            typeof(IAfterMessageBehavior<,>), registry.AfterMiddlewareTypes, typeof(TestRequestHandler<TestCommand, Result>));
 
         after.Select(behavior => behavior.Type).ShouldBe(
         [

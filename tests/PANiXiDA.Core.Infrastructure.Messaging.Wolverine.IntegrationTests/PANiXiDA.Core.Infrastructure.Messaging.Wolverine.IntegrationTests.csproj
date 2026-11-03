@@ -22,7 +22,7 @@
         <Using Include="PANiXiDA.Core.Application.Messaging.EventBus" />
         <Using Include="PANiXiDA.Core.Application.Messaging.EventBus.Handlers" />
         <Using Include="PANiXiDA.Core.Application.Messaging.Mediator" />
-        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Behaviors.Abstractions" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.Behaviors.Abstractions" />
         <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Contracts" />
         <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Handlers" />
         <Using Include="PANiXiDA.Core.Application.Persistence" />

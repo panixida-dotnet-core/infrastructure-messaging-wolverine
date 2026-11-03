@@ -326,7 +326,7 @@ Domain events are published through `IEventBus`. By default, Wolverine dispatche
 
 Kafka consumers use durable inbox and map incoming topic messages to the configured event type with `DefaultIncomingMessage<TEvent>()`.
 
-## Request Behaviors
+## Message Behaviors
 
 The default behavior registration order is shown below. Behaviors are applied only
 when their generic constraints are satisfied.
@@ -345,11 +345,16 @@ finally: ConcurrencyExceptionBehavior
 
 The modular overload activates module routing before authorization and releases it after transaction cleanup, before concurrency handling.
 
-Request handlers implement `IRequestHandler<TRequest, TResult>` (including
-`ICommandHandler` and `IQueryHandler`). For `Before`, `After`, and `Finally`,
-the generator binds behavior implementations declaring `<TRequest, TResult, THandler>`
-to the actual handler and honors their generic constraints.
-`After` and `Finally` also support implementations with only `<TRequest, TResult>`.
+Requests use `IRequestHandler<TRequest, TResult>`; events use `IEventHandler<TEvent>`.
+Both share `configureRequestBehaviors` and the `IBeforeMessageBehavior<TMessage>`,
+`IAfterMessageBehavior<TMessage, TResult>`, and `IFinallyMessageBehavior<TMessage, TResult>` contracts.
+Generic constraints determine applicability; behavior-specific rules stay inside the behavior.
+
+Before implementations support `<TMessage>`, `<TMessage, TResult>`, or `<TMessage, TResult, THandler>`;
+After/Finally support the latter two forms. The generator binds these parameters to the message and handler.
+
+Native `void`/`Task`/`ValueTask` handlers use an internal `Result`. Domain events are published before
+Wolverine commits; failed results become exceptions after finally behaviors, preserving rollback and retries.
 
 Implement `IRequireAuthorization` from `PANiXiDA.Core.Application.Authentication.Abstractions`
 on a handler to require authentication. Its static `AllPermissions` requires every listed
@@ -385,7 +390,9 @@ behaviors from running.
 
 Validators are discovered from the same assemblies passed to `UseWolverineMediator<TDbContext>()` for handler discovery.
 
-The bundled source generator prepares request behavior metadata and scoped
+Generated bindings support NativeAOT; the complete adapter still uses Wolverine runtime compilation.
+
+The bundled source generator prepares message behavior metadata and scoped
 FluentValidation registrations. Keep analyzer assets enabled in the host and reference
 the assemblies passed to `AddModule` or `UseWolverineMediator`. Requests, behaviors,
 validators, and validated types must be accessible to generated code, normally

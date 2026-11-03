@@ -3,4 +3,6 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Tests.SecondModule.Me
 public sealed record SharedModuleEvent(
     Guid EventId,
     string Name,
-    bool FailSecondModuleHandler) : DomainEvent;
+    bool FailSecondModuleHandler,
+    bool FailFirstModuleHandler = false,
+    bool FailFirstModuleSave = false) : DomainEvent;

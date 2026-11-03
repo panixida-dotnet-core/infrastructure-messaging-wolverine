@@ -1,6 +1,6 @@
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Behaviors;
 
-public sealed class BehaviorWithMultiplePublicConstructors : IBeforeRequestBehavior<TestCommand, Result, TestRequestHandler<TestCommand, Result>>
+public sealed class BehaviorWithMultiplePublicConstructors : IBeforeMessageBehavior<TestCommand>
 {
     public BehaviorWithMultiplePublicConstructors()
     {
@@ -14,7 +14,7 @@ public sealed class BehaviorWithMultiplePublicConstructors : IBeforeRequestBehav
     public string? Value { get; }
 
     public Task<Result> BeforeAsync(
-        TestCommand request,
+        TestCommand message,
         CancellationToken cancellationToken)
     {
         return Task.FromResult(Result.Success());

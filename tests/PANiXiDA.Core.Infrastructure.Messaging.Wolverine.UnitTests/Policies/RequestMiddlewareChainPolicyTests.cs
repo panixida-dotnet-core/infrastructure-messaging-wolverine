@@ -12,6 +12,47 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Policies;
 
 public sealed class RequestMiddlewareChainPolicyTests
 {
+    [Theory(DisplayName = "Native event handlers use the same middleware wrapper as requests")]
+    [InlineData(nameof(TestDoubles.EventHandler.Handle))]
+    [InlineData(nameof(TestDoubles.EventHandler.HandleValueTask))]
+    [InlineData(nameof(TestDoubles.EventHandler.HandleSync))]
+    public void ApplyShouldWrapNativeEventHandlers(string methodName)
+    {
+        var registry = RequestMiddlewareRegistry.Create(builder => builder.AddBefore(typeof(MessageBeforeBehavior<>)));
+        var policy = new RequestMiddlewareChainPolicy(registry);
+        var chain = CreateHandlerChain(typeof(TestDoubles.EventHandler), methodName);
+
+        policy.Apply([chain], null!, null!);
+        policy.Apply([chain], null!, null!);
+
+        chain.Handlers.ShouldHaveSingleItem().ShouldBeOfType<RequestMiddlewareHandlerCall>();
+        chain.Postprocessors.ShouldBeEmpty();
+    }
+
+    [Fact(DisplayName = "Every native handler receives the common middleware pipeline")]
+    public void ApplyShouldWrapAllNativeHandlers()
+    {
+        var policy = new RequestMiddlewareChainPolicy(RequestMiddlewareRegistry.Empty);
+        var chain = CreateHandlerChain(typeof(TestDoubles.EventHandler), nameof(TestDoubles.EventHandler.Handle));
+        chain.Handlers.Add(new MethodCall(typeof(TestDoubles.EventHandler), nameof(TestDoubles.EventHandler.HandleSync)));
+
+        policy.Apply([chain], null!, null!);
+
+        chain.Handlers.Count.ShouldBe(2);
+        chain.Handlers.ShouldAllBe(handler => handler is RequestMiddlewareHandlerCall);
+    }
+
+    [Fact(DisplayName = "Native handlers reject response values without a request result contract")]
+    public void ApplyShouldRejectUnsupportedNativeResponse()
+    {
+        var policy = new RequestMiddlewareChainPolicy(RequestMiddlewareRegistry.Empty);
+        var chain = CreateHandlerChain(typeof(TestDoubles.EventHandler), nameof(TestDoubles.EventHandler.Invalid));
+
+        var exception = Should.Throw<InvalidOperationException>(() => policy.Apply([chain], null!, null!));
+
+        exception.Message.ShouldContain("void, Task or ValueTask");
+    }
+
     [Fact(DisplayName = "Apply wraps the handler once for all request middleware stages")]
     public void ApplyShouldWrapHandlerOnceForAllRequestMiddlewareStages()
     {
@@ -141,6 +182,11 @@ public sealed class RequestMiddlewareChainPolicyTests
 
     private static HandlerChain CreateHandlerChain(string methodName)
     {
+        return CreateHandlerChain(typeof(ResultHandler), methodName);
+    }
+
+    private static HandlerChain CreateHandlerChain(Type handlerType, string methodName)
+    {
         var constructor = typeof(HandlerChain).GetConstructor(
             BindingFlags.Instance | BindingFlags.NonPublic,
             binder: null,
@@ -148,7 +194,7 @@ public sealed class RequestMiddlewareChainPolicyTests
             modifiers: null);
 
         return (HandlerChain)constructor!.Invoke(
-            [new MethodCall(typeof(ResultHandler), methodName), new HandlerGraph()]);
+            [new MethodCall(handlerType, methodName), new HandlerGraph()]);
     }
 
     private class NonHandlerChainProxy : DispatchProxy

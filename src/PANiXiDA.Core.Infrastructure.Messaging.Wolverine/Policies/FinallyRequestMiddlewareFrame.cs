@@ -29,7 +29,7 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
         var descriptors = RequestMiddlewareDescriptor.Resolve(
             requestType,
             resultVariable.VariableType,
-            typeof(IFinallyRequestBehavior<,>),
+            typeof(IFinallyMessageBehavior<,>),
             middlewareTypes,
             handlerType);
 
@@ -153,7 +153,7 @@ internal sealed class FinallyRequestMiddlewareFrame : RequestMiddlewareFrameBase
         writer.WriteLine(
             $"var {middlewareVariableName} = new {middlewareTypeName}({middleware.ConstructorArguments});");
         writer.WriteLine(
-            $"var {returnedResultName} = await {middlewareVariableName}.{nameof(IFinallyRequestBehavior<,>.FinallyAsync)}({requestVariable.Usage}, {resultLocalName}, {exceptionLocalName}, {cancellationVariable.Usage}).ConfigureAwait(false);");
+            $"var {returnedResultName} = await {middlewareVariableName}.{nameof(IFinallyMessageBehavior<,>.FinallyAsync)}({requestVariable.Usage}, {resultLocalName}, {exceptionLocalName}, {cancellationVariable.Usage}).ConfigureAwait(false);");
         writer.Write($"BLOCK:if (!global::System.Object.ReferenceEquals({returnedResultName}, {resultLocalName}))");
         writer.Write($"BLOCK:if ({returnedResultName} is null || {resultLocalName} is {{ IsFailure: true }})");
         writer.WriteLine("throw new global::System.InvalidOperationException(\"Finally behaviors must preserve existing failure results and must not discard an existing result.\");");

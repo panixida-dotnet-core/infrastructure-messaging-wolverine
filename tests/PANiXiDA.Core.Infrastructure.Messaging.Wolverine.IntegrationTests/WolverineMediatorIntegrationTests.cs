@@ -547,6 +547,24 @@ public sealed class WolverineMediatorIntegrationTests(PostgreSqlContainerFixture
         ShouldContainValidationError(result);
     }
 
+    [Theory(DisplayName = "Message-only before behaviors return typed failures without running the query handler")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MessageOnlyBeforeBehaviorShouldReturnTypedFailure(bool useModules)
+    {
+        await using var app = await fixture.CreateApplicationAsync(
+            configureRequestBehaviors: behaviors => behaviors.Before.Add(typeof(RejectMessageBehavior<>)),
+            useModuleRouting: useModules);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var result = await app.ExecuteWithMediatorAsync(
+            (mediator, token) => mediator.QueryAsync(new GetIntegrationRecordQuery(Guid.NewGuid()), token),
+            cancellationToken);
+
+        ShouldContainValidationError(result);
+        result.Errors.ShouldHaveSingleItem();
+    }
+
     [Fact(DisplayName = "Mediator supports custom request behavior configuration overload")]
     public async Task MediatorShouldSupportCustomRequestBehaviorConfigurationOverload()
     {

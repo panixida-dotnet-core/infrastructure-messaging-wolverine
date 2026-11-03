@@ -1,11 +1,11 @@
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Behaviors;
 
-public sealed class SecondAfterBehavior<TRequest, TResult> : IAfterRequestBehavior<TRequest, TResult>
+public sealed class SecondAfterBehavior<TRequest, TResult> : IAfterMessageBehavior<TRequest, TResult>
     where TRequest : IRequest<TResult>
     where TResult : Result
 {
     public Task AfterAsync(
-        TRequest request,
+        TRequest message,
         TResult result,
         CancellationToken cancellationToken)
     {
