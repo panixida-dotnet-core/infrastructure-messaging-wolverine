@@ -58,15 +58,17 @@ public sealed class RequestBehaviorMetadataGeneratorTests
     }
 
     [Theory(DisplayName = "Convention handlers receive generated bindings without runtime generic construction")]
-    [InlineData("static ", "null")]
-    [InlineData("", "typeof(global::HandlerBefore<global::Event, global::PANiXiDA.Core.ResultPattern.Result, global::ConventionHandler>)")]
-    public void GeneratorShouldBindConventionHandlers(string modifier, string expectedBinding)
+    [InlineData("static ", "null", "Handle")]
+    [InlineData("static ", "null", "Consume")]
+    [InlineData("static ", "null", "ConsumeAsync")]
+    [InlineData("", "typeof(global::HandlerBefore<global::Event, global::PANiXiDA.Core.ResultPattern.Result, global::ConventionHandler>)", "Handle")]
+    public void GeneratorShouldBindConventionHandlers(string modifier, string expectedBinding, string methodName)
     {
         var source = Generate(Source + $$"""
             public record Event : PANiXiDA.Core.Domain.DomainEvents.DomainEvent;
             public {{modifier}}class ConventionHandler
             {
-                public {{modifier}}string Handle(Event message) => "mapped";
+                public {{modifier}}string {{methodName}}(Event message) => "mapped";
             }
             public sealed class HandlerBefore<TMessage, TResult, THandler> : IBeforeMessageBehavior<TMessage>
                 where TMessage : PANiXiDA.Core.Domain.Abstractions.IMessage where TResult : Result
