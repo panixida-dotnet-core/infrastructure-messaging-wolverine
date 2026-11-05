@@ -401,6 +401,15 @@ validators, and validated types must be accessible to generated code, normally
 their declaring project. No additional registration calls, attributes, partial
 declarations, or code-generation commands are required.
 
+Message behavior metadata is initialized through direct static calls in batches of
+at most 256 registrations. Additional levels of direct calls are generated automatically
+when necessary, keeping dispatcher methods bounded to 256 calls as well. This bounds JIT
+compilation work as applications grow without changing the registration order or
+introducing runtime reflection. Wolverine's `codegen write` workflow is unchanged.
+To receive generator fixes, update the package
+and rebuild and republish the host and affected discovery assemblies; no application
+code changes are needed.
+
 Missing validator registrations fail explicitly at startup without reflection scanning.
 Validators within each discovery assembly are registered in deterministic type-name order.
 Rebuild and republish the host together with changed discovery assemblies to regenerate
