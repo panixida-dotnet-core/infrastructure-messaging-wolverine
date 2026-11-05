@@ -5,7 +5,6 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Behaviors;
 
 internal static class RequestBehaviorMetadataSourceBuilder
 {
-    // Bound the JIT work per method while preserving the registration sequence.
     private const int StatementsPerMethod = 256;
 
     internal static string Build(IEnumerable<string> registrations)
