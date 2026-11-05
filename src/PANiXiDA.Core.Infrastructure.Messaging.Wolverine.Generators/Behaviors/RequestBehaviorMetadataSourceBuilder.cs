@@ -1,9 +1,12 @@
+using System.Globalization;
 using System.Text;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Behaviors;
 
 internal static class RequestBehaviorMetadataSourceBuilder
 {
+    private const int StatementsPerMethod = 256;
+
     internal static string Build(IEnumerable<string> registrations)
     {
         var source = new StringBuilder("""
@@ -19,17 +22,56 @@ internal static class RequestBehaviorMetadataSourceBuilder
 
             """);
 
-        foreach (var registration in registrations)
+        var methods = new StringBuilder();
+        var calls = AppendMethods(methods, registrations.Select(registration =>
+            "global::PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation.RequestBehaviorMetadata." + registration),
+            "InitializeBatch");
+        var level = 0;
+        while (calls.Count > StatementsPerMethod)
         {
-            source
-                .Append("        global::PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation.")
-                .Append("RequestBehaviorMetadata.")
-                .Append(registration)
-                .Append('\n');
+            calls = AppendMethods(methods, calls, "InitializeLevel" + level.ToString(CultureInfo.InvariantCulture) + "Batch");
+            level++;
+        }
+
+        foreach (var call in calls)
+        {
+            source.Append("        ").Append(call).Append('\n');
         }
 
         return source
-            .Append("    }\n}\n")
+            .Append("    }\n")
+            .Append(methods)
+            .Append("}\n")
             .ToString();
+    }
+
+    private static List<string> AppendMethods(StringBuilder source, IEnumerable<string> statements, string methodPrefix)
+    {
+        var calls = new List<string>();
+        var statementIndex = 0;
+        foreach (var statement in statements)
+        {
+            if (statementIndex % StatementsPerMethod == 0)
+            {
+                if (statementIndex > 0)
+                {
+                    source.Append("    }\n");
+                }
+
+                var methodName = methodPrefix + calls.Count.ToString(CultureInfo.InvariantCulture);
+                calls.Add(methodName + "();");
+                source.Append("\n    private static void ").Append(methodName).Append("()\n    {\n");
+            }
+
+            source.Append("        ").Append(statement).Append('\n');
+            statementIndex++;
+        }
+
+        if (statementIndex > 0)
+        {
+            source.Append("    }\n");
+        }
+
+        return calls;
     }
 }

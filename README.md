@@ -401,6 +401,10 @@ validators, and validated types must be accessible to generated code, normally
 their declaring project. No additional registration calls, attributes, partial
 declarations, or code-generation commands are required.
 
+Message behavior metadata is initialized by generated static methods with at most
+256 registrations each. Automatically generated dispatcher levels preserve registration
+order and contain at most 256 calls per method.
+
 Missing validator registrations fail explicitly at startup without reflection scanning.
 Validators within each discovery assembly are registered in deterministic type-name order.
 Rebuild and republish the host together with changed discovery assemblies to regenerate
