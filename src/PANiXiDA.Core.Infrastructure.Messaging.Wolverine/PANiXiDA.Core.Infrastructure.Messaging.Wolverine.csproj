@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <IsAotCompatible>false</IsAotCompatible>
@@ -25,6 +25,7 @@
         <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
         <PackageReference Include="PANiXiDA.Core.Application" />
+        <PackageReference Include="PANiXiDA.Core.ApiDocumentation" />
         <PackageReference Include="WolverineFx" />
         <PackageReference Include="WolverineFx.EntityFrameworkCore" />
         <PackageReference Include="WolverineFx.Kafka" />
