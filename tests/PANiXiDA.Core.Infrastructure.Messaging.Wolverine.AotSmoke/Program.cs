@@ -11,7 +11,7 @@ var registry = KafkaDocumentationRegistry.Register(services);
 registry.Brokers.Add("default", "localhost:9092");
 registry.Operations.Add(new KafkaOperationDescription(
     new ApiDocumentDescriptor("matchmaking-kafka-v1", "Matchmaking Kafka v1", "matchmaking", "1.0", ApiDocumentFormat.AsyncApi),
-    typeof(MatchCreated), "matches", "default", AsyncApiAction.Send, null));
+    typeof(MatchCreated), "matches", "default", AsyncApiAction.Send, null, new ApiOperationMetadata("Publish match", "Publishes a match.")));
 registry.Operations.Add(new KafkaOperationDescription(
     new ApiDocumentDescriptor("matchmaking-kafka-v1", "Matchmaking Kafka v1", "matchmaking", "1.0", ApiDocumentFormat.AsyncApi),
     typeof(MatchCreated), "matches", "default", AsyncApiAction.Receive, () => "matchmaking"));
@@ -22,6 +22,11 @@ var document = provider.GetServices<IApiDocumentSource>().OfType<IAsyncApiDocume
 if (document["operations"]!.AsObject().Count != 2)
 {
     throw new InvalidOperationException("Kafka metadata generation failed in Native AOT.");
+}
+
+if (!document["operations"]!.AsObject().Any(operation => operation.Value!["title"]!.GetValue<string>() == "Publish match"))
+{
+    throw new InvalidOperationException("Kafka operation metadata was not preserved in Native AOT.");
 }
 
 Console.WriteLine(document.ToJsonString());

@@ -71,6 +71,18 @@ public sealed class WolverineKafkaConfiguration
         return RegisterKafkaProducer<TEvent>(option);
     }
 
+    /// <summary>Registers a Kafka producer with an explicit operation display name and summary.</summary>
+    /// <typeparam name="TEvent">The published domain event.</typeparam>
+    /// <param name="operation">The documentation metadata; transport routing is unchanged.</param>
+    /// <param name="parentSectionName">The parent producer configuration section.</param>
+    /// <returns>The Wolverine sender configuration.</returns>
+    public KafkaSubscriberConfiguration AddProducer<TEvent>(ApiOperationMetadata operation,
+        string parentSectionName = "Messaging:Producers") where TEvent : DomainEvent
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        return RegisterKafkaProducer<TEvent>(GetRequiredOption<KafkaProducerOption>($"{parentSectionName}:{typeof(TEvent).Name}"), operation);
+    }
+
     /// <summary>
     /// Registers a durable Kafka consumer from the child section named after the event type.
     /// </summary>
@@ -82,6 +94,18 @@ public sealed class WolverineKafkaConfiguration
     {
         var option = GetRequiredOption<KafkaConsumerOption>($"{parentSectionName}:{typeof(TEvent).Name}");
         return RegisterKafkaConsumer<TEvent>(option);
+    }
+
+    /// <summary>Registers a Kafka consumer with an explicit operation display name and summary.</summary>
+    /// <typeparam name="TEvent">The consumed domain event.</typeparam>
+    /// <param name="operation">The documentation metadata; transport routing is unchanged.</param>
+    /// <param name="parentSectionName">The parent consumer configuration section.</param>
+    /// <returns>The Wolverine listener configuration.</returns>
+    public KafkaListenerConfiguration AddConsumer<TEvent>(ApiOperationMetadata operation,
+        string parentSectionName = "Messaging:Consumers") where TEvent : DomainEvent
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        return RegisterKafkaConsumer<TEvent>(GetRequiredOption<KafkaConsumerOption>($"{parentSectionName}:{typeof(TEvent).Name}"), operation);
     }
 
     /// <summary>
@@ -122,6 +146,19 @@ public sealed class WolverineKafkaConfiguration
         return RegisterKafkaProducer<TEvent>(option);
     }
 
+    /// <summary>Registers a typed-options Kafka producer with explicit operation documentation.</summary>
+    /// <typeparam name="TOption">The producer configuration model.</typeparam>
+    /// <typeparam name="TEvent">The published domain event.</typeparam>
+    /// <param name="operation">The operation display name and optional summary.</param>
+    /// <returns>The Wolverine sender configuration.</returns>
+    public KafkaSubscriberConfiguration AddKafkaProducer<TOption, TEvent>(ApiOperationMetadata operation)
+        where TOption : KafkaProducerOption, new()
+        where TEvent : DomainEvent
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        return RegisterKafkaProducer<TEvent>(GetRequiredOption<TOption>(), operation);
+    }
+
     /// <summary>
     /// Registers a Kafka consumer for an event type from the section named after <typeparamref name="TOption"/>.
     /// </summary>
@@ -135,6 +172,19 @@ public sealed class WolverineKafkaConfiguration
         var option = GetRequiredOption<TOption>();
 
         return RegisterKafkaConsumer<TEvent>(option);
+    }
+
+    /// <summary>Registers a typed-options Kafka consumer with explicit operation documentation.</summary>
+    /// <typeparam name="TOption">The consumer configuration model.</typeparam>
+    /// <typeparam name="TEvent">The consumed domain event.</typeparam>
+    /// <param name="operation">The operation display name and optional summary.</param>
+    /// <returns>The Wolverine listener configuration.</returns>
+    public KafkaListenerConfiguration AddKafkaConsumer<TOption, TEvent>(ApiOperationMetadata operation)
+        where TOption : KafkaConsumerOption, new()
+        where TEvent : DomainEvent
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        return RegisterKafkaConsumer<TEvent>(GetRequiredOption<TOption>(), operation);
     }
 
     private KafkaTransportExpression RegisterKafkaBroker(KafkaBrokerOption option)
@@ -154,7 +204,7 @@ public sealed class WolverineKafkaConfiguration
                 option.BootstrapServers);
     }
 
-    private KafkaSubscriberConfiguration RegisterKafkaProducer<TEvent>(KafkaProducerOption option)
+    private KafkaSubscriberConfiguration RegisterKafkaProducer<TEvent>(KafkaProducerOption option, ApiOperationMetadata? metadata = null)
         where TEvent : DomainEvent
     {
         ValidateTopicName(option.TopicName);
@@ -167,11 +217,11 @@ public sealed class WolverineKafkaConfiguration
                 option.TopicName);
 
         var result = subscriber.UseDurableOutbox();
-        RecordOperation<TEvent>(option.TopicName, option.BrokerName, AsyncApiAction.Send);
+        RecordOperation<TEvent>(option.TopicName, option.BrokerName, AsyncApiAction.Send, metadata: metadata);
         return result;
     }
 
-    private KafkaListenerConfiguration RegisterKafkaConsumer<TEvent>(KafkaConsumerOption option)
+    private KafkaListenerConfiguration RegisterKafkaConsumer<TEvent>(KafkaConsumerOption option, ApiOperationMetadata? metadata = null)
         where TEvent : DomainEvent
     {
         ValidateTopicName(option.TopicName);
@@ -208,16 +258,17 @@ public sealed class WolverineKafkaConfiguration
         }
 
         var result = listener.UseDurableInbox();
-        RecordOperation<TEvent>(option.TopicName, option.BrokerName, AsyncApiAction.Receive, () => ((KafkaTopic)listener.Endpoint).ConsumerConfig?.GroupId);
+        RecordOperation<TEvent>(option.TopicName, option.BrokerName, AsyncApiAction.Receive, () => ((KafkaTopic)listener.Endpoint).ConsumerConfig?.GroupId, metadata);
         return result;
     }
 
-    private void RecordOperation<TEvent>(string topic, string? broker, AsyncApiAction action, Func<string?>? group = null)
+    private void RecordOperation<TEvent>(string topic, string? broker, AsyncApiAction action, Func<string?>? group = null,
+        ApiOperationMetadata? metadata = null)
     {
         if (document is not null)
         {
             documentation.Operations.Add(new KafkaOperationDescription((ApiDocumentDescriptor)document, typeof(TEvent), topic,
-                BrokerNameForDocumentation(broker), action, group));
+                BrokerNameForDocumentation(broker), action, group, metadata));
         }
     }
 

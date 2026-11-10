@@ -16,6 +16,54 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class KafkaDocumentationTests
 {
+    [Theory(DisplayName = "Convention and typed Kafka registrations expose friendly operation names without changing topics or groups")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DescribesOperationMetadata(bool typed)
+    {
+        var configuration = CreateConfiguration();
+        configuration["TestConsumerOption:TopicName"] = "typed-events";
+        configuration["TestConsumerOption:ConsumerGroupId"] = "typed-group";
+        var options = new WolverineOptions();
+        var kafka = new WolverineKafkaConfiguration(options, configuration);
+        kafka.AddKafkaBroker();
+        kafka.AddKafkaBroker<TestBrokerOption>();
+        kafka.WithDocumentation("module", "1.0", module =>
+        {
+            var producer = new ApiOperationMetadata("Publish event", "Publishes the event.");
+            var consumer = new ApiOperationMetadata("Consume event", "Consumes the event.");
+            if (typed)
+            {
+                module.AddKafkaProducer<TestProducerOption, TestDomainEvent>(producer);
+                ((IDelayedEndpointConfiguration)module.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>(consumer)).Apply();
+            }
+            else
+            {
+                module.AddProducer<TestDomainEvent>(producer);
+                ((IDelayedEndpointConfiguration)module.AddConsumer<TestDomainEvent>(consumer)).Apply();
+            }
+        });
+        options.Services.AddApiDocumentationSchemas(KafkaJsonContext.Default);
+        using var provider = options.Services.BuildServiceProvider();
+        var source = provider.GetServices<IApiDocumentSource>().OfType<IAsyncApiDocumentSource>().Single();
+
+        var document = source.Generate("module-kafka-v1", TestContext.Current.CancellationToken);
+
+        var send = document["operations"]!.AsObject().Single(operation => operation.Value!["action"]!.GetValue<string>() == "send");
+        var receive = document["operations"]!.AsObject().Single(operation => operation.Value!["action"]!.GetValue<string>() == "receive");
+        send.Key.ShouldContain(typeof(TestDomainEvent).FullName!);
+        send.Value!["title"]!.GetValue<string>().ShouldBe("Publish event");
+        send.Value["summary"]!.GetValue<string>().ShouldBe("Publishes the event.");
+        receive.Value!["title"]!.GetValue<string>().ShouldBe("Consume event");
+        receive.Value["summary"]!.GetValue<string>().ShouldBe("Consumes the event.");
+        receive.Value["bindings"]!["kafka"]!["groupId"]!["enum"]![0]!.GetValue<string>().ShouldBe(typed ? "typed-group" : "matchmaking");
+        document["channels"]!.AsObject().Select(channel => channel.Value!["address"]!.GetValue<string>()).ShouldContain(typed ? "typed-events" : "events");
+        Should.Throw<ArgumentNullException>(() => kafka.AddProducer<TestDomainEvent>((ApiOperationMetadata)null!));
+        Should.Throw<ArgumentNullException>(() => kafka.AddConsumer<TestDomainEvent>((ApiOperationMetadata)null!));
+        Should.Throw<ArgumentNullException>(() => kafka.AddKafkaProducer<TestProducerOption, TestDomainEvent>(null!));
+        Should.Throw<ArgumentNullException>(() => kafka.AddKafkaConsumer<TestConsumerOption, TestDomainEvent>(null!));
+    }
+
     [Fact(DisplayName = "Kafka documentation captures actual typed topology and isolates modules versions and named brokers")]
     public void CapturesTopology()
     {
@@ -42,6 +90,7 @@ public sealed class KafkaDocumentationTests
         document["components"]!["messages"]!.AsObject().Count.ShouldBe(1);
         document["servers"]!["default"]!["host"]!.GetValue<string>().ShouldBe("primary:9092");
         var receive = document["operations"]!.AsObject().Single(operation => operation.Value!["action"]!.GetValue<string>() == "receive").Value!;
+        receive["title"]!.GetValue<string>().ShouldBe("Consume TestDomainEvent");
         receive["bindings"]!["kafka"]!["groupId"]!["enum"]![0]!.GetValue<string>().ShouldBe("matchmaking");
         source.Generate("matchmaking-kafka-v2", TestContext.Current.CancellationToken)["info"]!["x-deprecated"]!.GetValue<bool>().ShouldBeTrue();
         document["components"]!["messages"]!.AsObject().Single().Value!["payload"]!["schema"]!["properties"]!["eventId"].ShouldNotBeNull();

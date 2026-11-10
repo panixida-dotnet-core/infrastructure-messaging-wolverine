@@ -235,6 +235,13 @@ kafka.WithDocumentation("matchmaking", "1.0", module =>
 }, title: "Matchmaking");
 ```
 
+Operation titles default to `Publish EventName` or `Consume EventName`. Supply an `ApiOperationMetadata` argument to any producer/consumer helper, including typed-option overloads, to override the name and optional summary without changing routing:
+
+```csharp
+module.AddProducer<SearchStarted>(new ApiOperationMetadata(
+    Name: "PublishSearchStarted", Summary: "Announces a new matchmaking search."));
+```
+
 Both convention methods and existing typed-option overloads participate. Actual configured topics, broker names, finalized consumer groups (including returned listener customization), event payloads and send/receive direction produce `/asyncapi/matchmaking-kafka-v1.json`. Named brokers isolate identical topic names. The first configured bootstrap address represents each broker in the document; connection credentials are not exported.
 
 The host registers source-generated JSON contexts with `AddApiDocumentationSchemas(ApplicationJsonContext.Default)` from `PANiXiDA.Core.ApiDocumentation.DependencyInjection`. To expose documents in Scalar, reference `PANiXiDA.Core.Presentation.Scalar` and call its `AddApiDocumentation(configuration, ApplicationJsonContext.Default)` and `UseApiDocumentation()` instead. This infrastructure package has no UI dependency.

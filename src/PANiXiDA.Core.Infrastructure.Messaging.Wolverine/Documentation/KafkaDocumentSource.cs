@@ -28,7 +28,7 @@ internal sealed class KafkaDocumentationRegistry
 }
 
 internal sealed record KafkaOperationDescription(ApiDocumentDescriptor Document, Type EventType,
-    string Topic, string Broker, AsyncApiAction Action, Func<string?>? ConsumerGroup);
+    string Topic, string Broker, AsyncApiAction Action, Func<string?>? ConsumerGroup, ApiOperationMetadata? Metadata = null);
 
 internal sealed class KafkaDocumentSource(KafkaDocumentationRegistry registry, ApiSchemaRegistry schemas) : IAsyncApiDocumentSource
 {
@@ -84,8 +84,12 @@ internal sealed class KafkaDocumentSource(KafkaDocumentationRegistry registry, A
 
             return new AsyncApiOperation(id, operation.Topic, operation.Action,
                 new AsyncApiMessage(operation.EventType.FullName!, schemas.GetSchema(operation.EventType)),
-                "kafka")
-            { Bindings = bindings, ServerName = operation.Broker };
+                "kafka", operation.Metadata?.Summary)
+            {
+                Name = operation.Metadata?.Name ?? (operation.Action == AsyncApiAction.Send ? "Publish " : "Consume ") + operation.EventType.Name,
+                Bindings = bindings,
+                ServerName = operation.Broker
+            };
         });
         return AsyncApiDocumentBuilder.Build(document, operations, servers);
     }
