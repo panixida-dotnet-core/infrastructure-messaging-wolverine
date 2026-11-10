@@ -28,7 +28,7 @@ internal sealed class KafkaDocumentationRegistry
 }
 
 internal sealed record KafkaOperationDescription(ApiDocumentDescriptor Document, Type EventType,
-    string Topic, string Broker, AsyncApiAction Action, string? ConsumerGroup);
+    string Topic, string Broker, AsyncApiAction Action, Func<string?>? ConsumerGroup);
 
 internal sealed class KafkaDocumentSource(KafkaDocumentationRegistry registry, ApiSchemaRegistry schemas) : IAsyncApiDocumentSource
 {
@@ -68,14 +68,15 @@ internal sealed class KafkaDocumentSource(KafkaDocumentationRegistry registry, A
         {
             cancellationToken.ThrowIfCancellationRequested();
             var id = operation.Broker + "." + operation.Topic + "." + operation.Action + "." + operation.EventType.FullName;
+            var consumerGroup = operation.ConsumerGroup?.Invoke();
             JsonObject? bindings = null;
-            if (operation.Action == AsyncApiAction.Receive && !string.IsNullOrWhiteSpace(operation.ConsumerGroup))
+            if (operation.Action == AsyncApiAction.Receive && !string.IsNullOrWhiteSpace(consumerGroup))
             {
                 bindings = new JsonObject
                 {
                     ["kafka"] = new JsonObject
                     {
-                        ["groupId"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray(operation.ConsumerGroup) },
+                        ["groupId"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray(consumerGroup) },
                         ["bindingVersion"] = "0.5.0"
                     }
                 };

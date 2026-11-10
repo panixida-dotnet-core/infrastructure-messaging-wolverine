@@ -9,6 +9,8 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.TestDoubles.Configurations;
 
 using Wolverine;
+using Wolverine.Configuration;
+using Wolverine.Kafka;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurations;
 
@@ -25,7 +27,7 @@ public sealed class KafkaDocumentationTests
         kafka.WithDocumentation("matchmaking", "1.0", module =>
         {
             module.AddProducer<TestDomainEvent>();
-            module.AddConsumer<TestDomainEvent>();
+            ((IDelayedEndpointConfiguration)module.AddConsumer<TestDomainEvent>()).Apply();
             module.AddKafkaProducer<TestProducerOption, TestDomainEvent>();
         }, "Matchmaking").ShouldBeSameAs(kafka);
         kafka.WithDocumentation("matchmaking", "2.0", module => module.AddProducer<TestDomainEvent>(), deprecated: true);
@@ -95,6 +97,27 @@ public sealed class KafkaDocumentationTests
         kafka.WithDocumentation("module", "1.0", module => module.AddProducer<TestDomainEvent>(), "Second");
         using var provider = options.Services.BuildServiceProvider();
         Should.Throw<InvalidOperationException>(() => provider.GetRequiredService<ApiDocumentCatalog>().GetDocuments());
+    }
+
+    [Theory(DisplayName = "Kafka documentation reads consumer groups after listener customization")]
+    [InlineData(null)]
+    [InlineData("configured")]
+    public void ReadsFinalConsumerGroup(string? configuredGroup)
+    {
+        var configuration = CreateConfiguration();
+        configuration["Messaging:Consumers:TestDomainEvent:ConsumerGroupId"] = configuredGroup;
+        var options = new WolverineOptions();
+        var kafka = new WolverineKafkaConfiguration(options, configuration);
+        kafka.AddKafkaBroker();
+        KafkaListenerConfiguration? listener = null;
+        kafka.WithDocumentation("module", "1.0", module =>
+            listener = module.AddConsumer<TestDomainEvent>().ConfigureConsumer(consumer => consumer.GroupId = "override"));
+        ((IDelayedEndpointConfiguration)listener!).Apply();
+        options.Services.AddApiDocumentationSchemas(KafkaJsonContext.Default);
+        using var provider = options.Services.BuildServiceProvider();
+        var source = provider.GetServices<IApiDocumentSource>().OfType<IAsyncApiDocumentSource>().Single();
+        var operation = source.Generate("module-kafka-v1", TestContext.Current.CancellationToken)["operations"]!.AsObject().Single().Value!;
+        operation["bindings"]!["kafka"]!["groupId"]!["enum"]![0]!.GetValue<string>().ShouldBe("override");
     }
 
     private static IConfiguration CreateConfiguration() => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

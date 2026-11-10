@@ -208,11 +208,11 @@ public sealed class WolverineKafkaConfiguration
         }
 
         var result = listener.UseDurableInbox();
-        RecordOperation<TEvent>(option.TopicName, option.BrokerName, AsyncApiAction.Receive, option.ConsumerGroupId);
+        RecordOperation<TEvent>(option.TopicName, option.BrokerName, AsyncApiAction.Receive, () => ((KafkaTopic)listener.Endpoint).ConsumerConfig?.GroupId);
         return result;
     }
 
-    private void RecordOperation<TEvent>(string topic, string? broker, AsyncApiAction action, string? group = null)
+    private void RecordOperation<TEvent>(string topic, string? broker, AsyncApiAction action, Func<string?>? group = null)
     {
         if (document is not null)
         {
