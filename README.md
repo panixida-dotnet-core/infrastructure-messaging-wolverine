@@ -241,7 +241,7 @@ The host registers source-generated JSON contexts with `AddApiDocumentationSchem
 
 `WithDocumentation` only groups documentation; it does not change routing, inbox/outbox, topic names, message envelopes or runtime version negotiation. Use distinct event contracts/topics when versions require separate wire contracts. Existing registrations outside a documentation scope are unaffected. Payload schemas describe JSON event contracts configured through these helpers; custom serializers or topology registered directly through Wolverine require a custom document source.
 
-Schema generation uses supplied `JsonSerializerContext` metadata without reflection fallback. CI compiles the production documentation source into a separate Native AOT smoke executable and runs it; this verifies the documentation path without loading Wolverine or EF. The full Wolverine/EF Core runtime retains its existing Native AOT limitations.
+Schema generation uses supplied `JsonSerializerContext` metadata without reflection fallback. The local Native AOT smoke check compiles the production documentation source into a separate executable and runs it; this verifies the documentation path without loading Wolverine or EF. The full Wolverine/EF Core runtime retains its existing Native AOT limitations.
 
 ## Kafka Topics
 
