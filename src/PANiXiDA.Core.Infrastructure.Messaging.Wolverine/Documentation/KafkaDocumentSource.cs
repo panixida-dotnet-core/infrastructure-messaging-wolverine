@@ -10,6 +10,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Documentation;
 internal sealed class KafkaDocumentationRegistry
 {
     internal Dictionary<string, string> Brokers { get; } = new(StringComparer.Ordinal);
+
     internal List<KafkaOperationDescription> Operations { get; } = [];
 
     internal static KafkaDocumentationRegistry Register(IServiceCollection services)
