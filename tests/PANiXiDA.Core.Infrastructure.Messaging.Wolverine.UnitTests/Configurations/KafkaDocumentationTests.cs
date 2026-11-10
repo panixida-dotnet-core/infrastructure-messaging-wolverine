@@ -149,9 +149,10 @@ public sealed class KafkaDocumentationTests
     }
 
     [Theory(DisplayName = "Kafka documentation reads consumer groups after listener customization")]
-    [InlineData(null)]
-    [InlineData("configured")]
-    public void ReadsFinalConsumerGroup(string? configuredGroup)
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    [InlineData("configured", true)]
+    public void ReadsFinalConsumerGroup(string? configuredGroup, bool customize)
     {
         var configuration = CreateConfiguration();
         configuration["Messaging:Consumers:TestDomainEvent:ConsumerGroupId"] = configuredGroup;
@@ -160,13 +161,26 @@ public sealed class KafkaDocumentationTests
         kafka.AddKafkaBroker();
         KafkaListenerConfiguration? listener = null;
         kafka.WithDocumentation("module", "1.0", module =>
-            listener = module.AddConsumer<TestDomainEvent>().ConfigureConsumer(consumer => consumer.GroupId = "override"));
+        {
+            listener = module.AddConsumer<TestDomainEvent>();
+            if (customize)
+            {
+                listener.ConfigureConsumer(consumer => consumer.GroupId = "override");
+            }
+        });
         ((IDelayedEndpointConfiguration)listener!).Apply();
         options.Services.AddApiDocumentationSchemas(KafkaJsonContext.Default);
         using var provider = options.Services.BuildServiceProvider();
         var source = provider.GetServices<IApiDocumentSource>().OfType<IAsyncApiDocumentSource>().Single();
         var operation = source.Generate("module-kafka-v1", TestContext.Current.CancellationToken)["operations"]!.AsObject().Single().Value!;
-        operation["bindings"]!["kafka"]!["groupId"]!["enum"]![0]!.GetValue<string>().ShouldBe("override");
+        if (customize)
+        {
+            operation["bindings"]!["kafka"]!["groupId"]!["enum"]![0]!.GetValue<string>().ShouldBe("override");
+        }
+        else
+        {
+            operation["bindings"].ShouldBeNull();
+        }
     }
 
     private static IConfiguration CreateConfiguration() => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
