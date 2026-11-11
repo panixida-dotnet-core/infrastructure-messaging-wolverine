@@ -222,6 +222,34 @@ for shared-store gauges; sum per-instance counter increases. Do not infer curren
 from the arrival counter because replay, deletion, and expiration decrease the inventory.
 This collector covers the shared main store configured by this package, not additional tenant stores.
 
+## AsyncAPI documentation
+
+Group existing typed Kafka registrations by module and message contract version:
+
+```csharp
+kafka.AddKafkaBroker();
+kafka.WithDocumentation("matchmaking", "1.0", module =>
+{
+    module.AddProducer<SearchStarted>();
+    module.AddConsumer<MatchCreated>();
+}, title: "Matchmaking");
+```
+
+Operation titles default to `Publish EventName` or `Consume EventName`. Supply an `ApiOperationMetadata` argument to any producer/consumer helper, including typed-option overloads, to override the name and optional summary without changing routing:
+
+```csharp
+module.AddProducer<SearchStarted>(new ApiOperationMetadata(
+    Name: "PublishSearchStarted", Summary: "Announces a new matchmaking search."));
+```
+
+Both convention methods and existing typed-option overloads participate. Actual configured topics, broker names, finalized consumer groups (including returned listener customization), event payloads and send/receive direction produce `/asyncapi/matchmaking-kafka-v1.json`. Named brokers isolate identical topic names. The first configured bootstrap address represents each broker in the document; connection credentials are not exported.
+
+The host registers source-generated JSON contexts with `AddApiDocumentationSchemas(ApplicationJsonContext.Default)` from `PANiXiDA.Core.ApiDocumentation.DependencyInjection`. To expose documents in Scalar, reference `PANiXiDA.Core.Presentation.Scalar` and call its `AddApiDocumentation(configuration, ApplicationJsonContext.Default)` and `UseApiDocumentation()` instead. This infrastructure package has no UI dependency.
+
+`WithDocumentation` only groups documentation; it does not change routing, inbox/outbox, topic names, message envelopes or runtime version negotiation. Use distinct event contracts/topics when versions require separate wire contracts. Existing registrations outside a documentation scope are unaffected. Payload schemas describe JSON event contracts configured through these helpers; custom serializers or topology registered directly through Wolverine require a custom document source.
+
+Schema generation uses supplied `JsonSerializerContext` metadata without reflection fallback. The full Wolverine/EF Core runtime retains its existing Native AOT limitations.
+
 ## Kafka Topics
 
 Register Kafka routes by domain event type. Options are read from `Messaging:Kafka`,
