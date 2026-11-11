@@ -35,7 +35,7 @@ internal sealed class KafkaDocumentSource(KafkaDocumentationRegistry registry, A
 {
     public IReadOnlyCollection<ApiDocumentDescriptor> GetDocuments()
     {
-        return registry.Operations.Select(operation => operation.Document).GroupBy(document => document.Name)
+        return [.. registry.Operations.Select(operation => operation.Document).GroupBy(document => document.Name)
             .Select(group =>
             {
                 var first = group.First();
@@ -46,7 +46,7 @@ internal sealed class KafkaDocumentSource(KafkaDocumentationRegistry registry, A
                 }
 
                 return first;
-            }).ToArray();
+            })];
     }
 
     public JsonObject Generate(string documentName, CancellationToken cancellationToken = default)

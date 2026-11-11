@@ -267,7 +267,7 @@ public sealed class WolverineKafkaConfiguration
     {
         if (document is not null)
         {
-            documentation.Operations.Add(new KafkaOperationDescription((ApiDocumentDescriptor)document, typeof(TEvent), topic,
+            documentation.Operations.Add(new KafkaOperationDescription(document, typeof(TEvent), topic,
                 BrokerNameForDocumentation(broker), action, group, metadata));
         }
     }
