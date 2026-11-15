@@ -10,6 +10,24 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingSectionTests
 {
+    [Fact(DisplayName = "Generated binding dispatches Add through the declared set interface")]
+    public void BinderShouldUseSetInterfaceAdd()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Values:0"] = "configured",
+            ["Options:Concrete:0"] = "configured",
+        };
+
+        var original = configuration.GetSection("Options").Get<SetDispatchOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<SetDispatchOptions>(configuration, "Options");
+
+        original.Values.ShouldBe(["configured"]);
+        generated.Values.ShouldBe(original.Values.AsEnumerable());
+        generated.Concrete.ShouldBe(original.Concrete);
+        generated.Concrete.ShouldBeEmpty();
+    }
+
     [Theory(DisplayName = "Generated property binding preserves declared key casing in conversion errors")]
     [InlineData("count", "Count")]
     [InlineData("nestedname:othercount", "NestedName:OtherCount")]
@@ -377,6 +395,18 @@ public sealed class OptionBindingSectionTests
     public sealed class ReadOnlySetOptions : KafkaConsumerOption
     {
         public IReadOnlySet<string> Values { get; } = new TrackingSet();
+    }
+
+    public sealed class SetDispatchOptions : KafkaConsumerOption
+    {
+        public ISet<string> Values { get; } = new DistinctSet();
+        public DistinctSet Concrete { get; } = new();
+    }
+
+    public sealed class DistinctSet : HashSet<string>, ISet<string>
+    {
+        bool ISet<string>.Add(string item) => Add(item);
+        void ICollection<string>.Add(string item) => throw new InvalidOperationException("Wrong Add method.");
     }
 
     public sealed class TrackingSet : HashSet<string>, IReadOnlySet<string>

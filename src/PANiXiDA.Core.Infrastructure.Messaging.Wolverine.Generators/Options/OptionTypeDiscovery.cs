@@ -9,6 +9,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
     private readonly HashSet<ISymbol> active = new(SymbolEqualityComparer.Default);
     private readonly HashSet<ISymbol> activeInstanceInitializers = new(SymbolEqualityComparer.Default);
+    private readonly Dictionary<INamedTypeSymbol, InterfaceDispatch> interfaceDispatches = new(SymbolEqualityComparer.Default);
 
     internal IEnumerable<INamedTypeSymbol> Discover()
     {
@@ -60,6 +61,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         }
         AddType(Substitute(method.ReturnType, substitutions));
         VisitDefinition(definition, substitutions);
+        if (containing.TypeKind == TypeKind.Interface && method.MethodKind == MethodKind.Ordinary)
+        {
+            VisitInterfaceCall(method, substitutions);
+        }
         if (containing.IsGenericType)
         {
             VisitStaticInitialization(containing, substitutions);
@@ -70,6 +75,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         }
         if (method.MethodKind == MethodKind.Constructor)
         {
+            AddType(Substitute(containing, substitutions));
             VisitImplicitBaseConstructor(method, containing, substitutions);
         }
     }
@@ -170,8 +176,67 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     {
         if (type is INamedTypeSymbol { IsAbstract: false, IsUnboundGenericType: false } named && !ContainsTypeParameter(named))
         {
-            types.Add(named);
+            if (types.Add(named) && named.DeclaringSyntaxReferences.Length != 0)
+            {
+                foreach (var contract in named.AllInterfaces)
+                {
+                    var dispatch = GetInterfaceDispatch(contract);
+                    dispatch.Implementations.Add(named);
+                    foreach (var call in dispatch.Calls.ToArray())
+                    {
+                        VisitImplementation(named, call);
+                    }
+                }
+            }
         }
+    }
+
+    private void VisitInterfaceCall(IMethodSymbol method, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
+    {
+        var contract = (INamedTypeSymbol)Substitute(method.ContainingType!, substitutions);
+        var arguments = method.TypeArguments.Select(argument => Substitute(argument, substitutions)).ToArray();
+        if (arguments.Prepend(contract).Any(ContainsTypeParameter))
+        {
+            return;
+        }
+
+        var declaration = contract.GetMembers(method.Name).OfType<IMethodSymbol>()
+            .First(candidate => SymbolEqualityComparer.Default.Equals(candidate.OriginalDefinition, method.OriginalDefinition));
+        var call = arguments.Length == 0 ? declaration : declaration.Construct(arguments);
+        var dispatch = GetInterfaceDispatch(contract);
+        if (dispatch.Calls.Add(call))
+        {
+            foreach (var implementation in dispatch.Implementations.ToArray())
+            {
+                VisitImplementation(implementation, call);
+            }
+        }
+    }
+
+    private InterfaceDispatch GetInterfaceDispatch(INamedTypeSymbol contract)
+    {
+        if (!interfaceDispatches.TryGetValue(contract, out var dispatch))
+        {
+            dispatch = new InterfaceDispatch();
+            interfaceDispatches.Add(contract, dispatch);
+        }
+        return dispatch;
+    }
+
+    private void VisitImplementation(INamedTypeSymbol type, IMethodSymbol call)
+    {
+        if (type.FindImplementationForInterfaceMember(call.ConstructedFrom) is IMethodSymbol implementation &&
+            !active.Contains(implementation.OriginalDefinition))
+        {
+            var method = call.Arity == 0 ? implementation : implementation.Construct([.. call.TypeArguments]);
+            VisitMethod(method, new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default));
+        }
+    }
+
+    private sealed class InterfaceDispatch
+    {
+        internal HashSet<IMethodSymbol> Calls { get; } = new(SymbolEqualityComparer.Default);
+        internal HashSet<INamedTypeSymbol> Implementations { get; } = new(SymbolEqualityComparer.Default);
     }
 
     private ITypeSymbol Substitute(ITypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)

@@ -625,8 +625,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
         else
         {
-            var replacement = type.OriginalDefinition.ToDisplayString() == SetInterface ? WritableCondition : "option is null";
-            body.Append($"        hasNewValue = {replacement};\n        option ??= {create};\n        var items = ({Collections}ICollection<{elementName}>)option;\n");
+            var setInterface = type.OriginalDefinition.ToDisplayString() == SetInterface;
+            var replacement = setInterface ? WritableCondition : "option is null";
+            var collectionInterface = setInterface ? "ISet" : "ICollection";
+            body.Append($"        hasNewValue = {replacement};\n        option ??= {create};\n        var items = ({Collections}{collectionInterface}<{elementName}>)option;\n");
         }
 
         AppendSequenceItems(body, element, copy, readOnlySet);
