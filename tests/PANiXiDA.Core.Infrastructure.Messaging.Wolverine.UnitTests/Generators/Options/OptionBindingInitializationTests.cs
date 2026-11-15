@@ -133,7 +133,46 @@ public sealed class OptionBindingInitializationTests
             }
             """, references);
 
-        var context = BindAndUnload(compilation);
+        AssertUnloaded(BindAndUnload(compilation));
+    }
+
+    [Fact(DisplayName = "Binding shared options does not prevent unloading or reloading a collectible consumer")]
+    public void BinderShouldAllowSharedOptionConsumerUnloading()
+    {
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+            .Select(path => MetadataReference.CreateFromFile(path)).Cast<MetadataReference>().ToList();
+        var shared = CreateCompilation("""
+            public sealed class SharedSettings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            """, references);
+        using var stream = new MemoryStream();
+        shared.Emit(stream, cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
+        references.Add(MetadataReference.CreateFromImage(stream.ToArray()));
+        stream.Position = 0;
+        AssemblyLoadContext.Default.LoadFromStream(stream);
+
+        var compilation = CreateCompilation("""
+            using Microsoft.Extensions.Configuration;
+            using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Generators.Options;
+
+            public static class Plugin
+            {
+                public static bool Bind()
+                {
+                    var configuration = new ConfigurationManager
+                    {
+                        ["Settings:BootstrapServers"] = "localhost:9092",
+                    };
+                    return OptionBindingInitializationTests.Bind<SharedSettings>(configuration) == "localhost:9092";
+                }
+            }
+            """, references);
+
+        AssertUnloaded(BindAndUnload(compilation));
+        AssertUnloaded(BindAndUnload(compilation));
+    }
+
+    private static void AssertUnloaded(WeakReference context)
+    {
         for (var attempt = 0; attempt < 10 && context.IsAlive; attempt++)
         {
             GC.Collect();

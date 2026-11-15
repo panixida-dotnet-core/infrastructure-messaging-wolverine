@@ -96,7 +96,8 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
 
             source.Append("        ").Append(Registry).Append(".Register<")
                 .Append(type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
-                .Append(">(static section => ").Append(method).Append("(section, default));\n");
+                .Append(">(static section => ").Append(method)
+                .Append("(section, default), typeof(GeneratedWolverineOptionBindings).Assembly);\n");
             methods.Append(bindingSource);
             metadata.Append("[assembly: GeneratedWolverineOptionBindingsAttribute(typeof(")
                 .Append(type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).Append("))]\n");

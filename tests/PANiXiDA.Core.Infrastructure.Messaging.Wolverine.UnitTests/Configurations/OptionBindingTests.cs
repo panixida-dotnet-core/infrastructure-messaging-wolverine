@@ -119,10 +119,11 @@ public sealed class OptionBindingTests
         generated.TimeZoneId.ShouldBe(original.TimeZoneId);
     }
 
-    [Fact(DisplayName = "Generated binder registration rejects null delegates")]
-    public void RegistrationShouldRejectNullBinder()
+    [Fact(DisplayName = "Generated binder registration rejects a missing delegate or owner")]
+    public void RegistrationShouldRejectNullArguments()
     {
-        Should.Throw<ArgumentNullException>(() => OptionBindingRegistry.Register<KafkaBrokerOption>(null!));
+        Should.Throw<ArgumentNullException>(() => OptionBindingRegistry.Register<KafkaBrokerOption>(null!, typeof(KafkaBrokerOption).Assembly));
+        Should.Throw<ArgumentNullException>(() => OptionBindingRegistry.Register(static _ => new KafkaBrokerOption(), null!));
     }
 
     [Fact(DisplayName = "Generated scalar conversion rejects null arguments")]

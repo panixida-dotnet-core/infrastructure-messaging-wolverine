@@ -118,15 +118,15 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private void VisitCollectionExpression(SemanticModel model, CollectionExpressionSyntax collection, TypeSubstitutions substitutions)
     {
-        if (model.GetOperation(collection, token) is not ICollectionExpressionOperation operation)
+        IOperation?[] operations = [model.GetOperation(collection, token)];
+        foreach (var operation in operations.OfType<ICollectionExpressionOperation>())
         {
-            return;
-        }
-        VisitMethods(substitutions, operation.ConstructMethod);
-        foreach (var spread in operation.Elements.OfType<ISpreadOperation>())
-        {
-            VisitMethods(substitutions, spread.ElementConversion.MethodSymbol);
-            VisitIteration(BindSpreadIteration(model, (SpreadElementSyntax)spread.Syntax), substitutions);
+            VisitMethods(substitutions, operation.ConstructMethod);
+            foreach (var spread in operation.Elements.OfType<ISpreadOperation>())
+            {
+                VisitMethods(substitutions, spread.ElementConversion.MethodSymbol);
+                VisitIteration(BindSpreadIteration(model, (SpreadElementSyntax)spread.Syntax), substitutions);
+            }
         }
     }
 

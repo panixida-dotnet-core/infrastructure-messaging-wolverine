@@ -19,11 +19,13 @@ public static class OptionBindingRegistry
     /// </summary>
     /// <typeparam name="TOption">The concrete options type.</typeparam>
     /// <param name="binder">Creates and binds an options instance from a nonempty section.</param>
-    public static void Register<TOption>(Func<IConfigurationSection, TOption> binder)
+    /// <param name="owner">The assembly that contains the generated binder.</param>
+    public static void Register<TOption>(Func<IConfigurationSection, TOption> binder, Assembly owner)
         where TOption : class
     {
         ArgumentNullException.ThrowIfNull(binder);
-        Binding<TOption>.RegisterBinder(binder);
+        ArgumentNullException.ThrowIfNull(owner);
+        Binding<TOption>.RegisterBinder(binder, owner);
     }
 
     /// <summary>
@@ -102,11 +104,23 @@ public static class OptionBindingRegistry
     {
         private static Func<IConfigurationSection, TOption>? binder;
 
-        internal static Func<IConfigurationSection, TOption>? Binder => binder;
+        internal static Func<IConfigurationSection, TOption>? Binder
+            => Volatile.Read(ref binder) ?? Collectible.Binders.FirstOrDefault().Value;
 
-        internal static void RegisterBinder(Func<IConfigurationSection, TOption> generatedBinder)
+        internal static void RegisterBinder(Func<IConfigurationSection, TOption> generatedBinder, Assembly owner)
         {
+            if (owner.IsCollectible)
+            {
+                Collectible.Binders.TryAdd(owner, generatedBinder);
+                return;
+            }
+
             Interlocked.CompareExchange(ref binder, generatedBinder, null);
+        }
+
+        private static class Collectible
+        {
+            internal static readonly ConditionalWeakTable<Assembly, Func<IConfigurationSection, TOption>> Binders = [];
         }
     }
 }
