@@ -1080,6 +1080,42 @@ public sealed class OptionBindingGeneratorTests
             """,
             formatted.Length == 0 ? "string" : "int");
 
+    [Theory(DisplayName = "Option generator discovers generic pinnable pattern methods")]
+    [InlineData("class")]
+    [InlineData("struct")]
+    public void GeneratorShouldDiscoverPinnableReference(string kind)
+        => AssertDiscoversGenericHelper("unsafe { fixed (int* pointer = new Registration<int>(kafka)) { } }",
+            $$"""
+            {{kind}} Registration<T>
+            {
+                private readonly Kafka kafka;
+                private readonly int[] values;
+                public Registration(Kafka kafka) { this.kafka = kafka; values = [0]; }
+                public ref int GetPinnableReference() { kafka.AddKafkaBroker<Settings<T>>(); return ref values[0]; }
+            }
+            """, "int", allowUnsafe: true);
+
+    [Fact(DisplayName = "Option generator discovers a generic pinnable extension method")]
+    public void GeneratorShouldDiscoverPinnableExtension()
+        => AssertDiscoversGenericHelper("unsafe { fixed (char* text = \"text\") { } int[] values = [0]; fixed (int* first = values, second = new Registration<int>(kafka)) { } }",
+            """
+            public sealed class Registration<T>
+            {
+                public Kafka Kafka { get; }
+                public int[] Values { get; } = [0];
+                public Registration(Kafka kafka) => Kafka = kafka;
+            }
+            """, "int", allowUnsafe: true, additionalSource: """
+            public static class PinnableExtensions
+            {
+                public static ref int GetPinnableReference<T>(this Setup.Registration<T> registration)
+                {
+                    registration.Kafka.AddKafkaBroker<Settings<T>>();
+                    return ref registration.Values[0];
+                }
+            }
+            """);
+
     [Theory(DisplayName = "Option generator discovers collection fast paths consumed by framework helpers")]
     [InlineData("new System.Collections.Generic.List<System.Action<Kafka>>(new Registration<int>(kafka))[0](kafka);", "CopyTo")]
     [InlineData("new System.Collections.Generic.List<System.Action<Kafka>>(new Registration<int>(kafka))[0](kafka);", "Count")]
@@ -1462,7 +1498,7 @@ public sealed class OptionBindingGeneratorTests
             "sealed class Registration<T>(Kafka kafka) : System.IDisposable { public void Dispose() => kafka.AddKafkaBroker<Settings<T>>(); }",
             "int");
 
-    private static void AssertDiscoversGenericHelper(string call, string helper, string argument)
+    private static void AssertDiscoversGenericHelper(string call, string helper, string argument, bool allowUnsafe = false, string additionalSource = "")
     {
         var compilation = CreateCompilation($$"""
             using Kafka = PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration;
@@ -1472,8 +1508,10 @@ public sealed class OptionBindingGeneratorTests
                 public static void Configure(Kafka kafka) { {{call}} }
                 {{helper}}
             }
+            {{additionalSource}}
             """);
 
+        compilation = compilation.WithOptions(compilation.Options.WithAllowUnsafe(allowUnsafe));
         var (source, diagnostics) = Generate(compilation);
 
         diagnostics.ShouldBeEmpty();
@@ -1491,6 +1529,7 @@ public sealed class OptionBindingGeneratorTests
             {
                 public static void Configure()
                 {
+                    unsafe { fixed (int* pointer) { } }
                     Missing();
                     _ = new Missing();
                     System.Linq.Enumerable.First<int>(unknown: 1);

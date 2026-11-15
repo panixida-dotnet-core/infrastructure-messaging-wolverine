@@ -19,12 +19,14 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     private readonly RecursionGuard activeInstanceInitializers = new();
     private readonly Dictionary<INamedTypeSymbol, MethodDispatch> methodDispatches = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), (SyntaxNode Syntax, IMethodSymbol Method, bool Disposal)[]> implicitFlowCalls = [];
-    private readonly INamedTypeSymbol[] collectionDefinitions = new[]
-    {
+    private static readonly string[] CollectionContractNames =
+    [
         "System.Collections.ICollection", "System.Collections.IList",
         "System.Collections.Generic.ICollection`1", "System.Collections.Generic.IList`1",
         "System.Collections.Generic.IReadOnlyCollection`1", "System.Collections.Generic.IReadOnlyList`1",
-    }.Select(compilation.GetTypeByMetadataName).OfType<INamedTypeSymbol>().ToArray();
+    ];
+    private readonly INamedTypeSymbol[] collectionDefinitions =
+        [.. CollectionContractNames.Select(compilation.GetTypeByMetadataName).OfType<INamedTypeSymbol>()];
     private readonly INamedTypeSymbol? enumerable = compilation.GetTypeByMetadataName("System.Collections.IEnumerable");
     private readonly INamedTypeSymbol? genericEnumerable = compilation.GetTypeByMetadataName("System.Collections.Generic.IEnumerable`1");
     private readonly INamedTypeSymbol? notifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.INotifyCompletion");
@@ -118,6 +120,9 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
                     VisitExternalEnumeration(creation, substitutions);
                 }
                 break;
+            case FixedStatementSyntax fixedStatement:
+                VisitFixed(model, fixedStatement, substitutions);
+                break;
             case WithExpressionSyntax:
                 if (model.GetOperation(node, token) is IWithOperation operation)
                 {
@@ -163,6 +168,24 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             case LocalDeclarationStatementSyntax declaration when declaration.UsingKeyword.RawKind != 0:
                 VisitImplicitFlowCalls(model, node, substitutions, disposal: true);
                 break;
+        }
+    }
+
+    private void VisitFixed(SemanticModel model, FixedStatementSyntax statement, TypeSubstitutions substitutions)
+    {
+        var initializers = statement.Declaration.Variables.Select(variable => variable.Initializer).OfType<EqualsValueClauseSyntax>();
+        foreach (var initializer in initializers)
+        {
+            var expression = initializer.Value;
+            var type = model.GetTypeInfo(expression, token).Type;
+            if (type is IArrayTypeSymbol || SymbolEqualityComparer.Default.Equals(type, compilation.GetSpecialType(SpecialType.System_String)))
+            {
+                continue;
+            }
+            // Fixed initializers omit the selected pinnable call from both the operation tree and flow graph.
+            var call = SyntaxFactory.InvocationExpression(SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression,
+                SyntaxFactory.ParenthesizedExpression(expression.WithoutTrivia()), SyntaxFactory.IdentifierName("GetPinnableReference")));
+            VisitMethods(substitutions, model.GetSpeculativeSymbolInfo(expression.SpanStart, call, SpeculativeBindingOption.BindAsExpression).Symbol as IMethodSymbol);
         }
     }
 
@@ -216,7 +239,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     {
         foreach (var definition in collectionDefinitions.Where(definition => definition.Arity == 0 || enumerableContract.Arity != 0))
         {
-            var contract = definition.Arity == 0 ? definition : definition.Construct(enumerableContract.TypeArguments.ToArray());
+            var contract = definition.Arity == 0 ? definition : definition.Construct([.. enumerableContract.TypeArguments]);
             foreach (var member in contract.GetMembers())
             {
                 VisitPatternMember(source is null ? member : source.FindImplementationForInterfaceMember(member), substitutions);
