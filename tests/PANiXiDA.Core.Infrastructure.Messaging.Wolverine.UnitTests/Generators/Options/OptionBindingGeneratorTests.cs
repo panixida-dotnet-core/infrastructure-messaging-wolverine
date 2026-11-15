@@ -909,6 +909,88 @@ public sealed class OptionBindingGeneratorTests
             """,
             "int");
 
+    [Theory(DisplayName = "Option generator discovers closed options through translated LINQ queries")]
+    [InlineData("from item in new Registration<int>() select item + 1", "sealed class Registration<T> { public System.Action<Kafka> Select(System.Func<int, int> selector) => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("from item in new Registration<int>() where item > 0 select item", "sealed class Registration<T> { public System.Action<Kafka> Where(System.Func<int, bool> predicate) => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("from item in new Registration<int>() select item.ToString()", "public sealed class Registration<T>; public static System.Action<Kafka> Select<T, TResult>(this Registration<T> value, System.Func<T, TResult> selector) => kafka => kafka.AddKafkaBroker<Settings<TResult>>();", "string")]
+    public void GeneratorShouldDiscoverQueryMethods(string query, string helper, string argument)
+        => AssertDiscoversGenericHelper("var configure = " + query + "; configure(kafka);", helper, argument);
+
+    [Theory(DisplayName = "Option generator discovers closed options through the await of asynchronous disposal")]
+    [InlineData("true", "public void GetResult() => kafka.AddKafkaBroker<Settings<T>>(); public void OnCompleted(System.Action continuation) => continuation();")]
+    [InlineData("false", "public void GetResult() { } public void OnCompleted(System.Action continuation) { kafka.AddKafkaBroker<Settings<T>>(); continuation(); }")]
+    public void GeneratorShouldDiscoverAsyncDisposalAwaiter(string completed, string methods)
+        => AssertDiscoversGenericHelper(
+            "_ = Run(kafka);",
+            $$"""
+            static async System.Threading.Tasks.Task Run(Kafka kafka)
+            {
+                await using (new Registration<int>(kafka)) { }
+            }
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public Disposal DisposeAsync() => new(kafka);
+                public sealed class Disposal
+                {
+                    private readonly Kafka kafka;
+                    public Disposal(Kafka kafka) => this.kafka = kafka;
+                    public Awaiter GetAwaiter() => new(kafka);
+                }
+                public sealed class Awaiter : System.Runtime.CompilerServices.INotifyCompletion
+                {
+                    private readonly Kafka kafka;
+                    public Awaiter(Kafka kafka) => this.kafka = kafka;
+                    public bool IsCompleted => {{completed}};
+                    {{methods}}
+                }
+            }
+            """,
+            "int");
+
+    [Theory(DisplayName = "Option generator discovers closed options through await foreach")]
+    [InlineData("public Result MoveNextAsync() => new(kafka);", "")]
+    [InlineData("public System.Threading.Tasks.ValueTask<bool> MoveNextAsync() => new(false);", "public Result DisposeAsync() => new(kafka);")]
+    public void GeneratorShouldDiscoverAsyncEnumerationAwaiter(string moveNext, string dispose)
+        => AssertDiscoversGenericHelper(
+            "_ = Run(kafka);",
+            $$"""
+            static async System.Threading.Tasks.Task Run(Kafka kafka)
+            {
+                await foreach (var item in new Registration<int>(kafka)) { }
+            }
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public Enumerator GetAsyncEnumerator() => new(kafka);
+                public sealed class Enumerator
+                {
+                    private readonly Kafka kafka;
+                    public Enumerator(Kafka kafka) => this.kafka = kafka;
+                    public int Current => 0;
+                    {{moveNext}}
+                    {{dispose}}
+                }
+                public sealed class Result
+                {
+                    private readonly Kafka kafka;
+                    public Result(Kafka kafka) => this.kafka = kafka;
+                    public Awaiter GetAwaiter() => new(kafka);
+                }
+                public sealed class Awaiter : System.Runtime.CompilerServices.INotifyCompletion
+                {
+                    private readonly Kafka kafka;
+                    public Awaiter(Kafka kafka) => this.kafka = kafka;
+                    public bool IsCompleted => true;
+                    public bool GetResult() { kafka.AddKafkaBroker<Settings<T>>(); return false; }
+                    public void OnCompleted(System.Action continuation) => continuation();
+                }
+            }
+            """,
+            "int");
+
     [Theory(DisplayName = "Option generator discovers closed options through collection expression spreads")]
     [InlineData("System.Action<Kafka>[] callbacks = [..new Registration<int>()]; callbacks[0](kafka);", "sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>> { public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator() { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); } System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator(); }")]
     [InlineData("System.Action<Kafka>[] callbacks = [..new Registration<int>()]; callbacks[0](kafka);", "sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>> { System.Collections.Generic.IEnumerator<System.Action<Kafka>> System.Collections.Generic.IEnumerable<System.Action<Kafka>>.GetEnumerator() { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); } System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new System.NotSupportedException(); }")]

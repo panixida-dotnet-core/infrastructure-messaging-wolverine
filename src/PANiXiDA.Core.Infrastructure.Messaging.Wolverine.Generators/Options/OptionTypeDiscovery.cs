@@ -92,6 +92,9 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             case CollectionExpressionSyntax collection:
                 VisitCollectionExpression(model, collection, substitutions);
                 break;
+            case QueryExpressionSyntax query:
+                VisitQuery(model, query, substitutions);
+                break;
             case AssignmentExpressionSyntax { Left: DeclarationExpressionSyntax or TupleExpressionSyntax } assignment:
                 VisitDeconstruction(model.GetDeconstructionInfo(assignment), substitutions);
                 break;
@@ -110,10 +113,26 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private void VisitEnumeration(SemanticModel model, CommonForEachStatementSyntax enumeration, TypeSubstitutions substitutions)
     {
-        VisitIteration(model.GetForEachStatementInfo(enumeration), substitutions);
+        var iteration = model.GetForEachStatementInfo(enumeration);
+        VisitIteration(iteration, substitutions);
+        if (enumeration.AwaitKeyword.RawKind != 0)
+        {
+            VisitImplicitAwaits(model, enumeration.SpanStart, substitutions, iteration.MoveNextMethod, iteration.DisposeMethod);
+        }
         if (enumeration is ForEachVariableStatementSyntax deconstruction)
         {
             VisitDeconstruction(model.GetDeconstructionInfo(deconstruction), substitutions);
+        }
+    }
+
+    private void VisitQuery(SemanticModel model, QueryExpressionSyntax query, TypeSubstitutions substitutions)
+    {
+        IOperation?[] operations = [model.GetOperation(query, token)];
+        var calls = operations.OfType<ITranslatedQueryOperation>()
+            .SelectMany(operation => operation.Operation.DescendantsAndSelf()).OfType<IInvocationOperation>();
+        foreach (var call in calls)
+        {
+            VisitMethod(call.TargetMethod, substitutions);
         }
     }
 
@@ -155,6 +174,22 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private void VisitIteration(ForEachStatementInfo iteration, TypeSubstitutions substitutions)
         => VisitMethods(substitutions, iteration.GetEnumeratorMethod, iteration.MoveNextMethod, iteration.CurrentProperty?.GetMethod,
             iteration.DisposeMethod, iteration.CurrentConversion.MethodSymbol, iteration.ElementConversion.MethodSymbol);
+
+    private void VisitImplicitAwaits(SemanticModel model, int position, TypeSubstitutions substitutions, params IMethodSymbol?[] methods)
+    {
+        foreach (var method in methods.OfType<IMethodSymbol>())
+        {
+            // Reuse Roslyn's await binding, including extension-method lookup at the original location.
+            var type = SyntaxFactory.ParseTypeName(method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+            var statement = SyntaxFactory.ExpressionStatement(SyntaxFactory.AwaitExpression(SyntaxFactory.DefaultExpression(type)));
+            model.TryGetSpeculativeSemanticModel(position, statement, out var speculative);
+            SemanticModel?[] bindings = [speculative];
+            foreach (var binding in bindings.OfType<SemanticModel>())
+            {
+                VisitAwait(binding.GetAwaitExpressionInfo((AwaitExpressionSyntax)statement.Expression), substitutions);
+            }
+        }
+    }
 
     private void VisitAwait(AwaitExpressionInfo awaiter, TypeSubstitutions substitutions)
     {
@@ -272,6 +307,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             foreach (var call in calls.Where(call => node.Span.Contains(call.Syntax.Span)))
             {
                 VisitMethod(call.TargetMethod, substitutions);
+                if (call.TargetMethod.Name == "DisposeAsync")
+                {
+                    VisitImplicitAwaits(model, node.SpanStart, substitutions, call.TargetMethod);
+                }
             }
         }
     }

@@ -10,6 +10,18 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingSectionTests
 {
+    [Fact(DisplayName = "Generated read-only set binding copies existing entries through non-generic enumeration")]
+    public void BinderShouldEnumerateCopiedSet()
+    {
+        var configuration = new ConfigurationManager { ["Options:Values:0"] = "configured" };
+
+        var original = configuration.GetSection("Options").Get<ReadOnlySetCopyOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<ReadOnlySetCopyOptions>(configuration, "Options");
+
+        generated.Values.SetEquals(original.Values).ShouldBeTrue();
+        generated.Values.SetEquals(["existing", "configured"]).ShouldBeTrue();
+    }
+
     [Fact(DisplayName = "Generated read-only dictionary binding copies existing entries through non-generic enumeration")]
     public void BinderShouldEnumerateCopiedDictionary()
     {
@@ -447,6 +459,19 @@ public sealed class OptionBindingSectionTests
     public sealed class DictionaryCopyOptions : KafkaBrokerOption
     {
         public IReadOnlyDictionary<string, int> Values { get; init; } = new EnumerationOnlyDictionary();
+    }
+
+    public sealed class ReadOnlySetCopyOptions : KafkaBrokerOption
+    {
+        public IReadOnlySet<string> Values { get; init; } = new EnumerationOnlySet();
+    }
+
+    public sealed class EnumerationOnlySet : HashSet<string>, IReadOnlySet<string>
+    {
+        public EnumerationOnlySet() => Add("existing");
+
+        IEnumerator<string> IEnumerable<string>.GetEnumerator() => throw new InvalidOperationException("Use the non-generic enumerator.");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     public sealed class EnumerationOnlyDictionary : Dictionary<string, int>, ICollection<KeyValuePair<string, int>>

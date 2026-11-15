@@ -645,7 +645,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         if (readOnlySet)
         {
             body.Append($"        hasNewValue = !readOnly;\n        var items = new {concrete}();\n")
-                .Append("        if (option is not null)\n        {\n            foreach (var existing in option) items.Add(existing);\n        }\n");
+                .Append($"        if (option is not null)\n        {{\n            foreach ({elementName} existing in (global::System.Collections.IEnumerable)option) items.Add(existing);\n        }}\n");
         }
         else if (copy)
         {
