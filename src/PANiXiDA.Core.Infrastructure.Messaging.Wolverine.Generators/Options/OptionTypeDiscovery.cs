@@ -88,9 +88,13 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
                 VisitCollectionInitializer(model, initializer, substitutions);
                 break;
             case CommonForEachStatementSyntax enumeration:
-                var iteration = model.GetForEachStatementInfo(enumeration);
-                VisitMethods(substitutions, iteration.GetEnumeratorMethod, iteration.MoveNextMethod, iteration.CurrentProperty?.GetMethod,
-                    iteration.DisposeMethod, iteration.CurrentConversion.MethodSymbol, iteration.ElementConversion.MethodSymbol);
+                VisitEnumeration(model, enumeration, substitutions);
+                break;
+            case AssignmentExpressionSyntax { Left: DeclarationExpressionSyntax or TupleExpressionSyntax } assignment:
+                VisitDeconstruction(model.GetDeconstructionInfo(assignment), substitutions);
+                break;
+            case RecursivePatternSyntax { PositionalPatternClause: not null } pattern:
+                VisitPositionalPattern(model, pattern, substitutions);
                 break;
             case AwaitExpressionSyntax awaitExpression:
                 var awaiter = model.GetAwaitExpressionInfo(awaitExpression);
@@ -100,6 +104,35 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             case LocalDeclarationStatementSyntax declaration when declaration.UsingKeyword.RawKind != 0:
                 VisitDisposals(model, node, substitutions);
                 break;
+        }
+    }
+
+    private void VisitEnumeration(SemanticModel model, CommonForEachStatementSyntax enumeration, TypeSubstitutions substitutions)
+    {
+        var iteration = model.GetForEachStatementInfo(enumeration);
+        VisitMethods(substitutions, iteration.GetEnumeratorMethod, iteration.MoveNextMethod, iteration.CurrentProperty?.GetMethod,
+            iteration.DisposeMethod, iteration.CurrentConversion.MethodSymbol, iteration.ElementConversion.MethodSymbol);
+        if (enumeration is ForEachVariableStatementSyntax deconstruction)
+        {
+            VisitDeconstruction(model.GetDeconstructionInfo(deconstruction), substitutions);
+        }
+    }
+
+    private void VisitDeconstruction(DeconstructionInfo deconstruction, TypeSubstitutions substitutions)
+    {
+        VisitMethods(substitutions, deconstruction.Method, deconstruction.Conversion?.MethodSymbol);
+        foreach (var nested in deconstruction.Nested.AsSpan())
+        {
+            VisitDeconstruction(nested, substitutions);
+        }
+    }
+
+    private void VisitPositionalPattern(SemanticModel model, RecursivePatternSyntax pattern, TypeSubstitutions substitutions)
+    {
+        var patterns = new[] { model.GetOperation(pattern, token) }.OfType<IRecursivePatternOperation>();
+        foreach (var method in patterns.Select(operation => operation.DeconstructSymbol).OfType<IMethodSymbol>())
+        {
+            VisitMethod(method, substitutions);
         }
     }
 
