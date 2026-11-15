@@ -304,12 +304,13 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
                 calls = [.. graphs.OfType<ControlFlowGraph>().SelectMany(GetDisposalCalls)];
                 disposalCalls.Add(key, calls);
             }
-            foreach (var call in calls.Where(call => node.Span.Contains(call.Syntax.Span)))
+            var methods = calls.Where(call => node.Span.Contains(call.Syntax.Span)).Select(call => call.TargetMethod);
+            foreach (var method in methods)
             {
-                VisitMethod(call.TargetMethod, substitutions);
-                if (call.TargetMethod.Name == "DisposeAsync")
+                VisitMethod(method, substitutions);
+                if (method.Name == "DisposeAsync")
                 {
-                    VisitImplicitAwaits(model, node.SpanStart, substitutions, call.TargetMethod);
+                    VisitImplicitAwaits(model, node.SpanStart, substitutions, method);
                 }
             }
         }
