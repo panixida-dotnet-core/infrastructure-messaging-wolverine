@@ -1081,6 +1081,60 @@ public sealed class OptionBindingGeneratorTests
             """,
             formatted.Length == 0 ? "string" : "int");
 
+    [Fact(DisplayName = "Option generator discovers async iterators consumed by framework helpers")]
+    public void GeneratorShouldDiscoverFrameworkAsyncEnumeration()
+        => AssertDiscoversGenericHelper("_ = System.Threading.Tasks.Parallel.ForEachAsync(new Registration<int>(), (configure, token) => { configure(kafka); return System.Threading.Tasks.ValueTask.CompletedTask; });",
+            AsyncEnumerableHelper, "int");
+
+    [Fact(DisplayName = "Option generator exports async enumeration through a generic helper")]
+    public void GeneratorShouldDiscoverReferencedFrameworkAsyncEnumeration()
+        => AssertReferencedGenericRegistration(false,
+            "public static class Setup<T> { public static void Register(Kafka kafka) => _ = System.Threading.Tasks.Parallel.ForEachAsync(new Registration<T>(), (configure, token) => { configure(kafka); return System.Threading.Tasks.ValueTask.CompletedTask; }); }" +
+            AsyncEnumerableHelper.Replace("Settings<T>", "ExportedSettings<T>", StringComparison.Ordinal),
+            "Setup<int>.Register(kafka);", string.Empty);
+
+    private const string AsyncEnumerableHelper = """
+        public sealed class Registration<T> : System.Collections.Generic.IAsyncEnumerable<System.Action<Kafka>>
+        {
+            public System.Collections.Generic.IAsyncEnumerator<System.Action<Kafka>> GetAsyncEnumerator(System.Threading.CancellationToken token = default) => Enumerate();
+            private async System.Collections.Generic.IAsyncEnumerator<System.Action<Kafka>> Enumerate()
+            {
+                await System.Threading.Tasks.Task.Yield();
+                yield return kafka => kafka.AddKafkaBroker<Settings<T>>();
+            }
+        }
+        """;
+
+    [Theory(DisplayName = "Option generator discovers async enumerator members consumed by framework helpers")]
+    [InlineData("Current")]
+    [InlineData("MoveNextAsync")]
+    [InlineData("DisposeAsync")]
+    public void GeneratorShouldDiscoverFrameworkAsyncEnumeratorMembers(string member)
+        => AssertDiscoversGenericHelper("_ = System.Threading.Tasks.Parallel.ForEachAsync(new Registration<int>(kafka), (configure, token) => { configure(kafka); return System.Threading.Tasks.ValueTask.CompletedTask; });",
+            $$"""
+            sealed class Registration<T> : System.Collections.Generic.IAsyncEnumerable<System.Action<Kafka>>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public System.Collections.Generic.IAsyncEnumerator<System.Action<Kafka>> GetAsyncEnumerator(System.Threading.CancellationToken token = default) => new Enumerator<T>(kafka);
+            }
+            sealed class Enumerator<T> : System.Collections.Generic.IAsyncEnumerator<System.Action<Kafka>>
+            {
+                private readonly Kafka kafka;
+                private bool moved;
+                public Enumerator(Kafka kafka) => this.kafka = kafka;
+                public System.Action<Kafka> Current { get { {{(member == "Current" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return _ => { }; } }
+                public System.Threading.Tasks.ValueTask<bool> MoveNextAsync()
+                {
+                    var result = !moved;
+                    moved = true;
+                    {{(member == "MoveNextAsync" ? "if (result) kafka.AddKafkaBroker<Settings<T>>();" : "")}}
+                    return new(result);
+                }
+                public System.Threading.Tasks.ValueTask DisposeAsync() { {{(member == "DisposeAsync" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return default; }
+            }
+            """, "int");
+
     [Theory(DisplayName = "Option generator discovers dictionary lookups consumed by framework helpers")]
     [InlineData("new Registration<int>().GetValueOrDefault(\"key\")(kafka);")]
     [InlineData("System.Collections.Generic.IReadOnlyDictionary<string, System.Action<Kafka>> values = new Registration<int>(); values.GetValueOrDefault(\"key\")(kafka);")]

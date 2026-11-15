@@ -31,6 +31,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     private readonly INamedTypeSymbol? keyValuePair = compilation.GetTypeByMetadataName("System.Collections.Generic.KeyValuePair`2");
     private readonly INamedTypeSymbol? enumerable = compilation.GetTypeByMetadataName("System.Collections.IEnumerable");
     private readonly INamedTypeSymbol? genericEnumerable = compilation.GetTypeByMetadataName("System.Collections.Generic.IEnumerable`1");
+    private readonly INamedTypeSymbol? asyncEnumerable = compilation.GetTypeByMetadataName("System.Collections.Generic.IAsyncEnumerable`1");
     private readonly INamedTypeSymbol? notifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.INotifyCompletion");
     private readonly INamedTypeSymbol? criticalNotifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.ICriticalNotifyCompletion");
 
@@ -217,8 +218,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         {
             foreach (var contract in EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)))
             {
-                VisitExternalEnumerator(contract.GetMembers("GetEnumerator").OfType<IMethodSymbol>().Single(), substitutions);
-                VisitExternalCollection(contract, null, substitutions);
+                VisitExternalEnumerableContract(contract, null, substitutions);
             }
             var value = argument.Value;
             while (value is IConversionOperation conversion)
@@ -229,11 +229,21 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             {
                 foreach (var contract in EnumerableContracts(source))
                 {
-                    var enumerator = contract.GetMembers("GetEnumerator").OfType<IMethodSymbol>().Single();
-                    VisitExternalEnumerator(source.FindImplementationForInterfaceMember(enumerator) as IMethodSymbol, substitutions);
-                    VisitExternalCollection(contract, source, substitutions);
+                    VisitExternalEnumerableContract(contract, source, substitutions);
                 }
             }
+        }
+    }
+
+    private void VisitExternalEnumerableContract(INamedTypeSymbol contract, INamedTypeSymbol? source, TypeSubstitutions substitutions)
+    {
+        var asynchronous = SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, asyncEnumerable);
+        var name = asynchronous ? "GetAsyncEnumerator" : "GetEnumerator";
+        var enumerator = contract.GetMembers(name).OfType<IMethodSymbol>().Single();
+        VisitExternalEnumerator(source is null ? enumerator : source.FindImplementationForInterfaceMember(enumerator) as IMethodSymbol, substitutions);
+        if (!asynchronous)
+        {
+            VisitExternalCollection(contract, source, substitutions);
         }
     }
 
@@ -274,10 +284,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
         VisitMethod(getEnumerator, substitutions);
-        // IEnumerable contracts and their implementations return IEnumerator or IEnumerator<T>.
+        // Enumeration contracts and their implementations return named enumerator types.
         var enumerator = (INamedTypeSymbol)Substitute(getEnumerator.ReturnType, substitutions);
         var members = enumerator.AllInterfaces.Concat([enumerator]).SelectMany(type => type.GetMembers()).ToArray();
-        foreach (var method in members.OfType<IMethodSymbol>().Where(method => method.Name is "MoveNext" or "Dispose"))
+        foreach (var method in members.OfType<IMethodSymbol>().Where(method => method.Name is "MoveNext" or "MoveNextAsync" or "Dispose" or "DisposeAsync"))
         {
             VisitMethod(method, substitutions);
         }
@@ -291,7 +301,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         => type is INamedTypeSymbol named
             ? named.AllInterfaces.Concat([named]).Where(contract =>
                 SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, enumerable) ||
-                SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, genericEnumerable))
+                SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, genericEnumerable) ||
+                SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, asyncEnumerable))
             : [];
 
     private void VisitEnumeration(SemanticModel model, CommonForEachStatementSyntax enumeration, TypeSubstitutions substitutions)
