@@ -8,6 +8,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private readonly HashSet<INamedTypeSymbol> types = new(SymbolEqualityComparer.Default);
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
     private readonly HashSet<ISymbol> active = new(SymbolEqualityComparer.Default);
+    private readonly HashSet<ISymbol> activeInstanceInitializers = new(SymbolEqualityComparer.Default);
 
     internal IEnumerable<INamedTypeSymbol> Discover()
     {
@@ -41,7 +42,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
                 var containing = symbol.ContainingType!;
                 var arguments = ContainingArguments(containing, substitutions);
                 VisitDefinition(symbol.OriginalDefinition, arguments);
-                VisitStaticConstructors(containing, arguments);
+                VisitStaticInitialization(containing, arguments);
             }
         }
     }
@@ -61,16 +62,21 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         VisitDefinition(definition, substitutions);
         if (containing.IsGenericType)
         {
-            VisitStaticConstructors(containing, substitutions);
+            VisitStaticInitialization(containing, substitutions);
+            if (method.MethodKind == MethodKind.Constructor)
+            {
+                VisitDefinition(containing.OriginalDefinition, substitutions, instanceInitializers: true);
+            }
         }
     }
 
-    private void VisitStaticConstructors(INamedTypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
+    private void VisitStaticInitialization(INamedTypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
     {
         foreach (var initializer in type.OriginalDefinition.StaticConstructors)
         {
             VisitDefinition(initializer, substitutions);
         }
+        VisitDefinition(type.OriginalDefinition, substitutions);
     }
 
     private Dictionary<ITypeParameterSymbol, ITypeSymbol> ContainingArguments(INamedTypeSymbol? type,
@@ -87,14 +93,15 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         return substitutions;
     }
 
-    private void VisitDefinition(ISymbol definition, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
+    private void VisitDefinition(ISymbol definition, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions, bool instanceInitializers = false)
     {
-        if (definition.DeclaringSyntaxReferences.Length == 0 || substitutions.Values.Any(type => ContainsTypeParameter(type)) || active.Contains(definition))
+        var activeDefinitions = instanceInitializers ? activeInstanceInitializers : active;
+        if (definition.DeclaringSyntaxReferences.Length == 0 || substitutions.Values.Any(type => ContainsTypeParameter(type)) || activeDefinitions.Contains(definition))
         {
             return;
         }
 
-        var key = definition.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) + "|" + string.Join(";", substitutions
+        var key = definition.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) + "|" + instanceInitializers + "|" + string.Join(";", substitutions
             .Select(pair => pair.Key.ContainingSymbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) + "." + pair.Key.Name + "=" + pair.Value.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
             .OrderBy(value => value, StringComparer.Ordinal));
         if (!visited.Add(key))
@@ -102,12 +109,31 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             return;
         }
 
-        active.Add(definition);
-        foreach (var reference in definition.DeclaringSyntaxReferences)
+        activeDefinitions.Add(definition);
+        if (definition is INamedTypeSymbol typeDefinition)
         {
-            Visit(reference.GetSyntax(token), substitutions);
+            VisitMemberInitializers(typeDefinition, substitutions, instanceInitializers);
         }
-        active.Remove(definition);
+        else
+        {
+            foreach (var reference in definition.DeclaringSyntaxReferences)
+            {
+                Visit(reference.GetSyntax(token), substitutions);
+            }
+        }
+        activeDefinitions.Remove(definition);
+    }
+
+    private void VisitMemberInitializers(INamedTypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions, bool instanceInitializers)
+    {
+        var initializers = type.GetMembers()
+            .Where(member => member is IFieldSymbol or IPropertySymbol && member.IsStatic != instanceInitializers)
+            .SelectMany(member => member.DeclaringSyntaxReferences)
+            .SelectMany(reference => reference.GetSyntax(token).ChildNodes().OfType<EqualsValueClauseSyntax>());
+        foreach (var initializer in initializers)
+        {
+            Visit(initializer, substitutions);
+        }
     }
 
     private void AddType(ITypeSymbol type)

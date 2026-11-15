@@ -745,6 +745,10 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("Registration<int>.Configure(kafka);", "static class Registration<T> { public static readonly System.Action<Kafka> Configure; static Registration() => Configure = kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     [InlineData("Registration<int>.Configure();", "static class Registration<T> { static Registration() => Register(null!); public static void Configure() {} private static void Register(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     [InlineData("_ = new Registration<int>();", "sealed class Registration<T> { static Registration() => Register(null!); private static void Register(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("_ = new Registration<int>();", "sealed class Registration<T> { public readonly Kafka Configuration = Register(null!); private static Kafka Register(Kafka kafka) { kafka.AddKafkaBroker<Settings<T>>(); return kafka; } }", "int")]
+    [InlineData("_ = new Registration<int>();", "sealed class Registration<T> { public Kafka Configuration { get; } = Register(null!); private static Kafka Register(Kafka kafka) { kafka.AddKafkaBroker<Settings<T>>(); return kafka; } }", "int")]
+    [InlineData("Registration<int>.Configure();", "static class Registration<T> { private static readonly Kafka Configuration = Register(null!); public static void Configure() {} private static Kafka Register(Kafka kafka) { kafka.AddKafkaBroker<Settings<T>>(); return kafka; } }", "int")]
+    [InlineData("Registration<int>.Configure();", "static class Registration<T> { public static Kafka Configuration { get; } = Register(null!); public static void Configure() {} private static Kafka Register(Kafka kafka) { kafka.AddKafkaBroker<Settings<T>>(); return kafka; } }", "int")]
     public void GeneratorShouldDiscoverGenericHelpers(string call, string helper, string argument)
     {
         var compilation = CreateCompilation($$"""

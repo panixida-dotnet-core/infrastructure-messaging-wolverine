@@ -10,6 +10,32 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingSectionTests
 {
+    [Theory(DisplayName = "Generated property binding preserves declared key casing in conversion errors")]
+    [InlineData("count", "Count")]
+    [InlineData("nestedname:othercount", "NestedName:OtherCount")]
+    public void BinderShouldPreserveDeclaredKeyCasing(string providerKey, string declaredKey)
+    {
+        var configuration = new ConfigurationManager { [$"Options:{providerKey}"] = "invalid" };
+
+        var original = Should.Throw<InvalidOperationException>(() => configuration.GetSection("Options").Get<CaseSensitivePathOptions>());
+        var generated = Should.Throw<InvalidOperationException>(() => OptionBindingRegistry.GetRequired<CaseSensitivePathOptions>(configuration, "Options"));
+
+        original.Message.ShouldContain($"Options:{declaredKey}");
+        generated.Message.ShouldBe(original.Message);
+    }
+
+    [Fact(DisplayName = "Generated binding preserves declared parent casing in nested section paths")]
+    public void BinderShouldPreserveDeclaredParentCasing()
+    {
+        var configuration = new ConfigurationManager { ["Options:payload:section:key"] = "configured" };
+
+        var original = configuration.GetSection("Options").Get<CaseSensitivePathOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<CaseSensitivePathOptions>(configuration, "Options");
+
+        generated.Payload.Section.Path.ShouldBe(original.Payload.Section.Path);
+        generated.Payload.Section.Path.ShouldBe("Options:Payload:Section");
+    }
+
     [Fact(DisplayName = "Generated collections skip entries that produce no value")]
     public void BinderShouldOmitUnboundCollectionEntries()
     {
@@ -273,6 +299,19 @@ public sealed class OptionBindingSectionTests
     public sealed class DecimalOptions(decimal rate = 0.1234567890123456789012345678m) : KafkaConsumerOption
     {
         public decimal Rate { get; } = rate;
+    }
+
+    public sealed class CaseSensitivePathOptions : KafkaConsumerOption
+    {
+        public int Count { get; init; }
+        [ConfigurationKeyName("NestedName:OtherCount")]
+        public int AliasedCount { get; init; }
+        public PathPayload Payload { get; init; } = new();
+    }
+
+    public sealed class PathPayload
+    {
+        public IConfigurationSection Section { get; init; } = null!;
     }
 
     public sealed class OptionalScalarOptions(int value = 42) : KafkaConsumerOption

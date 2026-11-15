@@ -316,21 +316,20 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             key = property.Name;
         }
         var literal = SymbolDisplay.FormatLiteral(key, true);
-        var lookup = $"children.TryGetValue({literal}, out var child{index})";
+        var lookup = $"children.TryGetValue({literal}, out _)";
         var separator = key.LastIndexOf(':');
         if (Name(property.Type) == Section)
         {
-            body.Append($"        var child{index} = section.GetSection({literal});\n");
             lookup = "true";
         }
         else if (separator >= 0)
         {
             var parent = SymbolDisplay.FormatLiteral(key.Substring(0, separator), true);
             var childKey = SymbolDisplay.FormatLiteral(key.Substring(separator + 1), true);
-            body.Append($"        var child{index} = global::System.Linq.Enumerable.FirstOrDefault(section.GetSection({parent}).GetChildren(), child => global::System.String.Equals(child.Key, {childKey}, global::System.StringComparison.OrdinalIgnoreCase));\n");
-            lookup = $"child{index} is not null";
+            lookup = $"global::System.Linq.Enumerable.Any(section.GetSection({parent}).GetChildren(), child => global::System.String.Equals(child.Key, {childKey}, global::System.StringComparison.OrdinalIgnoreCase))";
         }
-        body.Append($"        var hasChild{index} = {lookup};\n");
+        body.Append($"        var hasChild{index} = {lookup};\n")
+            .Append($"        var child{index} = hasChild{index} ? section.GetSection({literal}) : default;\n");
     }
 
     private string AppendGetter(IPropertySymbol property, string method)
