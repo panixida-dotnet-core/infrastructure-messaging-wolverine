@@ -1,5 +1,7 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 using TypeSubstitutions = System.Collections.Generic.Dictionary<Microsoft.CodeAnalysis.ITypeParameterSymbol, Microsoft.CodeAnalysis.ITypeSymbol>;
 
@@ -26,12 +28,17 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private void Visit(SyntaxNode root, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
     {
         var model = compilation.GetSemanticModel(root.SyntaxTree);
-        foreach (var node in root.DescendantNodes().Where(node => node is GenericNameSyntax or InvocationExpressionSyntax or
-            BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or PrimaryConstructorBaseTypeSyntax or
-            MemberAccessExpressionSyntax or MemberBindingExpressionSyntax or ElementAccessExpressionSyntax or ElementBindingExpressionSyntax ||
-            substitutions.Count != 0 && node is IdentifierNameSyntax))
+        foreach (var node in root.DescendantNodes())
         {
             token.ThrowIfCancellationRequested();
+            if (node is ExpressionSyntax expression)
+            {
+                VisitConversions(model, expression, substitutions);
+            }
+            if (!IsSymbolReference(node, substitutions.Count != 0))
+            {
+                continue;
+            }
             var symbol = model.GetSymbolInfo(node, token).Symbol;
             if (symbol is INamedTypeSymbol type)
             {
@@ -56,6 +63,24 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
                 VisitDefinition(field.OriginalDefinition, arguments);
                 VisitStaticInitialization(containing, arguments);
             }
+        }
+    }
+
+    private static bool IsSymbolReference(SyntaxNode node, bool hasSubstitutions)
+        => node is GenericNameSyntax or InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or
+            PrimaryConstructorBaseTypeSyntax or MemberAccessExpressionSyntax or MemberBindingExpressionSyntax or ElementAccessExpressionSyntax or
+            ElementBindingExpressionSyntax || hasSubstitutions && node is IdentifierNameSyntax;
+
+    private void VisitConversions(SemanticModel model, ExpressionSyntax expression, TypeSubstitutions substitutions)
+    {
+        if (model.GetConversion(expression, token).MethodSymbol is { } conversion)
+        {
+            VisitMethod(conversion, substitutions);
+        }
+        if (expression is CastExpressionSyntax &&
+            model.GetOperation(expression, token) is IConversionOperation { OperatorMethod: { } explicitConversion })
+        {
+            VisitMethod(explicitConversion, substitutions);
         }
     }
 

@@ -631,13 +631,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var named = type as INamedTypeSymbol;
         var concrete = Collections + (set ? "HashSet" : "List") + "<" + elementName + ">";
         var create = named is not null && type.TypeKind != TypeKind.Interface ? Construction(named, methods[type]) : "new " + concrete + "()";
-        var empty = OptionVariable;
-        if (copy)
-        {
-            empty = type.TypeKind == TypeKind.Interface
-                ? "option is null && section.Value == string.Empty ? throw new global::System.ArgumentNullException(\"elementType\") : option"
-                : $"!readOnly && option is null && section.Value == string.Empty ? global::System.Array.Empty<{elementName}>() : option";
-        }
+        var empty = copy ? EmptyCopiedSequenceValue(type, elementName) : OptionVariable;
         AppendCollectionLeaf(body, type, create, empty);
         if (copy)
         {
@@ -653,14 +647,9 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             body.Append($"        hasNewValue = !readOnly;\n        var items = new {concrete}();\n")
                 .Append("        if (option is not null)\n        {\n            foreach (var existing in option) items.Add(existing);\n        }\n");
         }
-        else if (rawArray)
-        {
-            body.Append($"        hasNewValue = true;\n        var items = new {Collections}List<object>();\n")
-                .Append("        if (option is not null)\n        {\n            foreach (var existing in option) items.Add(existing);\n        }\n");
-        }
         else if (copy)
         {
-            body.Append($"        hasNewValue = true;\n        var items = option is null ? new {concrete}() : new {concrete}(option);\n");
+            AppendCopiedSequence(body, concrete, rawArray);
         }
         else
         {
@@ -671,6 +660,25 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         AppendSequenceItems(body, element, copy, readOnlySet, rawArray);
+    }
+
+    private static string EmptyCopiedSequenceValue(ITypeSymbol type, string elementName)
+        => type.TypeKind == TypeKind.Interface
+            ? "option is null && section.Value == string.Empty ? throw new global::System.ArgumentNullException(\"elementType\") : option"
+            : $"!readOnly && option is null && section.Value == string.Empty ? global::System.Array.Empty<{elementName}>() : option";
+
+    private static void AppendCopiedSequence(StringBuilder body, string concrete, bool rawArray)
+    {
+        body.Append("        hasNewValue = true;\n");
+        if (rawArray)
+        {
+            body.Append($"        var items = new {Collections}List<object>();\n")
+                .Append("        if (option is not null)\n        {\n            foreach (var existing in option) items.Add(existing);\n        }\n");
+        }
+        else
+        {
+            body.Append($"        var items = option is null ? new {concrete}() : new {concrete}(option);\n");
+        }
     }
 
     private void AppendSequenceItems(StringBuilder body, ITypeSymbol element, bool copy, bool readOnlySet, bool rawArray)
