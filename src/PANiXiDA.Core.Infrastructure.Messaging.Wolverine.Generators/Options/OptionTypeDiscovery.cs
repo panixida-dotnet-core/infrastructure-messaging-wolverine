@@ -146,6 +146,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         foreach (var operation in operations.OfType<ICollectionExpressionOperation>())
         {
             VisitMethods(substitutions, operation.ConstructMethod);
+            VisitCollectionAdds(model, collection, operation, substitutions);
             foreach (var spread in operation.Elements.OfType<ISpreadOperation>())
             {
                 VisitMethods(substitutions, spread.ElementConversion.MethodSymbol);
@@ -153,6 +154,32 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             }
         }
     }
+
+    private void VisitCollectionAdds(SemanticModel model, CollectionExpressionSyntax collection, ICollectionExpressionOperation operation,
+        TypeSubstitutions substitutions)
+    {
+        if (operation.ConstructMethod is not { MethodKind: MethodKind.Constructor } constructor)
+        {
+            return;
+        }
+
+        var receiver = SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression,
+            DefaultExpression(constructor.ContainingType), SyntaxFactory.IdentifierName("Add"));
+        var elements = collection.Elements.OfType<ExpressionElementSyntax>()
+            .Select(element => (element.Expression.WithoutTrivia(), element.Expression.SpanStart));
+        var spreads = operation.Elements.OfType<ISpreadOperation>().Where(spread => spread.ElementType is not null)
+            .Select(spread => ((ExpressionSyntax)DefaultExpression(spread.ElementType!), spread.Syntax.SpanStart));
+        foreach (var (element, position) in elements.Concat(spreads))
+        {
+            var call = SyntaxFactory.InvocationExpression(receiver,
+                SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(element))));
+            var symbol = model.GetSpeculativeSymbolInfo(position, call, SpeculativeBindingOption.BindAsExpression).Symbol;
+            VisitMethods(substitutions, symbol as IMethodSymbol);
+        }
+    }
+
+    private static DefaultExpressionSyntax DefaultExpression(ITypeSymbol type)
+        => SyntaxFactory.DefaultExpression(SyntaxFactory.ParseTypeName(type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
 
     private static ForEachStatementInfo BindSpreadIteration(SemanticModel model, SpreadElementSyntax spread)
     {
@@ -184,8 +211,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         foreach (var method in methods.OfType<IMethodSymbol>())
         {
             // Reuse Roslyn's await binding, including extension-method lookup at the original location.
-            var type = SyntaxFactory.ParseTypeName(method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-            var statement = SyntaxFactory.ExpressionStatement(SyntaxFactory.AwaitExpression(SyntaxFactory.DefaultExpression(type)));
+            var statement = SyntaxFactory.ExpressionStatement(SyntaxFactory.AwaitExpression(DefaultExpression(method.ReturnType)));
             model.TryGetSpeculativeSemanticModel(position, statement, out var speculative);
             SemanticModel?[] bindings = [speculative];
             foreach (var binding in bindings.OfType<SemanticModel>())
@@ -482,10 +508,16 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private void VisitDefinition(ISymbol definition, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions, bool instanceInitializers = false)
     {
+        if (!definition.DeclaringSyntaxReferences.Any(reference => compilation.ContainsSyntaxTree(reference.SyntaxTree)))
+        {
+            return;
+        }
+        if (substitutions.Values.Any(ContainsTypeParameter) && !collectTemplates)
+        {
+            return;
+        }
         var activeDefinitions = instanceInitializers ? activeInstanceInitializers : active;
-        if (!definition.DeclaringSyntaxReferences.Any(reference => compilation.ContainsSyntaxTree(reference.SyntaxTree)) ||
-            !collectTemplates && substitutions.Values.Any(ContainsTypeParameter) ||
-            !activeDefinitions.TryEnter(definition, substitutions, out var entered))
+        if (!activeDefinitions.TryEnter(definition, substitutions, out var entered))
         {
             return;
         }

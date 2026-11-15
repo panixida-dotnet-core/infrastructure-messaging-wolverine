@@ -1030,6 +1030,25 @@ public sealed class OptionBindingGeneratorTests
             """,
             "int");
 
+    [Theory(DisplayName = "Option generator discovers closed options through Add calls in collection expressions")]
+    [InlineData("Registration<int> values = [kafka];", "public void Add(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>();", "")]
+    [InlineData("Registration<int> values = [..new[] { kafka }];", "public void Add(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>();", "")]
+    [InlineData("_ = Values;", "public void Add(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>();", "private static readonly Registration<int> Values = [null!];")]
+    [InlineData("Registration<int> values = [kafka];", "", "public static void Add<T>(this Registration<T> values, Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>();")]
+    public void GeneratorShouldDiscoverCollectionExpressionAdd(string call, string addMethod, string extra)
+        => AssertDiscoversGenericHelper(
+            call,
+            $$"""
+            public sealed class Registration<T> : System.Collections.Generic.IEnumerable<Kafka>
+            {
+                {{addMethod}}
+                public System.Collections.Generic.IEnumerator<Kafka> GetEnumerator() => throw new System.NotSupportedException();
+                System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+            {{extra}}
+            """,
+            "int");
+
     [Theory(DisplayName = "Option generator discovers closed options through collection expression spreads")]
     [InlineData("System.Action<Kafka>[] callbacks = [..new Registration<int>()]; callbacks[0](kafka);", "sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>> { public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator() { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); } System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator(); }")]
     [InlineData("System.Action<Kafka>[] callbacks = [..new Registration<int>()]; callbacks[0](kafka);", "sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>> { System.Collections.Generic.IEnumerator<System.Action<Kafka>> System.Collections.Generic.IEnumerable<System.Action<Kafka>>.GetEnumerator() { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); } System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new System.NotSupportedException(); }")]
