@@ -1081,6 +1081,55 @@ public sealed class OptionBindingGeneratorTests
             """,
             formatted.Length == 0 ? "string" : "int");
 
+    [Theory(DisplayName = "Option generator substitutes wrapper sequence types before external helper discovery")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeneratorShouldSubstituteExternalSequence(bool asynchronous)
+    {
+        const string kafka = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration";
+        var contract = asynchronous
+            ? "System.Collections.Generic.IAsyncEnumerable<System.Action<Kafka>>"
+            : "System.Collections.Generic.IEnumerable<System.Action<Kafka>>";
+        var result = asynchronous ? "async System.Threading.Tasks.Task<System.Action<Kafka>>" : "System.Action<Kafka>";
+        var body = asynchronous
+            ? "await using var iterator = source.GetAsyncEnumerator(); await iterator.MoveNextAsync(); return iterator.Current;"
+            : "using var iterator = source.GetEnumerator(); iterator.MoveNext(); return iterator.Current;";
+        var library = CreateCompilation($$"""
+            using Kafka = {{kafka}};
+            public static class External
+            {
+                public static {{result}} First<TSequence>(TSequence source) where TSequence : {{contract}} { {{body}} }
+            }
+            """, "ExternalSequenceHelper");
+        using var stream = new MemoryStream();
+        library.Emit(stream, cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
+        var configure = asynchronous ? "_ = Forward(new Registration<int>(), kafka);" : "Forward(new Registration<int>(), kafka);";
+        var forwardResult = asynchronous ? "async System.Threading.Tasks.Task" : "void";
+        var forward = asynchronous ? "(await External.First(source))(kafka)" : "External.First(source)(kafka)";
+        var registration = asynchronous ? AsyncEnumerableHelper : """
+            public sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>>
+            {
+                public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator() { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); }
+                System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+            """;
+        var compilation = CreateCompilation($$"""
+            using Kafka = {{kafka}};
+            public sealed class Settings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public static class Host
+            {
+                public static void Configure(Kafka kafka) { {{configure}} }
+                private static {{forwardResult}} Forward<TSequence>(TSequence source, Kafka kafka) where TSequence : {{contract}} => {{forward}};
+            }
+            {{registration}}
+            """).AddReferences(MetadataReference.CreateFromImage(stream.ToArray()));
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::Settings<int>>");
+    }
+
     [Fact(DisplayName = "Option generator discovers async iterators consumed by framework helpers")]
     public void GeneratorShouldDiscoverFrameworkAsyncEnumeration()
         => AssertDiscoversGenericHelper("_ = System.Threading.Tasks.Parallel.ForEachAsync(new Registration<int>(), (configure, token) => { configure(kafka); return System.Threading.Tasks.ValueTask.CompletedTask; });",

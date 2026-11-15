@@ -213,7 +213,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
         var arguments = operation!.ChildOperations.OfType<IArgumentOperation>()
-            .Where(argument => EnumerableContracts(argument.Parameter!.Type).Any());
+            .Where(argument => EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)).Any());
         foreach (var argument in arguments)
         {
             foreach (var contract in EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)))
