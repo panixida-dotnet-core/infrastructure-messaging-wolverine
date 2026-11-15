@@ -43,7 +43,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         var keyNameAttribute = compilation.GetTypeByMetadataName("Microsoft.Extensions.Configuration.ConfigurationKeyNameAttribute");
         var metadataAttribute = compilation.GetTypeByMetadataName("System.Reflection.AssemblyMetadataAttribute");
         var templates = new GenericOptionTemplates(compilation, metadataAttribute, type => IsOption(type, optionTypes));
-        var discovery = new OptionTypeDiscovery(compilation, context.CancellationToken, templates);
+        var discovery = new OptionTypeDiscovery(compilation, templates, collectTemplates: false, context.CancellationToken);
         var source = new StringBuilder("""
             #nullable disable
             #pragma warning disable CA2255, CS0618

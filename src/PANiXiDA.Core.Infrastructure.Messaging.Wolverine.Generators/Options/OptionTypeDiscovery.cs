@@ -8,7 +8,7 @@ using TypeSubstitutions = System.Collections.Generic.Dictionary<Microsoft.CodeAn
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Options;
 
-internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationToken token, GenericOptionTemplates templates, bool collectTemplates = false)
+internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOptionTemplates templates, bool collectTemplates, CancellationToken token)
 {
     private static readonly Func<ITypeSymbol, bool> IsOpenArgument = new(ContainsTypeParameter);
     private readonly HashSet<INamedTypeSymbol> types = new(SymbolEqualityComparer.Default);
@@ -476,7 +476,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
     {
         var baseType = containing.BaseType;
-        if (baseType is null || baseType.DeclaringSyntaxReferences.Length == 0 ||
+        if (baseType is null || !HasSource(containing) ||
+            !HasSource(baseType) && !templates.HasExports(baseType.ContainingAssembly!) ||
             method.OriginalDefinition.DeclaringSyntaxReferences.SelectMany(reference => reference.GetSyntax(token).ChildNodes())
                 .Any(IsExplicitConstructorInitializer))
         {
@@ -497,6 +498,9 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private static bool IsExplicitConstructorInitializer(SyntaxNode node)
         => node is ConstructorInitializerSyntax ||
            node is BaseListSyntax baseList && baseList.Types.OfType<PrimaryConstructorBaseTypeSyntax>().Any();
+
+    private bool HasSource(ISymbol definition)
+        => definition.DeclaringSyntaxReferences.Any(reference => compilation.ContainsSyntaxTree(reference.SyntaxTree));
 
     private void VisitStaticInitialization(INamedTypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
     {
@@ -523,7 +527,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private void VisitDefinition(ISymbol definition, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions, bool instanceInitializers = false)
     {
-        if (!definition.DeclaringSyntaxReferences.Any(reference => compilation.ContainsSyntaxTree(reference.SyntaxTree)))
+        if (!HasSource(definition))
         {
             return;
         }

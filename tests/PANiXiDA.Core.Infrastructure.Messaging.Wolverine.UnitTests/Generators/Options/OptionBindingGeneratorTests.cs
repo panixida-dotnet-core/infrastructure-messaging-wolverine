@@ -83,6 +83,39 @@ public sealed class OptionBindingGeneratorTests
     [InlineData(false, "public sealed class Setup<T> { public readonly System.Action<Kafka> Configure = kafka => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "new Setup<int>().Configure(kafka);")]
     [InlineData(false, "public static class Setup<T> { public static System.Action<Kafka> Configure { get; } = kafka => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "Setup<int>.Configure(kafka);")]
     public void GeneratorShouldDiscoverReferencedGenericRegistration(bool sourceReference, string helper, string call)
+        => AssertReferencedGenericRegistration(sourceReference, helper, call, string.Empty);
+
+    [Theory(DisplayName = "Option generator imports registrations from referenced implicit base constructors")]
+    [InlineData(false, "public BaseRegistration()")]
+    [InlineData(false, "protected BaseRegistration(int optional = 0)")]
+    [InlineData(true, "public BaseRegistration()")]
+    public void GeneratorShouldDiscoverReferencedBaseConstructor(bool sourceReference, string constructor)
+        => AssertReferencedGenericRegistration(sourceReference,
+            $$"""
+            public class BaseRegistration<T>
+            {
+                public readonly System.Action<Kafka> Configure;
+                {{constructor}} => Configure = kafka => kafka.AddKafkaBroker<ExportedSettings<T>>();
+            }
+            """,
+            "new HostRegistration<int>().Configure(kafka);",
+            "public sealed class HostRegistration<T> : BaseRegistration<T>;");
+
+    [Fact(DisplayName = "Option generator imports inherited registrations through a synthesized constructor in a reference")]
+    public void GeneratorShouldDiscoverReferencedSynthesizedConstructor()
+        => AssertReferencedGenericRegistration(false,
+            """
+            public class BaseRegistration<T> : RootRegistration<T>;
+            public class RootRegistration<T>
+            {
+                public readonly System.Action<Kafka> Configure;
+                protected RootRegistration() => Configure = kafka => kafka.AddKafkaBroker<ExportedSettings<T>>();
+            }
+            """,
+            "new HostRegistration<int>().Configure(kafka);",
+            "public sealed class HostRegistration<T> : BaseRegistration<T>;");
+
+    private static void AssertReferencedGenericRegistration(bool sourceReference, string helper, string call, string hostType)
     {
         const string kafka = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration";
         var referenced = CreateCompilation($$"""
@@ -90,6 +123,7 @@ public sealed class OptionBindingGeneratorTests
             [assembly: System.Reflection.AssemblyMetadata("PANiXiDA.Wolverine.GenericOptionTemplate.v1:ignored", null)]
             [assembly: System.Reflection.AssemblyMetadata(null, "ignored")]
             public sealed class ExportedSettings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public record UnrelatedRecord<T>(T Value);
             file static class FileLocalRegistration
             {
                 public static void Register<T>(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>();
@@ -99,12 +133,15 @@ public sealed class OptionBindingGeneratorTests
         GeneratorDriver driver = CSharpGeneratorDriver.Create(new OptionBindingGenerator());
         driver = driver.RunGeneratorsAndUpdateCompilation(referenced, out var generated, out var diagnostics, TestContext.Current.CancellationToken);
         diagnostics.ShouldBeEmpty();
-        driver.GetRunResult().GeneratedTrees.Single().ToString().ShouldNotContain("FileLocalRegistration");
+        var exported = driver.GetRunResult().GeneratedTrees.Single().ToString();
+        exported.ShouldNotContain("FileLocalRegistration");
+        exported.ShouldNotContain("UnrelatedRecord");
         using var stream = new MemoryStream();
         generated.Emit(stream, options: new Microsoft.CodeAnalysis.Emit.EmitOptions(includePrivateMembers: false),
             cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
         MetadataReference reference = sourceReference ? generated.ToMetadataReference() : MetadataReference.CreateFromImage(stream.ToArray());
         var host = CreateCompilation($$"""
+            {{hostType}}
             public static class Host { public static void Register({{kafka}} kafka) { {{call}} } }
             """).AddReferences(reference);
 
