@@ -83,7 +83,7 @@ internal sealed class GenericOptionTemplates(Compilation compilation, INamedType
                 (method.DeclaringSyntaxReferences.Length != 0 ||
                  method is { MethodKind: MethodKind.Constructor, IsImplicitlyDeclared: true, Parameters.IsEmpty: true }),
             IFieldSymbol field => field.ContainingType.IsGenericType && field.DeclaringSyntaxReferences.Length != 0 &&
-                field.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal,
+                field.DeclaredAccessibility != Accessibility.Private,
             _ => false,
         };
 

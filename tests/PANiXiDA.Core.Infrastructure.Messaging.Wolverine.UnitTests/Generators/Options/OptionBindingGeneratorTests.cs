@@ -115,6 +115,25 @@ public sealed class OptionBindingGeneratorTests
             "new HostRegistration<int>().Configure(kafka);",
             "public sealed class HostRegistration<T> : BaseRegistration<T>;");
 
+    [Theory(DisplayName = "Option generator imports registrations from inherited fields accessible to a consumer")]
+    [InlineData("protected")]
+    [InlineData("protected internal")]
+    public void GeneratorShouldDiscoverReferencedProtectedField(string accessibility)
+        => AssertReferencedGenericRegistration(false,
+            $$"""
+            public class BaseRegistration<T>
+            {
+                {{accessibility}} static readonly System.Action<Kafka> Configure = kafka => kafka.AddKafkaBroker<ExportedSettings<T>>();
+            }
+            """,
+            "HostRegistration<int>.Register(kafka);",
+            """
+            public sealed class HostRegistration<T> : BaseRegistration<T>
+            {
+                public static void Register(Kafka kafka) => Configure(kafka);
+            }
+            """);
+
     private static void AssertReferencedGenericRegistration(bool sourceReference, string helper, string call, string hostType)
     {
         const string kafka = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration";
@@ -141,6 +160,7 @@ public sealed class OptionBindingGeneratorTests
             cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
         MetadataReference reference = sourceReference ? generated.ToMetadataReference() : MetadataReference.CreateFromImage(stream.ToArray());
         var host = CreateCompilation($$"""
+            using Kafka = {{kafka}};
             {{hostType}}
             public static class Host { public static void Register({{kafka}} kafka) { {{call}} } }
             """).AddReferences(reference);
