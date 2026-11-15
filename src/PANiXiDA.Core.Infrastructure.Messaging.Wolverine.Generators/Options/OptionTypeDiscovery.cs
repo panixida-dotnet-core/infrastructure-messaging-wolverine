@@ -25,7 +25,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         var model = compilation.GetSemanticModel(root.SyntaxTree);
         foreach (var node in root.DescendantNodes().Where(node => node is GenericNameSyntax or InvocationExpressionSyntax or
             BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or PrimaryConstructorBaseTypeSyntax or
-            MemberAccessExpressionSyntax or MemberBindingExpressionSyntax ||
+            MemberAccessExpressionSyntax or MemberBindingExpressionSyntax or ElementAccessExpressionSyntax or ElementBindingExpressionSyntax ||
             substitutions.Count != 0 && node is IdentifierNameSyntax))
         {
             token.ThrowIfCancellationRequested();
@@ -38,11 +38,18 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             {
                 VisitMethod(method, substitutions);
             }
-            else if (symbol is IPropertySymbol or IFieldSymbol && symbol.ContainingType!.IsGenericType)
+            else if (symbol is IPropertySymbol property)
             {
-                var containing = symbol.ContainingType!;
+                foreach (var accessor in new[] { property.GetMethod, property.SetMethod }.OfType<IMethodSymbol>())
+                {
+                    VisitMethod(accessor, substitutions);
+                }
+            }
+            else if (symbol is IFieldSymbol { ContainingType.IsGenericType: true } field)
+            {
+                var containing = field.ContainingType;
                 var arguments = ContainingArguments(containing, substitutions);
-                VisitDefinition(symbol.OriginalDefinition, arguments);
+                VisitDefinition(field.OriginalDefinition, arguments);
                 VisitStaticInitialization(containing, arguments);
             }
         }
@@ -60,8 +67,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             AddType(argument);
         }
         AddType(Substitute(method.ReturnType, substitutions));
-        VisitDefinition(definition, substitutions);
-        if (method.MethodKind == MethodKind.Ordinary &&
+        VisitDefinition(DispatchDefinition(definition), substitutions);
+        if (method.MethodKind is MethodKind.Ordinary or MethodKind.PropertyGet or MethodKind.PropertySet &&
             (containing.TypeKind == TypeKind.Interface || method.IsVirtual || method.IsAbstract || method.IsOverride))
         {
             VisitDispatchCall(method, substitutions);
@@ -175,19 +182,19 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private void AddType(ITypeSymbol type)
     {
-        if (type is INamedTypeSymbol { IsAbstract: false, IsUnboundGenericType: false } named && !ContainsTypeParameter(named))
+        if (type is not INamedTypeSymbol { IsAbstract: false, IsUnboundGenericType: false } named || ContainsTypeParameter(named) ||
+            !types.Add(named) || named.DeclaringSyntaxReferences.Length == 0)
         {
-            if (types.Add(named) && named.DeclaringSyntaxReferences.Length != 0)
+            return;
+        }
+
+        foreach (var contract in DispatchContracts(named).Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default))
+        {
+            var dispatch = GetDispatch(contract);
+            dispatch.Implementations.Add(named);
+            foreach (var call in dispatch.Calls.ToArray())
             {
-                foreach (var contract in DispatchContracts(named).Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default))
-                {
-                    var dispatch = GetDispatch(contract);
-                    dispatch.Implementations.Add(named);
-                    foreach (var call in dispatch.Calls.ToArray())
-                    {
-                        VisitImplementations(named, call);
-                    }
-                }
+                VisitImplementations(named, call);
             }
         }
     }
@@ -241,12 +248,14 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private void VisitImplementations(INamedTypeSymbol type, IMethodSymbol call)
     {
-        foreach (var implementation in FindImplementations(type, call).Where(implementation => !active.Contains(implementation.OriginalDefinition)))
+        foreach (var implementation in FindImplementations(type, call).Where(implementation => !active.Contains(DispatchDefinition(implementation.OriginalDefinition))))
         {
             var method = call.Arity == 0 ? implementation : implementation.Construct([.. call.TypeArguments]);
             VisitMethod(method, new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default));
         }
     }
+
+    private static ISymbol DispatchDefinition(IMethodSymbol method) => method.AssociatedSymbol ?? method;
 
     private IEnumerable<IMethodSymbol> FindImplementations(INamedTypeSymbol type, IMethodSymbol call)
     {

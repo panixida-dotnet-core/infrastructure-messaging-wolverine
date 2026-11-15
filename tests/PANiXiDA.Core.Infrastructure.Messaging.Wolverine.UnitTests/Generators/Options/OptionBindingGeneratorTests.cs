@@ -764,6 +764,11 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("Configure(new Registration(), kafka);", "static void Configure(BaseRegistration<int> registration, Kafka kafka) => registration.Configure(kafka); abstract class BaseRegistration<T> { public abstract void Configure(Kafka kafka); } class MiddleRegistration<T> : BaseRegistration<T> { public override void Configure(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); } sealed class Registration : MiddleRegistration<int> { public new void Configure(Kafka kafka) {} }", "int")]
     [InlineData("Register<byte>(kafka);", "static void Register<T>(Kafka kafka) { MiddleRegistration registration = new Registration<int>(); registration.Configure<T>(kafka); } abstract class BaseRegistration { public abstract void Configure<T>(Kafka kafka); } class MiddleRegistration : BaseRegistration { public override void Configure<T>(Kafka kafka) {} } sealed class Registration<U> : MiddleRegistration { public override void Configure<T>(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); }", "byte")]
     [InlineData("IRegistration<object> registration = new Registration<string>(); registration.Configure(kafka); _ = new Registration<int>();", "interface IRegistration<out T> { void Configure(Kafka kafka); } interface IOther; sealed class Registration<T> : IRegistration<T>, IOther { public void Configure(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); }", "string")]
+    [InlineData("IRegistration registration = new Registration<int>(); registration.Configure(kafka);", "interface IRegistration { System.Action<Kafka> Configure { get; } } sealed class Registration<T> : IRegistration { public System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("IRegistration registration = new Registration<int>(); registration.Configure(kafka);", "interface IRegistration { System.Action<Kafka> Configure { get; } } sealed class Registration<T> : IRegistration { System.Action<Kafka> IRegistration.Configure { get => kafka => kafka.AddKafkaBroker<Settings<T>>(); } }", "int")]
+    [InlineData("BaseRegistration registration = new Registration<int>(); registration.Configure(kafka);", "abstract class BaseRegistration { public abstract System.Action<Kafka> Configure { get; } } sealed class Registration<T> : BaseRegistration { public override System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("IRegistration registration = new Registration<int>(); registration.Kafka = kafka;", "interface IRegistration { Kafka Kafka { set; } } sealed class Registration<T> : IRegistration { public Kafka Kafka { set => value.AddKafkaBroker<Settings<T>>(); } }", "int")]
+    [InlineData("IRegistration registration = new Registration<int>(); _ = registration[kafka];", "interface IRegistration { int this[Kafka kafka] { get; } } sealed class Registration<T> : IRegistration { public int this[Kafka kafka] { get { kafka.AddKafkaBroker<Settings<T>>(); return 0; } } }", "int")]
     public void GeneratorShouldDiscoverGenericHelpers(string call, string helper, string argument)
     {
         var compilation = CreateCompilation($$"""
@@ -780,6 +785,54 @@ public sealed class OptionBindingGeneratorTests
 
         diagnostics.ShouldBeEmpty();
         source.ShouldContain(".Register<global::Settings<" + argument + ">>");
+    }
+
+    [Theory(DisplayName = "Option generator reports recursively expanding generic model shapes")]
+    [InlineData("Node<(int, dynamic)>", "public sealed class Node<T> { public Node<System.Collections.Generic.List<T>>? Next { get; set; } public Node<T[]>? Alternate { get; set; } }")]
+    [InlineData("Container<int>.Node", "public sealed class Container<T> { public sealed class Node { public Container<T[]>.Node? Next { get; set; } } }")]
+    public void GeneratorShouldDiagnoseExpandingGenericModels(string type, string declaration)
+    {
+        var compilation = CreateCompilation($$"""
+            #nullable enable
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public {{type}}? Value { get; init; }
+            }
+            {{declaration}}
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldContain(diagnostic => diagnostic.Id == "PANWOLVSG002" &&
+            diagnostic.GetMessage().Contains("recursive generic model"));
+        source.ShouldNotContain(".Register<global::Settings>");
+    }
+
+    [Fact(DisplayName = "Option generator binds finite recursive generic models")]
+    public void GeneratorShouldBindFiniteGenericModels()
+    {
+        var compilation = CreateCompilation("""
+            #nullable enable
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaConsumerOption
+            {
+                public Node<Wrapper<Wrapper<int>>>? Value { get; init; }
+            }
+            public sealed class Node<T>
+            {
+                public Node<T>? Next { get; set; }
+                public Node<string>? Fixed { get; set; }
+                public T Value { get; set; } = default!;
+            }
+            public sealed class Wrapper<T>
+            {
+                public T Value { get; set; } = default!;
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::Settings>");
     }
 
     [Fact(DisplayName = "Option generator substitutes nested containing types in generic helpers")]

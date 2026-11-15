@@ -22,6 +22,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string ReadOnlySetInterface = "System.Collections.Generic.IReadOnlySet<T>";
     private const string Accessor = "global::System.Runtime.CompilerServices.UnsafeAccessor";
     private const string AccessorKind = "global::System.Runtime.CompilerServices.UnsafeAccessorKind.";
+    private const int MaxRecursiveTypeNodes = 64;
     private static readonly HashSet<string> SupportedCollectionInterfaces = new(StringComparer.Ordinal)
     {
         "System.Collections.Generic.IDictionary<TKey, TValue>",
@@ -35,6 +36,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         ReadOnlySetInterface,
     };
     private readonly Dictionary<ITypeSymbol, string> methods = new(SymbolEqualityComparer.Default);
+    private readonly HashSet<ITypeSymbol> activeDefinitions = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<string, string> converterMethods = new(StringComparer.Ordinal);
     private readonly StringBuilder source = new();
 
@@ -44,6 +46,11 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     internal string Build(ITypeSymbol type)
     {
+        if (Error is not null)
+        {
+            return string.Empty;
+        }
+
         type = type.WithNullableAnnotation(NullableAnnotation.NotAnnotated);
         if (methods.TryGetValue(type, out var existing))
         {
@@ -52,6 +59,15 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         var name = $"Bind{optionIndex}_{methods.Count}";
         methods.Add(type, name);
+        var definition = type.OriginalDefinition;
+        var added = activeDefinitions.Add(definition);
+        var remaining = MaxRecursiveTypeNodes;
+        if (!added && !FitsRecursiveTypeBudget(type, ref remaining))
+        {
+            Error = $"recursive generic model '{definition}' expands beyond the supported type complexity";
+            return name;
+        }
+
         var body = new StringBuilder();
         if (type.SpecialType == SpecialType.System_Object || type.TypeKind == TypeKind.Dynamic ||
             type is { TypeKind: TypeKind.Class, IsAbstract: true })
@@ -66,6 +82,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             AppendBody(body, type, name);
         }
+        if (added)
+        {
+            activeDefinitions.Remove(definition);
+        }
 
         const string arguments = "bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null, bool hasExistingValue = true";
         const string forwarded = "readOnly, parentCollection, conversionProbe, hasExistingValue";
@@ -78,6 +98,33 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             .Append($"        hasNewValue = {(type.IsValueType ? WritableCondition : FalseLiteral)};\n")
             .Append(body).Append(EndMethod);
         return name;
+    }
+
+    private static bool FitsRecursiveTypeBudget(ITypeSymbol type, ref int remaining)
+    {
+        if (remaining-- == 0)
+        {
+            return false;
+        }
+        if (type is IArrayTypeSymbol array)
+        {
+            return FitsRecursiveTypeBudget(array.ElementType, ref remaining);
+        }
+        if (type is INamedTypeSymbol named)
+        {
+            foreach (var argument in named.TypeArguments)
+            {
+                if (!FitsRecursiveTypeBudget(argument, ref remaining))
+                {
+                    return false;
+                }
+            }
+            if (named.ContainingType is { } containing)
+            {
+                return FitsRecursiveTypeBudget(containing, ref remaining);
+            }
+        }
+        return true;
     }
 
     private void AppendBody(StringBuilder body, ITypeSymbol type, string method)
