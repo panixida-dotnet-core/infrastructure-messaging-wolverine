@@ -21,12 +21,14 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), (SyntaxNode Syntax, IMethodSymbol Method, bool Disposal)[]> implicitFlowCalls = [];
     private static readonly string[] CollectionContractNames =
     [
-        "System.Collections.ICollection", "System.Collections.IList",
+        "System.Collections.ICollection", "System.Collections.IList", "System.Collections.IDictionary",
         "System.Collections.Generic.ICollection`1", "System.Collections.Generic.IList`1",
         "System.Collections.Generic.IReadOnlyCollection`1", "System.Collections.Generic.IReadOnlyList`1",
+        "System.Collections.Generic.IDictionary`2", "System.Collections.Generic.IReadOnlyDictionary`2",
     ];
     private readonly INamedTypeSymbol[] collectionDefinitions =
         [.. CollectionContractNames.Select(compilation.GetTypeByMetadataName).OfType<INamedTypeSymbol>()];
+    private readonly INamedTypeSymbol? keyValuePair = compilation.GetTypeByMetadataName("System.Collections.Generic.KeyValuePair`2");
     private readonly INamedTypeSymbol? enumerable = compilation.GetTypeByMetadataName("System.Collections.IEnumerable");
     private readonly INamedTypeSymbol? genericEnumerable = compilation.GetTypeByMetadataName("System.Collections.Generic.IEnumerable`1");
     private readonly INamedTypeSymbol? notifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.INotifyCompletion");
@@ -173,10 +175,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
     private void VisitFixed(SemanticModel model, FixedStatementSyntax statement, TypeSubstitutions substitutions)
     {
-        var initializers = statement.Declaration.Variables.Select(variable => variable.Initializer).OfType<EqualsValueClauseSyntax>();
-        foreach (var initializer in initializers)
+        var expressions = statement.Declaration.Variables.Select(variable => variable.Initializer).OfType<EqualsValueClauseSyntax>()
+            .Select(initializer => initializer.Value);
+        foreach (var expression in expressions)
         {
-            var expression = initializer.Value;
             var type = model.GetTypeInfo(expression, token).Type;
             if (type is IArrayTypeSymbol || SymbolEqualityComparer.Default.Equals(type, compilation.GetSpecialType(SpecialType.System_String)))
             {
@@ -237,13 +239,31 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
     private void VisitExternalCollection(INamedTypeSymbol enumerableContract, INamedTypeSymbol? source, TypeSubstitutions substitutions)
     {
-        foreach (var definition in collectionDefinitions.Where(definition => definition.Arity == 0 || enumerableContract.Arity != 0))
+        foreach (var contract in CollectionContracts(enumerableContract))
         {
-            var contract = definition.Arity == 0 ? definition : definition.Construct([.. enumerableContract.TypeArguments]);
             foreach (var member in contract.GetMembers())
             {
                 VisitPatternMember(source is null ? member : source.FindImplementationForInterfaceMember(member), substitutions);
             }
+        }
+    }
+
+    private IEnumerable<INamedTypeSymbol> CollectionContracts(INamedTypeSymbol enumerableContract)
+    {
+        var entries = enumerableContract.TypeArguments.OfType<INamedTypeSymbol>()
+            .Where(element => SymbolEqualityComparer.Default.Equals(element.OriginalDefinition, keyValuePair));
+        foreach (var entry in entries)
+        {
+            foreach (var definition in collectionDefinitions.Where(definition => definition.Arity == 2))
+            {
+                yield return definition.Construct([.. entry.TypeArguments]);
+            }
+        }
+        var collections = collectionDefinitions.Where(definition => definition.Arity <= 1 &&
+            (definition.Arity == 0 || enumerableContract.Arity != 0));
+        foreach (var definition in collections)
+        {
+            yield return definition.Arity == 0 ? definition : definition.Construct([.. enumerableContract.TypeArguments]);
         }
     }
 

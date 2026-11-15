@@ -201,10 +201,11 @@ public sealed class OptionBindingGeneratorTests
             }
             """, "Setup<int>.Register(kafka);", string.Empty);
 
-    private static void AssertReferencedGenericRegistration(bool sourceReference, string helper, string call, string hostType)
+    private static void AssertReferencedGenericRegistration(bool sourceReference, string helper, string call, string hostType, string imports = "")
     {
         const string kafka = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration";
         var referenced = CreateCompilation($$"""
+            {{imports}}
             using Kafka = {{kafka}};
             [assembly: System.Reflection.AssemblyMetadata("PANiXiDA.Wolverine.GenericOptionTemplate.v1:ignored", null)]
             [assembly: System.Reflection.AssemblyMetadata(null, "ignored")]
@@ -1080,6 +1081,40 @@ public sealed class OptionBindingGeneratorTests
             """,
             formatted.Length == 0 ? "string" : "int");
 
+    [Theory(DisplayName = "Option generator discovers dictionary lookups consumed by framework helpers")]
+    [InlineData("new Registration<int>().GetValueOrDefault(\"key\")(kafka);")]
+    [InlineData("System.Collections.Generic.IReadOnlyDictionary<string, System.Action<Kafka>> values = new Registration<int>(); values.GetValueOrDefault(\"key\")(kafka);")]
+    public void GeneratorShouldDiscoverFrameworkDictionary(string call)
+        => AssertDiscoversGenericHelper(call, DictionaryHelper, "int", imports: "using System.Collections.Generic;");
+
+    [Fact(DisplayName = "Option generator exports dictionary lookups through a generic helper")]
+    public void GeneratorShouldDiscoverReferencedFrameworkDictionary()
+        => AssertReferencedGenericRegistration(false,
+            "public static class Setup<T> { public static void Register(Kafka kafka) => new Registration<T>().GetValueOrDefault(\"key\")(kafka); }" +
+            DictionaryHelper.Replace("Settings<T>", "ExportedSettings<T>", StringComparison.Ordinal),
+            "Setup<int>.Register(kafka);", string.Empty, imports: "using System.Collections.Generic;");
+
+    private const string DictionaryHelper = """
+        public sealed class Registration<T> : System.Collections.Generic.IReadOnlyDictionary<string, System.Action<Kafka>>
+        {
+            public int Count => 1;
+            public System.Collections.Generic.IEnumerable<string> Keys => ["key"];
+            public System.Collections.Generic.IEnumerable<System.Action<Kafka>> Values => [];
+            public System.Action<Kafka> this[string key] => _ => { };
+            public bool ContainsKey(string key) => true;
+            public bool TryGetValue(string key, out System.Action<Kafka> value)
+            {
+                value = kafka => kafka.AddKafkaBroker<Settings<T>>();
+                return true;
+            }
+            public System.Collections.Generic.IEnumerator<System.Collections.Generic.KeyValuePair<string, System.Action<Kafka>>> GetEnumerator()
+            {
+                yield return new("key", _ => { });
+            }
+            System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+        """;
+
     [Theory(DisplayName = "Option generator discovers generic pinnable pattern methods")]
     [InlineData("class")]
     [InlineData("struct")]
@@ -1498,9 +1533,10 @@ public sealed class OptionBindingGeneratorTests
             "sealed class Registration<T>(Kafka kafka) : System.IDisposable { public void Dispose() => kafka.AddKafkaBroker<Settings<T>>(); }",
             "int");
 
-    private static void AssertDiscoversGenericHelper(string call, string helper, string argument, bool allowUnsafe = false, string additionalSource = "")
+    private static void AssertDiscoversGenericHelper(string call, string helper, string argument, bool allowUnsafe = false, string additionalSource = "", string imports = "")
     {
         var compilation = CreateCompilation($$"""
+            {{imports}}
             using Kafka = PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration;
             public sealed class Settings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
             public static class Setup
