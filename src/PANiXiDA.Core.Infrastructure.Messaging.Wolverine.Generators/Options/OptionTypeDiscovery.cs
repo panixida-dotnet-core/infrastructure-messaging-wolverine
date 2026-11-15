@@ -233,7 +233,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         VisitMethod(getEnumerator, substitutions);
         // IEnumerable contracts and their implementations return IEnumerator or IEnumerator<T>.
         var enumerator = (INamedTypeSymbol)Substitute(getEnumerator.ReturnType, substitutions);
-        var members = enumerator.AllInterfaces.Concat(new[] { enumerator }).SelectMany(type => type.GetMembers()).ToArray();
+        var members = enumerator.AllInterfaces.Concat([enumerator]).SelectMany(type => type.GetMembers()).ToArray();
         foreach (var method in members.OfType<IMethodSymbol>().Where(method => method.Name is "MoveNext" or "Dispose"))
         {
             VisitMethod(method, substitutions);
@@ -246,7 +246,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
     private IEnumerable<INamedTypeSymbol> EnumerableContracts(ITypeSymbol? type)
         => type is INamedTypeSymbol named
-            ? named.AllInterfaces.Concat(new[] { named }).Where(contract =>
+            ? named.AllInterfaces.Concat([named]).Where(contract =>
                 SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, enumerable) ||
                 SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, genericEnumerable))
             : [];
