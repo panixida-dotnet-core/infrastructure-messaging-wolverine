@@ -808,6 +808,17 @@ public sealed class OptionBindingGeneratorTests
     public void GeneratorShouldDiscoverGenericHelpers(string call, string helper, string argument)
         => AssertDiscoversGenericHelper(call, helper, argument);
 
+    [Theory(DisplayName = "Option generator discovers closed options through pattern members")]
+    [InlineData("if (new Registration<int>() is { Configure: var configure }) configure(kafka);", "sealed class Registration<T> { public System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("if (new Registration<int>() is ({ Configure: var configure })) configure(kafka);", "sealed class Registration<T> { public System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("IRegistration registration = new Registration<int>(); if (registration is { Configure: var configure }) configure(kafka);", "interface IRegistration { System.Action<Kafka> Configure { get; } } sealed class Registration<T> : IRegistration { System.Action<Kafka> IRegistration.Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("if (new Wrapper() is { Group.Registration.Configure: var configure }) configure(kafka);", "sealed class Wrapper { public readonly Group<int> Group = new(); } sealed class Group<T> { public Registration<T> Registration => new(); } sealed class Registration<T> { public System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("if (new Registration<int>() is { Configure: var configure }) configure(kafka);", "sealed class Registration<T> { public readonly System.Action<Kafka> Configure = kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("if (new Registration<int>() is [var configure]) configure(kafka);", "sealed class Registration<T> { public int Length => 1; public System.Action<Kafka> this[int index] => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("if (new Registration<int>() is [1, .. var configure]) configure(kafka);", "sealed class Registration<T> { public int Length => 2; public int this[int index] => 1; public System.Action<Kafka> Slice(int start, int length) => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    public void GeneratorShouldDiscoverPatternMembers(string call, string helper, string argument)
+        => AssertDiscoversGenericHelper(call, helper, argument);
+
     [Fact(DisplayName = "Option generator discovers disposal inside a generic local function and lambda")]
     public void GeneratorShouldDiscoverUsingInsideGenericLambda()
         => AssertDiscoversGenericHelper(

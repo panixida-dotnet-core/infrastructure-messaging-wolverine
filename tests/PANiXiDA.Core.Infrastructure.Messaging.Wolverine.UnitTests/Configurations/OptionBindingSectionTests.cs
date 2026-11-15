@@ -433,11 +433,13 @@ public sealed class OptionBindingSectionTests
 
     public sealed class EnumerationOnlyList : List<int>, ICollection<int>
     {
+        private static readonly int[] InitialValues = [1];
+
         public EnumerationOnlyList() => Add(1);
 
         void ICollection<int>.CopyTo(int[] array, int arrayIndex) => throw new InvalidOperationException("CopyTo must not run.");
         IEnumerator<int> IEnumerable<int>.GetEnumerator() => throw new InvalidOperationException("Use the non-generic enumerator.");
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => new[] { 1 }.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => InitialValues.GetEnumerator();
     }
 
     public sealed class FailingEnumerationList : List<int>, ICollection<int>

@@ -10,14 +10,14 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Options;
 
 internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationToken token)
 {
-    private readonly Dictionary<SyntaxTree, SemanticModel> semanticModels = new();
+    private readonly Dictionary<SyntaxTree, SemanticModel> semanticModels = [];
     private readonly HashSet<INamedTypeSymbol> types = new(SymbolEqualityComparer.Default);
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
     private readonly RecursionGuard active = new();
     private readonly RecursionGuard activeMethods = new();
     private readonly RecursionGuard activeInstanceInitializers = new();
     private readonly Dictionary<INamedTypeSymbol, MethodDispatch> methodDispatches = new(SymbolEqualityComparer.Default);
-    private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), IInvocationOperation[]> disposalCalls = new();
+    private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), IInvocationOperation[]> disposalCalls = [];
 
     internal IEnumerable<INamedTypeSymbol> Discover()
     {
@@ -62,10 +62,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             }
             else if (symbol is IFieldSymbol { ContainingType.IsGenericType: true } field)
             {
-                var containing = field.ContainingType;
-                var arguments = ContainingArguments(containing, substitutions);
-                VisitDefinition(field.OriginalDefinition, arguments);
-                VisitStaticInitialization(containing, arguments);
+                VisitGenericField(field, substitutions);
             }
         }
     }
@@ -93,8 +90,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             case AssignmentExpressionSyntax { Left: DeclarationExpressionSyntax or TupleExpressionSyntax } assignment:
                 VisitDeconstruction(model.GetDeconstructionInfo(assignment), substitutions);
                 break;
-            case RecursivePatternSyntax { PositionalPatternClause: not null } pattern:
-                VisitPositionalPattern(model, pattern, substitutions);
+            case PatternSyntax pattern when pattern.Parent is not (PatternSyntax or SubpatternSyntax):
+                VisitPattern(model, pattern, substitutions);
                 break;
             case AwaitExpressionSyntax awaitExpression:
                 var awaiter = model.GetAwaitExpressionInfo(awaitExpression);
@@ -127,13 +124,60 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         }
     }
 
-    private void VisitPositionalPattern(SemanticModel model, RecursivePatternSyntax pattern, TypeSubstitutions substitutions)
+    private void VisitPattern(SemanticModel model, PatternSyntax pattern, TypeSubstitutions substitutions)
     {
-        var patterns = new[] { model.GetOperation(pattern, token) }.OfType<IRecursivePatternOperation>();
-        foreach (var method in patterns.Select(operation => operation.DeconstructSymbol).OfType<IMethodSymbol>())
+        while (pattern is ParenthesizedPatternSyntax parenthesized)
         {
-            VisitMethod(method, substitutions);
+            pattern = parenthesized.Pattern;
         }
+        IOperation?[] roots = [model.GetOperation(pattern, token)];
+        var operations = roots.OfType<IOperation>().SelectMany(operation => operation.DescendantsAndSelf());
+        foreach (var operation in operations)
+        {
+            switch (operation)
+            {
+                case IRecursivePatternOperation recursive:
+                    VisitPatternMember(recursive.DeconstructSymbol, substitutions);
+                    break;
+                case IPropertySubpatternOperation subpattern:
+                    foreach (var member in subpattern.Member.DescendantsAndSelf().OfType<IMemberReferenceOperation>())
+                    {
+                        VisitPatternMember(member.Member, substitutions);
+                    }
+                    break;
+                case IListPatternOperation list:
+                    VisitPatternMember(list.LengthSymbol, substitutions);
+                    VisitPatternMember(list.IndexerSymbol, substitutions);
+                    break;
+                case ISlicePatternOperation slice:
+                    VisitPatternMember(slice.SliceSymbol, substitutions);
+                    break;
+            }
+        }
+    }
+
+    private void VisitPatternMember(ISymbol? symbol, TypeSubstitutions substitutions)
+    {
+        switch (symbol)
+        {
+            case IMethodSymbol method:
+                VisitMethod(method, substitutions);
+                break;
+            case IPropertySymbol property:
+                VisitMethods(substitutions, property.GetMethod);
+                break;
+            case IFieldSymbol { ContainingType.IsGenericType: true } field:
+                VisitGenericField(field, substitutions);
+                break;
+        }
+    }
+
+    private void VisitGenericField(IFieldSymbol field, TypeSubstitutions substitutions)
+    {
+        var containing = field.ContainingType!;
+        var arguments = ContainingArguments(containing, substitutions);
+        VisitDefinition(field.OriginalDefinition, arguments);
+        VisitStaticInitialization(containing, arguments);
     }
 
     private void VisitDisposals(SemanticModel model, SyntaxNode node, TypeSubstitutions substitutions)
@@ -149,8 +193,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             var key = (syntax.SyntaxTree, syntax.SpanStart, syntax.Span.Length);
             if (!disposalCalls.TryGetValue(key, out var calls))
             {
-                calls = new[] { ControlFlowGraph.Create(syntax, model, token) }.OfType<ControlFlowGraph>()
-                    .SelectMany(GetDisposalCalls).ToArray();
+                ControlFlowGraph?[] graphs = [ControlFlowGraph.Create(syntax, model, token)];
+                calls = graphs.OfType<ControlFlowGraph>().SelectMany(GetDisposalCalls).ToArray();
                 disposalCalls.Add(key, calls);
             }
             foreach (var call in calls.Where(call => node.Span.Contains(call.Syntax.Span)))

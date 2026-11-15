@@ -12,7 +12,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 [EditorBrowsable(EditorBrowsableState.Never)]
 public static class OptionBindingRegistry
 {
-    private static readonly ConditionalWeakTable<Type, TypeConverter> Converters = new();
+    private static readonly ConditionalWeakTable<Type, TypeConverter> Converters = [];
 
     /// <summary>
     /// Registers a statically compiled binder for an options type.
