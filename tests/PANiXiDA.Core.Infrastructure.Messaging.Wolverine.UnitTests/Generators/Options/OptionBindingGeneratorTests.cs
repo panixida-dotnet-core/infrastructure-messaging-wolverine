@@ -935,13 +935,65 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldContain(".Register<global::Settings<int>>");
     }
 
+    [Theory(DisplayName = "Option generator discovers generic operator true in boolean conditions")]
+    [InlineData("if (new Registration<int>(kafka)) { }")]
+    [InlineData("while ((new Registration<int>(kafka))) { break; }")]
+    [InlineData("do { } while (new Registration<int>(kafka));")]
+    [InlineData("for (; new Registration<int>(kafka);) { break; }")]
+    [InlineData("_ = new Registration<int>(kafka) ? 1 : 0;")]
+    [InlineData("try { } catch (System.Exception) when (new Registration<int>(kafka)) { }")]
+    [InlineData("_ = 0 switch { 0 when new Registration<int>(kafka) => true, _ => false };")]
+    [InlineData("switch (42) { case int _ when new Registration<int>(kafka): break; }")]
+    public void GeneratorShouldDiscoverTruthOperators(string call)
+        => AssertDiscoversGenericHelper(
+            call,
+            """
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public static bool operator true(Registration<T> value)
+                {
+                    value.kafka.AddKafkaBroker<Settings<T>>();
+                    return true;
+                }
+                public static bool operator false(Registration<T> value) => false;
+            }
+            """,
+            "int");
+
+    [Theory(DisplayName = "Option generator discovers generic operators used only for short circuiting")]
+    [InlineData("&&", "false")]
+    [InlineData("||", "true")]
+    public void GeneratorShouldDiscoverShortCircuitOperators(string operation, string truthOperator)
+        => AssertDiscoversGenericHelper(
+            $"using var left = new Registration<int>(kafka); _ = left {operation} new Registration<int>(kafka);",
+            $$"""
+            sealed class Registration<T> : System.IDisposable
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public void Dispose() { }
+                public static Registration<T> operator &(Registration<T> left, Registration<T> right) => left;
+                public static Registration<T> operator |(Registration<T> left, Registration<T> right) => left;
+                public static bool operator true(Registration<T> value) => {{(truthOperator == "true" ? "Register(value)" : "false")}};
+                public static bool operator false(Registration<T> value) => {{(truthOperator == "false" ? "Register(value)" : "false")}};
+                private static bool Register(Registration<T> value)
+                {
+                    value.kafka.AddKafkaBroker<Settings<T>>();
+                    return true;
+                }
+            }
+            """,
+            "int");
+
     [Theory(DisplayName = "Option generator discovers the selected generic interpolated string handler members")]
     [InlineData("kafka.AddKafkaBroker<Settings<T>>();", "", "", "kafka, $\"setup\"")]
     [InlineData("", "kafka.AddKafkaBroker<Settings<T>>();", "", "kafka, $\"setup\"")]
     [InlineData("", "", "kafka.AddKafkaBroker<Settings<TValue>>();", "kafka, $\"setup\" + $\"{42}\"")]
     public void GeneratorShouldDiscoverInterpolatedStringHandler(string constructor, string literal, string formatted, string arguments)
         => AssertDiscoversGenericHelper(
-            $"Log<string>({arguments});",
+            $"_ = $\"kafka: {{kafka}}\"; Log<string>({arguments});",
             $$"""
             static void Log<T>(Kafka kafka, [System.Runtime.CompilerServices.InterpolatedStringHandlerArgument("kafka")] Registration<T> message) { }
             [System.Runtime.CompilerServices.InterpolatedStringHandler]

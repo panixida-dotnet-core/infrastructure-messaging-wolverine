@@ -18,7 +18,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     private readonly RecursionGuard activeMethods = new();
     private readonly RecursionGuard activeInstanceInitializers = new();
     private readonly Dictionary<INamedTypeSymbol, MethodDispatch> methodDispatches = new(SymbolEqualityComparer.Default);
-    private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), IInvocationOperation[]> disposalCalls = [];
+    private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), (SyntaxNode Syntax, IMethodSymbol Method, bool Disposal)[]> implicitFlowCalls = [];
     private readonly INamedTypeSymbol? notifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.INotifyCompletion");
     private readonly INamedTypeSymbol? criticalNotifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.ICriticalNotifyCompletion");
 
@@ -120,9 +120,13 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             case AwaitExpressionSyntax awaitExpression:
                 VisitAwait(model.GetAwaitExpressionInfo(awaitExpression), substitutions);
                 break;
+            case IfStatementSyntax or ConditionalExpressionSyntax or ForStatementSyntax or WhileStatementSyntax or DoStatementSyntax or
+                CatchClauseSyntax or CasePatternSwitchLabelSyntax or SwitchExpressionArmSyntax:
+                VisitTruthCondition(model, node, substitutions);
+                break;
             case UsingStatementSyntax:
             case LocalDeclarationStatementSyntax declaration when declaration.UsingKeyword.RawKind != 0:
-                VisitDisposals(model, node, substitutions);
+                VisitImplicitFlowCalls(model, node, substitutions, disposal: true);
                 break;
         }
     }
@@ -365,7 +369,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         }
     }
 
-    private void VisitDisposals(SemanticModel model, SyntaxNode node, TypeSubstitutions substitutions)
+    private void VisitImplicitFlowCalls(SemanticModel model, SyntaxNode node, TypeSubstitutions substitutions, bool disposal)
     {
         foreach (var operation in new[] { model.GetOperation(node, token) }.OfType<IOperation>())
         {
@@ -376,13 +380,13 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             }
             var syntax = root.Syntax;
             var key = (syntax.SyntaxTree, syntax.SpanStart, syntax.Span.Length);
-            if (!disposalCalls.TryGetValue(key, out var calls))
+            if (!implicitFlowCalls.TryGetValue(key, out var calls))
             {
                 ControlFlowGraph?[] graphs = [ControlFlowGraph.Create(syntax, model, token)];
-                calls = [.. graphs.OfType<ControlFlowGraph>().SelectMany(GetDisposalCalls)];
-                disposalCalls.Add(key, calls);
+                calls = [.. graphs.OfType<ControlFlowGraph>().SelectMany(GetImplicitFlowCalls)];
+                implicitFlowCalls.Add(key, calls);
             }
-            var methods = calls.Where(call => node.Span.Contains(call.Syntax.Span)).Select(call => call.TargetMethod);
+            var methods = calls.Where(call => call.Disposal == disposal && node.Span.Contains(call.Syntax.Span)).Select(call => call.Method);
             foreach (var method in methods)
             {
                 VisitMethod(method, substitutions);
@@ -394,19 +398,25 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         }
     }
 
-    private IEnumerable<IInvocationOperation> GetDisposalCalls(ControlFlowGraph graph)
+    private IEnumerable<(SyntaxNode Syntax, IMethodSymbol Method, bool Disposal)> GetImplicitFlowCalls(ControlFlowGraph graph)
     {
         var operations = graph.Blocks.SelectMany(block => block.Operations.Concat(new[] { block.BranchValue }.OfType<IOperation>()))
             .SelectMany(operation => operation.DescendantsAndSelf()).ToArray();
         foreach (var call in operations.OfType<IInvocationOperation>()
             .Where(call => call.IsImplicit && call.TargetMethod.Name is "Dispose" or "DisposeAsync"))
         {
+            yield return (call.Syntax, call.TargetMethod, true);
+        }
+        var truthCalls = FindTruthTests(operations)
+            .SelectMany(unary => new[] { unary.OperatorMethod }.OfType<IMethodSymbol>().Select(method => (unary.Syntax, method, false)));
+        foreach (var call in truthCalls)
+        {
             yield return call;
         }
         var nested = graph.LocalFunctions.Select(method => graph.GetLocalFunctionControlFlowGraph(method, token))
             .Concat(operations.OfType<IFlowAnonymousFunctionOperation>()
                 .Select(function => graph.GetAnonymousFunctionControlFlowGraph(function, token)));
-        foreach (var inner in nested.SelectMany(GetDisposalCalls))
+        foreach (var inner in nested.SelectMany(GetImplicitFlowCalls))
         {
             yield return inner;
         }
@@ -427,12 +437,30 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         {
             VisitMethod(conversion, substitutions);
         }
-        if (expression is CastExpressionSyntax or BinaryExpressionSyntax or PrefixUnaryExpressionSyntax or PostfixUnaryExpressionSyntax or
-            AssignmentExpressionSyntax && FindOperator(model.GetOperation(expression, token)) is { } method)
+        if (expression is CastExpressionSyntax or BinaryExpressionSyntax or PrefixUnaryExpressionSyntax or PostfixUnaryExpressionSyntax or AssignmentExpressionSyntax)
         {
-            VisitMethod(method, substitutions);
+            var operation = model.GetOperation(expression, token);
+            VisitMethods(substitutions, FindOperator(operation));
+            if (operation is IBinaryOperation { OperatorMethod: not null, OperatorKind: BinaryOperatorKind.ConditionalAnd or BinaryOperatorKind.ConditionalOr })
+            {
+                // The semantic binary operation exposes & or |; the flow graph exposes its short-circuit operator.
+                VisitImplicitFlowCalls(model, expression, substitutions, disposal: false);
+            }
         }
     }
+
+    private void VisitTruthCondition(SemanticModel model, SyntaxNode node, TypeSubstitutions substitutions)
+    {
+        IOperation?[] operations = [model.GetOperation(node, token)];
+        var children = operations.OfType<IOperation>().SelectMany(operation => operation.ChildOperations);
+        foreach (var condition in FindTruthTests(children))
+        {
+            VisitMethods(substitutions, condition.OperatorMethod);
+        }
+    }
+
+    private static IEnumerable<IUnaryOperation> FindTruthTests(IEnumerable<IOperation> operations)
+        => operations.OfType<IUnaryOperation>().Where(unary => unary.OperatorKind is UnaryOperatorKind.True or UnaryOperatorKind.False);
 
     private static IMethodSymbol? FindOperator(IOperation? operation)
         => operation switch
