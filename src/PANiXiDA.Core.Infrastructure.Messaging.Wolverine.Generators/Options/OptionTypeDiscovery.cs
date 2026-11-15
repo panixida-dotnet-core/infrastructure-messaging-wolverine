@@ -483,8 +483,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private void VisitDefinition(ISymbol definition, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions, bool instanceInitializers = false)
     {
         var activeDefinitions = instanceInitializers ? activeInstanceInitializers : active;
-        if (definition.DeclaringSyntaxReferences.Length == 0 ||
-            !SymbolEqualityComparer.Default.Equals(definition.ContainingAssembly, compilation.Assembly) ||
+        if (!definition.DeclaringSyntaxReferences.Any(reference => compilation.ContainsSyntaxTree(reference.SyntaxTree)) ||
             !collectTemplates && substitutions.Values.Any(ContainsTypeParameter) ||
             !activeDefinitions.TryEnter(definition, substitutions, out var entered))
         {
@@ -540,7 +539,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             }
             return;
         }
-        if (!types.Add(named) || named.DeclaringSyntaxReferences.Length == 0)
+        if (!types.Add(named) ||
+            named.DeclaringSyntaxReferences.Length == 0 && !templates.HasExports(named.ContainingAssembly!))
         {
             return;
         }

@@ -75,6 +75,9 @@ public sealed class OptionBindingGeneratorTests
     [InlineData(false, "public static class Setup { public static void Register<T>(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "Setup.Register<int>(kafka);")]
     [InlineData(true, "public static class Setup { public static void Register<T>(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "Setup.Register<int>(kafka);")]
     [InlineData(false, "public static class Setup<T> { public static void Register(Kafka kafka) => Forward<T>(kafka); private static void Forward<U>(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<U>>(); }", "Setup<int>.Register(kafka);")]
+    [InlineData(false, "public interface IRegistration { void Configure(Kafka kafka); } public sealed class Registration<T> : IRegistration { public void Configure(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "IRegistration registration = new Registration<int>(); registration.Configure(kafka);")]
+    [InlineData(false, "public interface IRegistration { void Configure(Kafka kafka); } public sealed class Registration<T> : IRegistration { void IRegistration.Configure(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "IRegistration registration = new Registration<int>(); registration.Configure(kafka);")]
+    [InlineData(false, "public abstract class Registration { public abstract void Configure(Kafka kafka); } public sealed class Concrete<T> : Registration { public override void Configure(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "Registration registration = new Concrete<int>(); registration.Configure(kafka);")]
     public void GeneratorShouldDiscoverReferencedGenericRegistration(bool sourceReference, string helper, string call)
     {
         const string kafka = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration";

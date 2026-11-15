@@ -15,6 +15,8 @@ internal sealed class GenericOptionTemplates(Compilation compilation, INamedType
 
     internal bool IsOption(INamedTypeSymbol type) => isOption(type);
 
+    internal bool HasExports(IAssemblySymbol assembly) => GetCatalog(assembly).Count != 0;
+
     internal SemanticModel GetModel(SyntaxTree tree)
     {
         if (!models.TryGetValue(tree, out var model))
@@ -32,6 +34,15 @@ internal sealed class GenericOptionTemplates(Compilation compilation, INamedType
         {
             return [];
         }
+        var catalog = GetCatalog(assembly);
+        return catalog.Count == 0
+            ? []
+            : catalog[KeyPrefix + method.GetDocumentationCommentId()]
+                .SelectMany(id => DocumentationCommentId.GetSymbolsForReferenceId(id, compilation)).OfType<ITypeSymbol>();
+    }
+
+    private ILookup<string, string> GetCatalog(IAssemblySymbol assembly)
+    {
         if (!imports.TryGetValue(assembly, out var catalog))
         {
             catalog = assembly.GetAttributes()
@@ -41,17 +52,15 @@ internal sealed class GenericOptionTemplates(Compilation compilation, INamedType
                 .ToLookup(entry => entry.Key!, entry => entry.Id!, StringComparer.Ordinal);
             imports.Add(assembly, catalog);
         }
-        return catalog.Count == 0
-            ? []
-            : catalog[KeyPrefix + method.GetDocumentationCommentId()]
-                .SelectMany(id => DocumentationCommentId.GetSymbolsForReferenceId(id, compilation)).OfType<ITypeSymbol>();
+        return catalog;
     }
 
     internal void AppendExports(StringBuilder source, CancellationToken token)
     {
         var methods = ValidatorRegistrationGenerator.EnumerateTypes(compilation.Assembly.GlobalNamespace)
             .Where(IsPublishedType).SelectMany(type => type.GetMembers().OfType<IMethodSymbol>())
-            .Where(method => method.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal &&
+            .Where(method => (method.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal ||
+                !method.ExplicitInterfaceImplementations.IsEmpty) &&
                 (method.IsGenericMethod || method.ContainingType.IsGenericType) && method.DeclaringSyntaxReferences.Length != 0)
             .OrderBy(method => method.GetDocumentationCommentId(), StringComparer.Ordinal);
         foreach (var method in methods)
