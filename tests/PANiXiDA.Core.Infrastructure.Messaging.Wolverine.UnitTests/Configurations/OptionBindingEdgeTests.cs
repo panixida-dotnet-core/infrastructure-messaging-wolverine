@@ -118,6 +118,44 @@ public sealed class OptionBindingEdgeTests
         AssertFailure<ThrowingGetterOptions<byte[]>>(configuration);
     }
 
+    [Theory(DisplayName = "Generated array binding fails when a converter returns an incompatible object")]
+    [InlineData("array")]
+    [InlineData("read-only-list")]
+    [InlineData("value-array")]
+    public void BinderShouldPreserveIncompatibleArrayConversionFailure(string shape)
+    {
+        var configuration = new ConfigurationManager { ["Options:Value:0"] = "incompatible" };
+
+        switch (shape)
+        {
+            case "array":
+                AssertFailure<ValueOptions<OptionBindingSectionTests.ConvertedPayload[]>>(configuration);
+                break;
+            case "read-only-list":
+                AssertFailure<ValueOptions<IReadOnlyList<OptionBindingSectionTests.ConvertedPayload>>>(configuration);
+                break;
+            default:
+                AssertFailure<ValueOptions<OptionBindingSectionTests.ConvertedValue[]>>(configuration);
+                break;
+        }
+    }
+
+    [Fact(DisplayName = "Generated array binding skips converter exceptions and retains valid results")]
+    public void BinderShouldSkipConverterExceptionsInArrays()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Value:0"] = "42",
+            ["Options:Value:1"] = "invalid",
+        };
+
+        var original = configuration.GetSection("Options").Get<ValueOptions<OptionBindingCompatibilityTests.ConvertedNumber[]>>()!;
+        var generated = OptionBindingRegistry.GetRequired<ValueOptions<OptionBindingCompatibilityTests.ConvertedNumber[]>>(configuration, "Options");
+
+        generated.Value.ShouldBe(original.Value.AsEnumerable());
+        generated.Value.Select(number => number.Value).ShouldBe([42]);
+    }
+
     [Theory(DisplayName = "Generated binding preserves constructor validation error messages")]
     [InlineData("private")]
     [InlineData("multiple")]

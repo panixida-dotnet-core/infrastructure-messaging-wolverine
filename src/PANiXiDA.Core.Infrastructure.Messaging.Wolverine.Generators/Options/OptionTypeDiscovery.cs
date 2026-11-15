@@ -330,26 +330,34 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private sealed class RecursionGuard
     {
-        private readonly Dictionary<ISymbol, TypeSubstitutions> active = new(SymbolEqualityComparer.Default);
+        private readonly Dictionary<ISymbol, ActiveVisit> active = new(SymbolEqualityComparer.Default);
 
         internal bool TryEnter(ISymbol definition, TypeSubstitutions substitutions, out bool entered)
         {
             if (!active.TryGetValue(definition, out var previous))
             {
                 entered = true;
-                active.Add(definition, substitutions);
+                active.Add(definition, new ActiveVisit(substitutions));
                 return true;
             }
 
             entered = false;
-            var arguments = previous.Where(pair => substitutions.ContainsKey(pair.Key)).ToArray();
-            var remaining = GenericTypeBudget.MaxRecursiveTypeNodes;
+            var arguments = previous.Substitutions.Where(pair => substitutions.ContainsKey(pair.Key)).ToArray();
+            var initialRemaining = GenericTypeBudget.MaxRecursiveTypeNodes;
             foreach (var pair in arguments)
             {
-                GenericTypeBudget.TryConsume(pair.Value, ref remaining);
+                GenericTypeBudget.TryConsume(pair.Value, ref initialRemaining);
             }
-            var budget = GenericTypeBudget.MaxRecursiveTypeNodes - remaining;
-            return arguments.All(pair => GenericTypeBudget.TryConsume(substitutions[pair.Key], ref budget));
+            var initialSize = GenericTypeBudget.MaxRecursiveTypeNodes - initialRemaining;
+            var allowedSize = Math.Min(GenericTypeBudget.MaxRecursiveTypeNodes, initialSize + previous.RemainingGrowth);
+            var budget = allowedSize;
+            if (!arguments.All(pair => GenericTypeBudget.TryConsume(substitutions[pair.Key], ref budget)))
+            {
+                return false;
+            }
+
+            previous.RemainingGrowth -= Math.Max(0, allowedSize - budget - initialSize);
+            return true;
         }
 
         internal void Exit(ISymbol definition, bool entered)
@@ -358,6 +366,12 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             {
                 active.Remove(definition);
             }
+        }
+
+        private sealed class ActiveVisit(TypeSubstitutions substitutions)
+        {
+            internal TypeSubstitutions Substitutions { get; } = substitutions;
+            internal int RemainingGrowth { get; set; } = GenericTypeBudget.MaxRecursiveTypeNodes;
         }
     }
 

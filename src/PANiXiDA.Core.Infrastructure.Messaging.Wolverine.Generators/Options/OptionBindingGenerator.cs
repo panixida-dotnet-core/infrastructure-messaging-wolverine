@@ -123,6 +123,11 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
                     var items = new global::System.Collections.Generic.List<object>();
                     foreach (var character in seed) items.Add(character);
                     foreach (var value in values) items.Add(value);
+                    return CopyToArray<T>(items);
+                }
+
+                private static T[] CopyToArray<T>(global::System.Collections.Generic.List<object> items)
+                {
                     var merged = new T[items.Count];
                     ((global::System.Collections.IList)items).CopyTo(merged, 0);
                     return merged;
