@@ -33,7 +33,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             token.ThrowIfCancellationRequested();
             if (node is ExpressionSyntax expression)
             {
-                VisitConversions(model, expression, substitutions);
+                VisitOperators(model, expression, substitutions);
             }
             if (!IsSymbolReference(node, substitutions.Count != 0))
             {
@@ -71,18 +71,29 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             PrimaryConstructorBaseTypeSyntax or MemberAccessExpressionSyntax or MemberBindingExpressionSyntax or ElementAccessExpressionSyntax or
             ElementBindingExpressionSyntax || hasSubstitutions && node is IdentifierNameSyntax;
 
-    private void VisitConversions(SemanticModel model, ExpressionSyntax expression, TypeSubstitutions substitutions)
+    private void VisitOperators(SemanticModel model, ExpressionSyntax expression, TypeSubstitutions substitutions)
     {
         if (model.GetConversion(expression, token).MethodSymbol is { } conversion)
         {
             VisitMethod(conversion, substitutions);
         }
-        if (expression is CastExpressionSyntax &&
-            model.GetOperation(expression, token) is IConversionOperation { OperatorMethod: { } explicitConversion })
+        if (expression is CastExpressionSyntax or BinaryExpressionSyntax or PrefixUnaryExpressionSyntax or PostfixUnaryExpressionSyntax or
+            AssignmentExpressionSyntax && FindOperator(model.GetOperation(expression, token)) is { } method)
         {
-            VisitMethod(explicitConversion, substitutions);
+            VisitMethod(method, substitutions);
         }
     }
+
+    private static IMethodSymbol? FindOperator(IOperation? operation)
+        => operation switch
+        {
+            IConversionOperation conversion => conversion.OperatorMethod,
+            IUnaryOperation unary => unary.OperatorMethod,
+            IBinaryOperation binary => binary.OperatorMethod,
+            IIncrementOrDecrementOperation increment => increment.OperatorMethod,
+            ICompoundAssignmentOperation assignment => assignment.OperatorMethod,
+            _ => null,
+        };
 
     private void VisitAccessors(IMethodSymbol? first, IMethodSymbol? second, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
     {
@@ -115,7 +126,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         }
         AddType(Substitute(method.ReturnType, substitutions));
         VisitDefinition(DispatchDefinition(definition), substitutions);
-        if (method.MethodKind is MethodKind.Ordinary or MethodKind.PropertyGet or MethodKind.PropertySet or MethodKind.EventAdd or MethodKind.EventRemove &&
+        if (method.MethodKind is MethodKind.Ordinary or MethodKind.PropertyGet or MethodKind.PropertySet or MethodKind.EventAdd or MethodKind.EventRemove or
+            MethodKind.UserDefinedOperator or MethodKind.Conversion &&
             (containing.TypeKind == TypeKind.Interface || method.IsVirtual || method.IsAbstract || method.IsOverride))
         {
             VisitDispatchCall(method, substitutions);
