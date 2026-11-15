@@ -9,7 +9,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
     private readonly HashSet<ISymbol> active = new(SymbolEqualityComparer.Default);
     private readonly HashSet<ISymbol> activeInstanceInitializers = new(SymbolEqualityComparer.Default);
-    private readonly Dictionary<INamedTypeSymbol, InterfaceDispatch> interfaceDispatches = new(SymbolEqualityComparer.Default);
+    private readonly Dictionary<INamedTypeSymbol, MethodDispatch> methodDispatches = new(SymbolEqualityComparer.Default);
 
     internal IEnumerable<INamedTypeSymbol> Discover()
     {
@@ -61,9 +61,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         }
         AddType(Substitute(method.ReturnType, substitutions));
         VisitDefinition(definition, substitutions);
-        if (containing.TypeKind == TypeKind.Interface && method.MethodKind == MethodKind.Ordinary)
+        if (method.MethodKind == MethodKind.Ordinary &&
+            (containing.TypeKind == TypeKind.Interface || method.IsVirtual || method.IsAbstract || method.IsOverride))
         {
-            VisitInterfaceCall(method, substitutions);
+            VisitDispatchCall(method, substitutions);
         }
         if (containing.IsGenericType)
         {
@@ -178,62 +179,112 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         {
             if (types.Add(named) && named.DeclaringSyntaxReferences.Length != 0)
             {
-                foreach (var contract in named.AllInterfaces)
+                foreach (var contract in DispatchContracts(named).Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default))
                 {
-                    var dispatch = GetInterfaceDispatch(contract);
+                    var dispatch = GetDispatch(contract);
                     dispatch.Implementations.Add(named);
                     foreach (var call in dispatch.Calls.ToArray())
                     {
-                        VisitImplementation(named, call);
+                        VisitImplementations(named, call);
                     }
                 }
             }
         }
     }
 
-    private void VisitInterfaceCall(IMethodSymbol method, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
+    private static IEnumerable<INamedTypeSymbol> DispatchContracts(INamedTypeSymbol type)
+    {
+        foreach (var contract in type.AllInterfaces)
+        {
+            yield return contract.OriginalDefinition;
+        }
+        for (var baseType = type.BaseType; baseType is not null; baseType = baseType.BaseType)
+        {
+            yield return baseType;
+        }
+    }
+
+    private void VisitDispatchCall(IMethodSymbol method, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
     {
         var contract = (INamedTypeSymbol)Substitute(method.ContainingType!, substitutions);
         var arguments = method.TypeArguments.Select(argument => Substitute(argument, substitutions)).ToArray();
-        if (arguments.Prepend(contract).Any(ContainsTypeParameter))
+        if (ContainsTypeParameter(contract) || arguments.Any(argument => ContainsTypeParameter(argument)))
         {
             return;
         }
 
-        var declaration = contract.GetMembers(method.Name).OfType<IMethodSymbol>()
-            .First(candidate => SymbolEqualityComparer.Default.Equals(candidate.OriginalDefinition, method.OriginalDefinition));
+        var declaration = FindDeclaration(contract, method);
         var call = arguments.Length == 0 ? declaration : declaration.Construct(arguments);
-        var dispatch = GetInterfaceDispatch(contract);
+        var dispatch = GetDispatch(contract.TypeKind == TypeKind.Interface ? contract.OriginalDefinition : contract);
         if (dispatch.Calls.Add(call))
         {
             foreach (var implementation in dispatch.Implementations.ToArray())
             {
-                VisitImplementation(implementation, call);
+                VisitImplementations(implementation, call);
             }
         }
     }
 
-    private InterfaceDispatch GetInterfaceDispatch(INamedTypeSymbol contract)
+    private static IMethodSymbol FindDeclaration(INamedTypeSymbol type, IMethodSymbol method)
+        => type.GetMembers(method.Name).OfType<IMethodSymbol>()
+            .First(candidate => SymbolEqualityComparer.Default.Equals(candidate.OriginalDefinition, method.OriginalDefinition));
+
+    private MethodDispatch GetDispatch(INamedTypeSymbol contract)
     {
-        if (!interfaceDispatches.TryGetValue(contract, out var dispatch))
+        if (!methodDispatches.TryGetValue(contract, out var dispatch))
         {
-            dispatch = new InterfaceDispatch();
-            interfaceDispatches.Add(contract, dispatch);
+            dispatch = new MethodDispatch();
+            methodDispatches.Add(contract, dispatch);
         }
         return dispatch;
     }
 
-    private void VisitImplementation(INamedTypeSymbol type, IMethodSymbol call)
+    private void VisitImplementations(INamedTypeSymbol type, IMethodSymbol call)
     {
-        if (type.FindImplementationForInterfaceMember(call.ConstructedFrom) is IMethodSymbol implementation &&
-            !active.Contains(implementation.OriginalDefinition))
+        foreach (var implementation in FindImplementations(type, call).Where(implementation => !active.Contains(implementation.OriginalDefinition)))
         {
             var method = call.Arity == 0 ? implementation : implementation.Construct([.. call.TypeArguments]);
             VisitMethod(method, new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default));
         }
     }
 
-    private sealed class InterfaceDispatch
+    private IEnumerable<IMethodSymbol> FindImplementations(INamedTypeSymbol type, IMethodSymbol call)
+    {
+        var declaringType = call.ContainingType!;
+        if (declaringType.TypeKind == TypeKind.Interface)
+        {
+            return type.AllInterfaces
+                .Where(contract => SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, declaringType.OriginalDefinition) &&
+                    compilation.ClassifyCommonConversion(contract, declaringType).IsImplicit)
+                .Select(contract => type.FindImplementationForInterfaceMember(FindDeclaration(contract, call)))
+                .OfType<IMethodSymbol>();
+        }
+
+        for (var current = type; !SymbolEqualityComparer.Default.Equals(current, declaringType); current = current.BaseType!)
+        {
+            var implementation = current.GetMembers(call.Name).OfType<IMethodSymbol>()
+                .FirstOrDefault(candidate => Overrides(candidate, call));
+            if (implementation is not null)
+            {
+                return [implementation];
+            }
+        }
+        return [];
+    }
+
+    private static bool Overrides(IMethodSymbol candidate, IMethodSymbol call)
+    {
+        for (var overridden = candidate.OverriddenMethod; overridden is not null; overridden = overridden.OverriddenMethod)
+        {
+            if (SymbolEqualityComparer.Default.Equals(overridden, call.ConstructedFrom))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private sealed class MethodDispatch
     {
         internal HashSet<IMethodSymbol> Calls { get; } = new(SymbolEqualityComparer.Default);
         internal HashSet<INamedTypeSymbol> Implementations { get; } = new(SymbolEqualityComparer.Default);
