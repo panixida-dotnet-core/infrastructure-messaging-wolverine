@@ -1081,6 +1081,91 @@ public sealed class OptionBindingGeneratorTests
             """,
             formatted.Length == 0 ? "string" : "int");
 
+    [Theory(DisplayName = "Option generator discovers callbacks behind framework ValueTask awaiters")]
+    [InlineData(false, "GetResult", false)]
+    [InlineData(false, "GetStatus", false)]
+    [InlineData(false, "OnCompleted", false)]
+    [InlineData(true, "GetResult", false)]
+    [InlineData(true, "GetStatus", false)]
+    [InlineData(true, "OnCompleted", false)]
+    [InlineData(false, "GetResult", true)]
+    [InlineData(true, "GetResult", true)]
+    public void GeneratorShouldDiscoverValueTaskSource(bool generic, string member, bool throughInterface)
+    {
+        var contract = generic ? "System.Threading.Tasks.Sources.IValueTaskSource<bool>" : "System.Threading.Tasks.Sources.IValueTaskSource";
+        var awaiter = generic ? "_ = await new System.Threading.Tasks.ValueTask<bool>(source, 0);" : "await new System.Threading.Tasks.ValueTask(source, 0);";
+        var declaration = throughInterface ? contract : "var";
+        AssertDiscoversGenericHelper("_ = Run(kafka);",
+            $$"""
+            static async System.Threading.Tasks.Task Run(Kafka kafka)
+            {
+                {{declaration}} source = new Registration<int>(kafka);
+                {{awaiter}}
+            }
+            sealed class Registration<T> : {{contract}}
+            {
+                private readonly Kafka kafka;
+                private bool completed;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public {{(generic ? "bool" : "void")}} GetResult(short token)
+                {
+                    {{(member == "GetResult" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}}
+                    {{(generic ? "return true;" : "")}}
+                }
+                public System.Threading.Tasks.Sources.ValueTaskSourceStatus GetStatus(short token)
+                {
+                    {{(member == "GetStatus" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}}
+                    return {{(member == "OnCompleted" ? "completed ? System.Threading.Tasks.Sources.ValueTaskSourceStatus.Succeeded : System.Threading.Tasks.Sources.ValueTaskSourceStatus.Pending" : "System.Threading.Tasks.Sources.ValueTaskSourceStatus.Succeeded")}};
+                }
+                public void OnCompleted(System.Action<object> continuation, object state, short token, System.Threading.Tasks.Sources.ValueTaskSourceOnCompletedFlags flags)
+                {
+                    completed = true;
+                    {{(member == "OnCompleted" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}}
+                    continuation(state);
+                }
+            }
+            """, "int");
+    }
+
+    [Theory(DisplayName = "Option generator discovers constrained source callbacks across metadata helpers")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeneratorShouldDiscoverConstrainedValueTaskSource(bool generic)
+    {
+        const string kafka = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration";
+        var contract = generic ? "System.Threading.Tasks.Sources.IValueTaskSource<bool>" : "System.Threading.Tasks.Sources.IValueTaskSource";
+        var library = CreateCompilation($$"""
+            public static class External
+            {
+                public static void Complete<TSource>(TSource source) where TSource : {{contract}} => source.GetResult(0);
+            }
+            """, "ExternalTaskSourceHelper");
+        using var stream = new MemoryStream();
+        library.Emit(stream, cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
+        var compilation = CreateCompilation($$"""
+            using Kafka = {{kafka}};
+            public sealed class Settings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public static class Host
+            {
+                public static void Configure(Kafka kafka) => Forward(new Registration<int>(kafka));
+                private static void Forward<TSource>(TSource source) where TSource : {{contract}} => External.Complete(source);
+            }
+            public sealed class Registration<T> : {{contract}}
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public {{(generic ? "bool" : "void")}} GetResult(short token) { kafka.AddKafkaBroker<Settings<T>>(); {{(generic ? "return true;" : "")}} }
+                public System.Threading.Tasks.Sources.ValueTaskSourceStatus GetStatus(short token) => System.Threading.Tasks.Sources.ValueTaskSourceStatus.Succeeded;
+                public void OnCompleted(System.Action<object> continuation, object state, short token, System.Threading.Tasks.Sources.ValueTaskSourceOnCompletedFlags flags) => continuation(state);
+            }
+            """).AddReferences(MetadataReference.CreateFromImage(stream.ToArray()));
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::Settings<int>>");
+    }
+
     [Theory(DisplayName = "Option generator substitutes wrapper sequence types before external helper discovery")]
     [InlineData(false)]
     [InlineData(true)]

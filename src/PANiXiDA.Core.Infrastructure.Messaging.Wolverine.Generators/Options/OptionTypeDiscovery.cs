@@ -110,7 +110,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         switch (node)
         {
             case InvocationExpressionSyntax or ConstructorInitializerSyntax:
-                VisitExternalEnumeration(model.GetOperation(node, token), substitutions);
+                VisitExternalArguments(model.GetOperation(node, token), substitutions);
                 break;
             case BaseObjectCreationExpressionSyntax:
                 var creation = model.GetOperation(node, token);
@@ -120,7 +120,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
                 }
                 else
                 {
-                    VisitExternalEnumeration(creation, substitutions);
+                    VisitExternalArguments(creation, substitutions);
                 }
                 break;
             case FixedStatementSyntax fixedStatement:
@@ -200,7 +200,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         }
     }
 
-    private void VisitExternalEnumeration(IOperation? operation, TypeSubstitutions substitutions)
+    private void VisitExternalArguments(IOperation? operation, TypeSubstitutions substitutions)
     {
         var method = operation switch
         {
@@ -212,9 +212,13 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         {
             return;
         }
-        var arguments = operation!.ChildOperations.OfType<IArgumentOperation>()
-            .Where(argument => EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)).Any());
+        var arguments = operation!.ChildOperations.OfType<IArgumentOperation>().ToArray();
         foreach (var argument in arguments)
+        {
+            VisitExternalInterfaceArgument(argument, substitutions);
+        }
+        var enumerables = arguments.Where(argument => EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)).Any());
+        foreach (var argument in enumerables)
         {
             foreach (var contract in EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)))
             {
@@ -233,6 +237,44 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
                 }
             }
         }
+    }
+
+    private void VisitExternalInterfaceArgument(IArgumentOperation argument, TypeSubstitutions substitutions)
+    {
+        var contracts = ArgumentContracts(argument, substitutions).ToArray();
+        if (contracts.Length == 0)
+        {
+            return;
+        }
+        var value = argument.Value;
+        while (value is IConversionOperation conversion)
+        {
+            value = conversion.Operand;
+        }
+        var source = value.Type is null ? null : Substitute(value.Type, substitutions) as INamedTypeSymbol;
+        foreach (var member in contracts.SelectMany(contract => contract.GetMembers()))
+        {
+            VisitPatternMember(member, substitutions);
+            if (source is not null)
+            {
+                VisitPatternMember(source.FindImplementationForInterfaceMember(member), substitutions);
+            }
+        }
+    }
+
+    private IEnumerable<INamedTypeSymbol> ArgumentContracts(IArgumentOperation argument, TypeSubstitutions substitutions)
+    {
+        var parameter = Substitute(argument.Parameter!.Type, substitutions);
+        if (parameter is INamedTypeSymbol { TypeKind: TypeKind.Interface } contract)
+        {
+            return contract.AllInterfaces.Concat([contract]);
+        }
+        if (parameter is INamedTypeSymbol named && argument.Parameter.OriginalDefinition.Type is ITypeParameterSymbol original)
+        {
+            var definitions = original.ConstraintTypes.OfType<INamedTypeSymbol>().Concat(original.AllInterfaces).Select(type => type.OriginalDefinition);
+            return named.AllInterfaces.Where(type => definitions.Contains(type.OriginalDefinition, SymbolEqualityComparer.Default));
+        }
+        return [];
     }
 
     private void VisitExternalEnumerableContract(INamedTypeSymbol contract, INamedTypeSymbol? source, TypeSubstitutions substitutions)
@@ -327,7 +369,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         foreach (var call in calls)
         {
             VisitMethod(call.TargetMethod, substitutions);
-            VisitExternalEnumeration(call, substitutions);
+            VisitExternalArguments(call, substitutions);
         }
     }
 
