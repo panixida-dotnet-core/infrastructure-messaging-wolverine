@@ -110,6 +110,14 @@ public sealed class OptionBindingEdgeTests
         }
     }
 
+    [Fact(DisplayName = "Generated binding validates Base64 before reading a getter-only byte array")]
+    public void BinderShouldValidateBase64BeforeReadingGetter()
+    {
+        var configuration = new ConfigurationManager { ["Options:Value"] = "invalid" };
+
+        AssertFailure<ThrowingGetterOptions<byte[]>>(configuration);
+    }
+
     [Theory(DisplayName = "Generated binding preserves constructor validation error messages")]
     [InlineData("private")]
     [InlineData("multiple")]

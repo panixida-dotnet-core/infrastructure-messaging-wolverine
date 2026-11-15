@@ -87,8 +87,11 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             activeDefinitions.Remove(definition);
         }
 
-        const string arguments = "bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null, bool hasExistingValue = true";
-        const string forwarded = "readOnly, parentCollection, conversionProbe, hasExistingValue";
+        var byteArray = IsByteArray(type);
+        var arguments = "bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null, bool hasExistingValue = true" +
+            (byteArray ? ", global::System.Func<byte[]> getInitialValue = null" : string.Empty);
+        var forwarded = "readOnly, parentCollection, conversionProbe, hasExistingValue" +
+            (byteArray ? ", getInitialValue" : string.Empty);
         source.Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, {arguments})\n")
             .Append($"        => {name}(section, option, out _, {forwarded});\n")
             .Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, out bool hasNewValue, {arguments})\n")
@@ -306,10 +309,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var probe = ConversionVariable + index;
         AppendConversionProbe(body, property.Type, probe);
         var initial = InitialValue(property.Type, ChildVariable + index, getter, probe, readOnly: !writable);
+        var byteArray = IsByteArray(property.Type);
+        var initialArgument = byteArray ? "default" : initial;
+        var initialGetter = byteArray ? $", getInitialValue: () => {initial}" : string.Empty;
         var value = "value" + index;
         body.Append($"        var changed{index} = false;\n")
             .Append($"        {Name(property.Type)} {value} = {(constructorBound ? "!created && " : string.Empty)}hasChild{index}\n")
-            .Append($"            ? {Build(property.Type)}(child{index}, {initial}, out changed{index}, {(writable ? FalseLiteral : "true")}{ConversionArgument(property.Type, probe)})\n")
+            .Append($"            ? {Build(property.Type)}(child{index}, {initialArgument}, out changed{index}, {(writable ? FalseLiteral : "true")}{ConversionArgument(property.Type, probe)}{initialGetter})\n")
             .Append($"            : {(writable ? getter : "default")};\n");
         if (!writable)
         {
@@ -391,7 +397,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private string InitialValue(ITypeSymbol type, string child, string getter, string probe = ConversionVariable, bool readOnly = false)
     {
-        if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
+        if (IsByteArray(type))
         {
             return readOnly ? $"!IsNullValue({child}) && {child}.Value is null && global::System.Linq.Enumerable.Any({child}.GetChildren()) ? default : {getter}" : getter;
         }
@@ -419,6 +425,9 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
         return readOnly ? $"{readOnlyLeaf} ? default : {getter}" : getter;
     }
+
+    private static bool IsByteArray(ITypeSymbol type)
+        => type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte };
 
     private static bool IsArrayLike(ITypeSymbol type)
         => type is IArrayTypeSymbol || type.OriginalDefinition.ToDisplayString() is
@@ -627,12 +636,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return;
         }
 
-        if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
+        if (IsByteArray(type))
         {
-            body.Append($"        if (section.Value is null && (IsNullValue(section) || !{AnyChildren}))\n        {{\n            hasNewValue = !readOnly && option is not {{ Length: > 0 }};\n            return readOnly || option is {{ Length: > 0 }} ? option : null;\n        }}\n")
-                .Append($"        if (section.Value is not null)\n        {{\n            var bytes = {OptionBindingGenerator.Registry}.Parse(section, static value => global::System.Convert.FromBase64String(value));\n")
+            body.Append($"        var bytes = section.Value is null ? null : {OptionBindingGenerator.Registry}.Parse(section, static value => global::System.Convert.FromBase64String(value));\n")
+                .Append("        if (getInitialValue is not null) option = getInitialValue();\n        if (bytes is not null)\n        {\n")
                 .Append("            if (readOnly || (option is { Length: > 0 } && bytes.Length == 0)) return option;\n            hasNewValue = true;\n")
-                .Append("            return option is null ? bytes : global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Concat(option, bytes));\n        }\n");
+                .Append("            return option is null ? bytes : global::System.Linq.Enumerable.ToArray(global::System.Linq.Enumerable.Concat(option, bytes));\n        }\n")
+                .Append($"        if (IsNullValue(section) || !{AnyChildren})\n        {{\n            hasNewValue = !readOnly && option is not {{ Length: > 0 }};\n            return readOnly || option is {{ Length: > 0 }} ? option : null;\n        }}\n");
         }
 
         AppendSequenceBody(body, type, element, copy, set, readOnlySet);

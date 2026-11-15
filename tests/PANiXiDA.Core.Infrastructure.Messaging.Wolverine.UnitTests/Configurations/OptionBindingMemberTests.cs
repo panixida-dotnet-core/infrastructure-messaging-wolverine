@@ -240,6 +240,7 @@ public sealed class OptionBindingMemberTests
     [InlineData("missing")]
     [InlineData("nested")]
     [InlineData("binary")]
+    [InlineData("invalid-binary")]
     [InlineData("invalid-number")]
     public void BinderShouldPreserveGetterFailures(string scenario)
     {
@@ -252,6 +253,10 @@ public sealed class OptionBindingMemberTests
                 break;
             case "binary":
                 configuration["Options:Value"] = "AQI=";
+                AssertSameFailure<ThrowingGetterOptions<byte[]>>(configuration);
+                break;
+            case "invalid-binary":
+                configuration["Options:Value"] = "invalid";
                 AssertSameFailure<ThrowingGetterOptions<byte[]>>(configuration);
                 break;
             case "invalid-number":

@@ -400,7 +400,7 @@ public sealed class OptionBindingSectionTests
     public sealed class SetDispatchOptions : KafkaConsumerOption
     {
         public ISet<string> Values { get; } = new DistinctSet();
-        public DistinctSet Concrete { get; } = new();
+        public DistinctSet Concrete { get; } = [];
     }
 
     public sealed class DistinctSet : HashSet<string>, ISet<string>
