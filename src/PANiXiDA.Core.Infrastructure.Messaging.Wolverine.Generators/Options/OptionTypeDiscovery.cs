@@ -98,8 +98,19 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
         switch (node)
         {
-            case InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax:
+            case InvocationExpressionSyntax or ConstructorInitializerSyntax:
                 VisitExternalEnumeration(model.GetOperation(node, token), substitutions);
+                break;
+            case BaseObjectCreationExpressionSyntax:
+                var creation = model.GetOperation(node, token);
+                if (creation is ITypeParameterObjectCreationOperation parameterCreation)
+                {
+                    VisitTypeParameterCreation(parameterCreation, substitutions);
+                }
+                else
+                {
+                    VisitExternalEnumeration(creation, substitutions);
+                }
                 break;
             case WithExpressionSyntax:
                 if (model.GetOperation(node, token) is IWithOperation operation)
@@ -149,6 +160,14 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         }
     }
 
+    private void VisitTypeParameterCreation(ITypeParameterObjectCreationOperation creation, TypeSubstitutions substitutions)
+    {
+        if (Substitute(creation.Type!, substitutions) is INamedTypeSymbol type)
+        {
+            VisitMethods(substitutions, type.InstanceConstructors.FirstOrDefault(constructor => constructor.Parameters.IsEmpty));
+        }
+    }
+
     private void VisitExternalEnumeration(IOperation? operation, TypeSubstitutions substitutions)
     {
         var method = operation switch
@@ -162,7 +181,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
         var arguments = operation!.ChildOperations.OfType<IArgumentOperation>()
-            .Where(argument => EnumerableContracts(argument.Parameter?.Type).Any());
+            .Where(argument => EnumerableContracts(argument.Parameter!.Type).Any());
         foreach (var argument in arguments)
         {
             foreach (var contract in EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)))
@@ -192,22 +211,16 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
         VisitMethod(getEnumerator, substitutions);
-        if (Substitute(getEnumerator.ReturnType, substitutions) is not INamedTypeSymbol enumerator)
+        // IEnumerable contracts and their implementations return IEnumerator or IEnumerator<T>.
+        var enumerator = (INamedTypeSymbol)Substitute(getEnumerator.ReturnType, substitutions);
+        var members = enumerator.AllInterfaces.Concat(new[] { enumerator }).SelectMany(type => type.GetMembers()).ToArray();
+        foreach (var method in members.OfType<IMethodSymbol>().Where(method => method.Name is "MoveNext" or "Dispose"))
         {
-            return;
+            VisitMethod(method, substitutions);
         }
-        var members = enumerator.AllInterfaces.Concat(new[] { enumerator }).SelectMany(type => type.GetMembers());
-        foreach (var member in members)
+        foreach (var property in members.OfType<IPropertySymbol>())
         {
-            switch (member)
-            {
-                case IMethodSymbol { Name: "MoveNext" or "Dispose" } method:
-                    VisitMethod(method, substitutions);
-                    break;
-                case IPropertySymbol { Name: "Current" } property:
-                    VisitMethods(substitutions, property.GetMethod);
-                    break;
-            }
+            VisitMethods(substitutions, property.GetMethod);
         }
     }
 

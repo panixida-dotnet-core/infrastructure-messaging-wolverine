@@ -1080,6 +1080,23 @@ public sealed class OptionBindingGeneratorTests
             """,
             formatted.Length == 0 ? "string" : "int");
 
+    [Theory(DisplayName = "Option generator discovers constructors created through new constrained parameters")]
+    [InlineData("class", "new TValue()")]
+    [InlineData("class", "new()")]
+    [InlineData("struct", "new TValue()")]
+    [InlineData("struct", "new()")]
+    public void GeneratorShouldDiscoverTypeParameterCreation(string kind, string creation)
+        => AssertDiscoversGenericHelper("Create<Registration<int>>().Configure(kafka);",
+            $$"""
+            static TValue Create<TValue>() where TValue : new() => {{creation}};
+            {{kind}} Registration<T>
+            {
+                public System.Action<Kafka> Configure { get; }
+                public Registration(int unused) : this() { }
+                public Registration() => Configure = kafka => kafka.AddKafkaBroker<Settings<T>>();
+            }
+            """, "int");
+
     [Theory(DisplayName = "Option generator discovers closed enumerators consumed by framework helpers")]
     [InlineData("System.Linq.Enumerable.ToArray(new Registration<int>())[0](kafka);")]
     [InlineData("System.Linq.Enumerable.First(new Registration<int>())(kafka);")]
@@ -1088,6 +1105,7 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("System.Collections.Generic.IEnumerable<System.Action<Kafka>> sequence = new Registration<int>(); System.Linq.Enumerable.First(sequence)(kafka);")]
     [InlineData("System.Linq.Enumerable.First(System.Linq.Enumerable.Cast<System.Action<Kafka>>(new Registration<int>()))(kafka);")]
     [InlineData("Forward(new Registration<int>(), kafka);")]
+    [InlineData("_ = System.Linq.Enumerable.ToArray<System.Action<Kafka>>(null!); System.Array.Sort(new[] { 2, 1 }); System.Linq.Enumerable.First(new Registration<int>())(kafka);")]
     public void GeneratorShouldDiscoverFrameworkEnumeration(string call)
         => AssertDiscoversGenericHelper(call,
             """
@@ -1421,8 +1439,8 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldContain(".Register<global::Settings<" + argument + ">>");
     }
 
-    [Fact(DisplayName = "Option generator still registers options when an enumeration is incomplete")]
-    public void GeneratorShouldContinueAfterUnboundEnumeration()
+    [Fact(DisplayName = "Option generator still registers options when calls and enumeration are incomplete")]
+    public void GeneratorShouldContinueAfterUnboundCallsAndEnumeration()
     {
         var compilation = CreateCompilation("""
             public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
@@ -1432,6 +1450,9 @@ public sealed class OptionBindingGeneratorTests
             {
                 public static void Configure()
                 {
+                    Missing();
+                    _ = new Missing();
+                    System.Linq.Enumerable.First<int>(unknown: 1);
                     foreach (var item in new object()) { }
                     var untyped = [..new[] { 1 }];
                 }
