@@ -68,7 +68,37 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
                 VisitDefinition(containing.OriginalDefinition, substitutions, instanceInitializers: true);
             }
         }
+        if (method.MethodKind == MethodKind.Constructor)
+        {
+            VisitImplicitBaseConstructor(method, containing, substitutions);
+        }
     }
+
+    private void VisitImplicitBaseConstructor(IMethodSymbol method, INamedTypeSymbol containing,
+        Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
+    {
+        var baseType = containing.BaseType;
+        if (baseType is null || baseType.DeclaringSyntaxReferences.Length == 0 ||
+            method.OriginalDefinition.DeclaringSyntaxReferences.SelectMany(reference => reference.GetSyntax(token).ChildNodes())
+                .Any(IsExplicitConstructorInitializer))
+        {
+            return;
+        }
+
+        var candidates = baseType.InstanceConstructors
+            .Where(constructor => constructor.Parameters.All(parameter => parameter.IsOptional || parameter.IsParams) &&
+                compilation.IsSymbolAccessibleWithin(constructor, containing))
+            .OrderBy(constructor => constructor.Parameters.Any(parameter => parameter.IsParams))
+            .ThenBy(constructor => constructor.Parameters.Length);
+        foreach (var constructor in candidates.Take(1))
+        {
+            VisitMethod(constructor, substitutions);
+        }
+    }
+
+    private static bool IsExplicitConstructorInitializer(SyntaxNode node)
+        => node is ConstructorInitializerSyntax ||
+           node is BaseListSyntax baseList && baseList.Types.OfType<PrimaryConstructorBaseTypeSyntax>().Any();
 
     private void VisitStaticInitialization(INamedTypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
     {
