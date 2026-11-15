@@ -1080,6 +1080,47 @@ public sealed class OptionBindingGeneratorTests
             """,
             formatted.Length == 0 ? "string" : "int");
 
+    [Theory(DisplayName = "Option generator discovers collection fast paths consumed by framework helpers")]
+    [InlineData("new System.Collections.Generic.List<System.Action<Kafka>>(new Registration<int>(kafka))[0](kafka);", "CopyTo")]
+    [InlineData("new System.Collections.Generic.List<System.Action<Kafka>>(new Registration<int>(kafka))[0](kafka);", "Count")]
+    [InlineData("System.Linq.Enumerable.ElementAt(new Registration<int>(kafka), 0)(kafka);", "Item")]
+    [InlineData("_ = System.Linq.Enumerable.Contains(new Registration<int>(kafka), _ => { });", "Contains")]
+    [InlineData("((System.Action<Kafka>)new System.Collections.ArrayList(new Registration<int>(kafka))[0]!)(kafka);", "CopyTo")]
+    public void GeneratorShouldDiscoverFrameworkCollection(string call, string member)
+        => AssertDiscoversGenericHelper(call, CollectionHelper(member), "int");
+
+    [Fact(DisplayName = "Option generator exports framework collection fast paths through a generic helper")]
+    public void GeneratorShouldDiscoverReferencedFrameworkCollection()
+        => AssertReferencedGenericRegistration(false,
+            "public static class Setup<T> { public static void Register(Kafka kafka) => new System.Collections.Generic.List<System.Action<Kafka>>(new Registration<T>(kafka))[0](kafka); }" +
+            CollectionHelper("CopyTo").Replace("Settings<T>", "ExportedSettings<T>", StringComparison.Ordinal),
+            "Setup<int>.Register(kafka);", string.Empty);
+
+    private static string CollectionHelper(string member)
+        => $$"""
+            public sealed class Registration<T> : System.Collections.Generic.IList<System.Action<Kafka>>, System.Collections.ICollection
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public int Count { get { {{(member == "Count" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return 1; } }
+                public bool IsReadOnly => true;
+                public bool IsSynchronized => false;
+                public object SyncRoot => this;
+                public System.Action<Kafka> this[int index] { get => {{(member == "Item" ? "target => target.AddKafkaBroker<Settings<T>>()" : "_ => { }")}}; set { } }
+                public void CopyTo(System.Action<Kafka>[] array, int index) => array[index] = {{(member == "CopyTo" ? "target => target.AddKafkaBroker<Settings<T>>()" : "_ => { }")}};
+                public void CopyTo(System.Array array, int index) => array.SetValue((System.Action<Kafka>)({{(member == "CopyTo" ? "target => target.AddKafkaBroker<Settings<T>>()" : "_ => { }")}}), index);
+                public bool Contains(System.Action<Kafka> item) { {{(member == "Contains" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return false; }
+                public int IndexOf(System.Action<Kafka> item) => 0;
+                public void Add(System.Action<Kafka> item) { }
+                public void Insert(int index, System.Action<Kafka> item) { }
+                public bool Remove(System.Action<Kafka> item) => false;
+                public void RemoveAt(int index) { }
+                public void Clear() { }
+                public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator() { yield return _ => { }; }
+                System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+            """;
+
     [Theory(DisplayName = "Option generator discovers constructors created through new constrained parameters")]
     [InlineData("class", "new TValue()")]
     [InlineData("class", "new()")]

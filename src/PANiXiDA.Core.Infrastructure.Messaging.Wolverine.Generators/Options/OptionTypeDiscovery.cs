@@ -19,6 +19,12 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     private readonly RecursionGuard activeInstanceInitializers = new();
     private readonly Dictionary<INamedTypeSymbol, MethodDispatch> methodDispatches = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), (SyntaxNode Syntax, IMethodSymbol Method, bool Disposal)[]> implicitFlowCalls = [];
+    private readonly INamedTypeSymbol[] collectionDefinitions = new[]
+    {
+        "System.Collections.ICollection", "System.Collections.IList",
+        "System.Collections.Generic.ICollection`1", "System.Collections.Generic.IList`1",
+        "System.Collections.Generic.IReadOnlyCollection`1", "System.Collections.Generic.IReadOnlyList`1",
+    }.Select(compilation.GetTypeByMetadataName).OfType<INamedTypeSymbol>().ToArray();
     private readonly INamedTypeSymbol? enumerable = compilation.GetTypeByMetadataName("System.Collections.IEnumerable");
     private readonly INamedTypeSymbol? genericEnumerable = compilation.GetTypeByMetadataName("System.Collections.Generic.IEnumerable`1");
     private readonly INamedTypeSymbol? notifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.INotifyCompletion");
@@ -187,6 +193,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             foreach (var contract in EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)))
             {
                 VisitExternalEnumerator(contract.GetMembers("GetEnumerator").OfType<IMethodSymbol>().Single(), substitutions);
+                VisitExternalCollection(contract, null, substitutions);
             }
             var value = argument.Value;
             while (value is IConversionOperation conversion)
@@ -199,7 +206,20 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
                 {
                     var enumerator = contract.GetMembers("GetEnumerator").OfType<IMethodSymbol>().Single();
                     VisitExternalEnumerator(source.FindImplementationForInterfaceMember(enumerator) as IMethodSymbol, substitutions);
+                    VisitExternalCollection(contract, source, substitutions);
                 }
+            }
+        }
+    }
+
+    private void VisitExternalCollection(INamedTypeSymbol enumerableContract, INamedTypeSymbol? source, TypeSubstitutions substitutions)
+    {
+        foreach (var definition in collectionDefinitions.Where(definition => definition.Arity == 0 || enumerableContract.Arity != 0))
+        {
+            var contract = definition.Arity == 0 ? definition : definition.Construct(enumerableContract.TypeArguments.ToArray());
+            foreach (var member in contract.GetMembers())
+            {
+                VisitPatternMember(source is null ? member : source.FindImplementationForInterfaceMember(member), substitutions);
             }
         }
     }
