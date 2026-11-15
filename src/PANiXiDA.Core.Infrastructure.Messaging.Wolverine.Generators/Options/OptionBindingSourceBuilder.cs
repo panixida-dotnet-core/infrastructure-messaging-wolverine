@@ -67,11 +67,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             AppendBody(body, type, name);
         }
 
-        source.Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null)\n")
-            .Append($"        => {name}(section, option, out _, readOnly, parentCollection, conversionProbe);\n")
-            .Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, out bool hasNewValue, bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null)\n")
-            .Append($"        => {name}(section, option, out hasNewValue, out _, readOnly, parentCollection, conversionProbe);\n")
-            .Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, out bool hasNewValue, out bool convertedNull, bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null)\n    {{\n")
+        const string arguments = "bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null, bool hasExistingValue = true";
+        const string forwarded = "readOnly, parentCollection, conversionProbe, hasExistingValue";
+        source.Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, {arguments})\n")
+            .Append($"        => {name}(section, option, out _, {forwarded});\n")
+            .Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, out bool hasNewValue, {arguments})\n")
+            .Append($"        => {name}(section, option, out hasNewValue, out _, {forwarded});\n")
+            .Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, out bool hasNewValue, out bool convertedNull, {arguments})\n    {{\n")
             .Append("        convertedNull = false;\n")
             .Append($"        hasNewValue = {(type.IsValueType ? WritableCondition : FalseLiteral)};\n")
             .Append(body).Append(EndMethod);
@@ -82,7 +84,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     {
         if (IsNullable(type))
         {
-            body.Append("        if (IsNullValue(section)) return readOnly ? option : default;\n");
+            body.Append("        if (IsNullValue(section)) { convertedNull = true; return readOnly ? option : default; }\n");
         }
         var converter = GetCustomConverter(type);
         var conversion = converter is null ? OptionBindingGenerator.GetConversion(type) : null;
@@ -90,7 +92,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             AppendScalarChildren(body, type, method);
             var nullTest = IsNullable(type) ? "global::System.String.IsNullOrEmpty(section.Value)" : "section.Value is null";
-            body.Append($"        var convertedValue = {nullTest} ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, static value => {conversion});\n")
+            body.Append($"        convertedNull = {nullTest};\n        var convertedValue = convertedNull ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, static value => {conversion});\n")
                 .Append("        if (readOnly) return option;\n        hasNewValue = true;\n        return convertedValue;\n");
             return;
         }
@@ -143,7 +145,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             var underlying = ((INamedTypeSymbol)type).TypeArguments[0];
             body.Append("        if (readOnly && !option.HasValue) return option;\n        if (section.Value == string.Empty) return readOnly ? option : default;\n")
                 .Append($"        if (!{AnyChildren}) return section.Value is null && !readOnly ? default : option;\n")
-                .Append($"        var boundValue = {Build(underlying)}(section, option.GetValueOrDefault(), conversionProbe: conversionProbe);\n        return readOnly ? option : boundValue;\n");
+                .Append($"        var boundValue = {Build(underlying)}(section, option.GetValueOrDefault(), conversionProbe: conversionProbe, hasExistingValue: option.HasValue);\n        return readOnly ? option : boundValue;\n");
         }
         else if (type is IArrayTypeSymbol array)
         {
@@ -194,7 +196,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         var creation = Construction(type, method);
         body.Append($"        if (!{AnyChildren})\n        {{\n")
-            .Append($"            if (parentCollection && !readOnly && {(type.IsReferenceType ? "option is null && " : string.Empty)}global::System.String.IsNullOrEmpty(section.Value))\n            {{\n                hasNewValue = true;\n                return {creation};\n            }}\n")
+            .Append($"            if (parentCollection && !readOnly && {(type.IsReferenceType ? "option is null" : "!hasExistingValue")} && global::System.String.IsNullOrEmpty(section.Value))\n            {{\n                hasNewValue = true;\n                return {creation};\n            }}\n")
             .Append(type.IsReferenceType ? "            hasNewValue = !readOnly && option is null && global::System.String.IsNullOrEmpty(section.Value);\n" : string.Empty)
             .Append("            return option;\n        }\n");
         AppendRuntimeTypeCheck(body, type);
@@ -209,6 +211,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
             body.Append("        if (option is null)\n        {\n            if (readOnly) return option;\n            hasNewValue = true;\n")
                 .Append("            option = ").Append(creation).Append(";\n        }\n");
+        }
+        else
+        {
+            body.Append($"        if (!hasExistingValue) option = {creation};\n");
         }
 
         AppendProperties(body, type, method, parameters);
@@ -441,7 +447,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
                 .Append($"            throw new global::System.ArgumentException($\"Object of type 'System.String' cannot be converted to type '{{typeof({Name(parameterType)})}}'.\");\n");
         }
 
-        body.Append($"        var value = {Build(parameterType)}(section, default, out _, out var convertedNull{ConversionArgument(parameterType)});\n")
+        body.Append($"        var value = {Build(parameterType)}(section, default, out _, out var convertedNull, hasExistingValue: false{ConversionArgument(parameterType)});\n")
             .Append($"        if (convertedNull) {missingStatement};\n");
         body.Append(parameterType.IsReferenceType || IsNullable(parameterType)
             ? $"        return value is null ? {missing} : value;\n"
@@ -629,7 +635,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         var rejectNull = nonNullableArray ? $"if (child.Value is null && !global::System.Linq.Enumerable.Any(child.GetChildren()) && ({scalarConversion})) {{ nullElement = true; continue; }}\n                " : string.Empty;
-        var binding = $"var value = {Build(element)}(child, default, out _, out var itemConvertedNull, parentCollection: true{ConversionArgument(element)});\n                ";
+        var binding = $"var value = {Build(element)}(child, default, out _, out var itemConvertedNull, parentCollection: true, hasExistingValue: false{ConversionArgument(element)});\n                ";
         if (nonNullableArray)
         {
             binding += "if (itemConvertedNull) { nullElement = true; continue; }\n                ";
@@ -686,14 +692,15 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     {
         var primitive = IsPrimitiveScalar(value);
         var lookup = "items.TryGetValue(key, out var current)";
-        if (primitive)
+        if (value.IsValueType)
         {
-            lookup = "existingScalar = " + lookup + (IsNullable(value) ? " && current.HasValue" : string.Empty);
+            lookup = "existingValue = " + lookup + (IsNullable(value) ? " && current.HasValue" : string.Empty);
         }
         var initial = InitialValue(value, ChildVariable, $"(({lookup}) ? current : default)");
-        var existing = primitive ? "var existingScalar = false;\n                " : string.Empty;
-        var changed = primitive ? "changed && !existingScalar" : "changed";
-        AppendItems(body, value, $"var key = {keyExpression};\n                {existing}var value = {Build(value)}(child, {initial}, out var changed, parentCollection: true{ConversionArgument(value)});\n                if ({changed}) items[key] = value;");
+        var existing = value.IsValueType ? "var existingValue = false;\n                " : string.Empty;
+        var existingArgument = value.IsValueType ? ", hasExistingValue: existingValue" : string.Empty;
+        var changed = primitive ? "changed && !existingValue" : "changed";
+        AppendItems(body, value, $"var key = {keyExpression};\n                {existing}var value = {Build(value)}(child, {initial}, out var changed, parentCollection: true{ConversionArgument(value)}{existingArgument});\n                if ({changed}) items[key] = value;");
     }
 
     private static string? DictionaryKey(ITypeSymbol key)

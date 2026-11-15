@@ -418,6 +418,23 @@ public sealed class OptionBindingGeneratorTests
         diagnostics.ShouldBeEmpty();
     }
 
+    [Fact(DisplayName = "Option generator emits precise decimal defaults in a consuming compilation")]
+    public void GeneratorShouldEmitDecimalDefaults()
+    {
+        var compilation = CreateCompilation("""
+            public sealed class Settings(decimal rate = 0.1234567890123456789012345678m)
+                : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption
+            {
+                public decimal Rate { get; } = rate;
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain("0.1234567890123456789012345678m");
+    }
+
     [Fact(DisplayName = "Option generator preserves constraints and nested generic parameter positions in init accessors")]
     public void GeneratorShouldCompileGenericInitAccessors()
     {

@@ -10,6 +10,49 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingSectionTests
 {
+    [Fact(DisplayName = "Generated scalar constructor parameters preserve explicit null results with children")]
+    public void BinderShouldPreserveNullScalarParameters()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Value"] = null,
+            ["Options:Value:Ignored"] = "1",
+        };
+
+        var original = Should.Throw<InvalidOperationException>(() =>
+            configuration.GetSection("Options").Get<OptionBindingFailureTests.ParameterOptions<int>>());
+        var generated = Should.Throw<InvalidOperationException>(() =>
+            OptionBindingRegistry.GetRequired<OptionBindingFailureTests.ParameterOptions<int>>(configuration, "Options"));
+        var originalOptional = configuration.GetSection("Options").Get<OptionalScalarOptions>()!;
+        var generatedOptional = OptionBindingRegistry.GetRequired<OptionalScalarOptions>(configuration, "Options");
+
+        generated.Message.ShouldBe(original.Message);
+        generatedOptional.Value.ShouldBe(originalOptional.Value);
+        generatedOptional.Value.ShouldBe(42);
+    }
+
+    [Fact(DisplayName = "Generated binding calls struct constructors only for absent values")]
+    public void BinderShouldInitializeNewStructs()
+    {
+        var configuration = new ConfigurationManager();
+        foreach (var path in new[] { "Values:0", "Array:0", "Entries:new", "Entries:existing", "Optional", "Existing", "Throwing:0" })
+        {
+            configuration[$"Options:{path}:Ignored"] = "1";
+        }
+
+        var original = configuration.GetSection("Options").Get<StructOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<StructOptions>(configuration, "Options");
+
+        generated.Values.Single().Value.ShouldBe(original.Values.Single().Value);
+        generated.Array.Single().Value.ShouldBe(original.Array.Single().Value);
+        generated.Entries["new"].Value.ShouldBe(original.Entries["new"].Value);
+        generated.Entries["existing"].Value.ShouldBe(original.Entries["existing"].Value);
+        generated.Optional.ShouldBe(original.Optional);
+        generated.Existing.Value.ShouldBe(original.Existing.Value);
+        generated.Throwing.ShouldBe(original.Throwing);
+        generated.Throwing.ShouldBeEmpty();
+    }
+
     [Fact(DisplayName = "Generated binding preserves high-precision decimal constructor defaults")]
     public void BinderShouldPreserveDecimalDefaults()
     {
@@ -163,6 +206,26 @@ public sealed class OptionBindingSectionTests
     public sealed class DecimalOptions(decimal rate = 0.1234567890123456789012345678m) : KafkaConsumerOption
     {
         public decimal Rate { get; } = rate;
+    }
+
+    public sealed class OptionalScalarOptions(int value = 42) : KafkaConsumerOption
+    {
+        public int Value { get; } = value;
+    }
+
+    public sealed class StructOptions : KafkaConsumerOption
+    {
+        public List<OptionBindingLeafTests.DefaultStruct> Values { get; init; } = [];
+        public OptionBindingLeafTests.DefaultStruct[] Array { get; init; } = [];
+        public Dictionary<string, OptionBindingLeafTests.DefaultStruct> Entries { get; init; } = new() { ["existing"] = default };
+        public OptionBindingLeafTests.DefaultStruct? Optional { get; init; }
+        public OptionBindingLeafTests.DefaultStruct Existing { get; init; }
+        public List<ThrowingStruct> Throwing { get; init; } = [];
+    }
+
+    public struct ThrowingStruct
+    {
+        public ThrowingStruct() => throw new InvalidOperationException("Constructor invoked.");
     }
 
     public struct LazyModel
