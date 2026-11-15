@@ -1081,6 +1081,43 @@ public sealed class OptionBindingGeneratorTests
             """,
             formatted.Length == 0 ? "string" : "int");
 
+    [Theory(DisplayName = "Option generator discovers closed formatting callbacks in interpolated strings")]
+    [InlineData("_ = $\"{new Registration<int>(kafka)}\";", "class", "object", "ToString")]
+    [InlineData("_ = $\"{(object)new Registration<int>(kafka)}\";", "class", "object", "ToString")]
+    [InlineData("_ = $\"value: {new Registration<int>(kafka):custom}\";", "struct", "System.IFormattable", "Format")]
+    [InlineData("_ = $\"{new Registration<int>(kafka),10}\";", "class", "System.ISpanFormattable", "TryFormat")]
+    [InlineData("System.FormattableString value = $\"{new Registration<int>(kafka)}\"; _ = value.ToString();", "class", "object", "ToString")]
+    [InlineData("_ = $\"{(System.IFormattable)new Registration<int>(kafka)}\";", "class", "System.IFormattable", "Format")]
+    public void GeneratorShouldDiscoverFormattingCallback(string call, string kind, string contract, string member)
+        => AssertDiscoversGenericHelper(call,
+            $$"""
+            {{kind}} Registration<T> : {{contract}}
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public override string ToString() { {{(member == "ToString" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return "registered"; }
+                public string ToString(string format, System.IFormatProvider provider) { {{(member == "Format" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return "registered"; }
+                public bool TryFormat(System.Span<char> destination, out int charsWritten, System.ReadOnlySpan<char> format, System.IFormatProvider provider)
+                {
+                    {{(member == "TryFormat" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}}
+                    charsWritten = 0;
+                    return true;
+                }
+            }
+            """, "int");
+
+    [Fact(DisplayName = "Option generator discovers formatting registrations exported by a metadata-only generic helper")]
+    public void GeneratorShouldDiscoverReferencedFormattingCallback()
+        => AssertReferencedGenericRegistration(false,
+            """
+            public class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public override string ToString() { kafka.AddKafkaBroker<ExportedSettings<T>>(); return "registered"; }
+            }
+            """, "_ = $\"{new Registration<int>(kafka)}\";", "");
+
     [Theory(DisplayName = "Option generator discovers callbacks behind framework ValueTask awaiters")]
     [InlineData(false, "GetResult", false)]
     [InlineData(false, "GetStatus", false)]

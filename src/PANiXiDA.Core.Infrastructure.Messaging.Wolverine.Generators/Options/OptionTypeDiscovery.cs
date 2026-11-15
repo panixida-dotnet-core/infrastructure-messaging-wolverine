@@ -375,6 +375,22 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
     private void VisitInterpolation(SemanticModel model, InterpolatedStringExpressionSyntax interpolation, TypeSubstitutions substitutions)
     {
+        if (interpolation.Contents.OfType<InterpolationSyntax>().Any())
+        {
+            // Framework handlers and FormattableString call these contracts outside the source operation tree.
+            INamedTypeSymbol?[] formattingContracts =
+            [
+                compilation.GetSpecialType(SpecialType.System_Object),
+                compilation.GetTypeByMetadataName("System.IFormattable"),
+                compilation.GetTypeByMetadataName("System.ISpanFormattable"),
+            ];
+            var methods = formattingContracts.OfType<INamedTypeSymbol>().SelectMany(contract => contract.GetMembers()).OfType<IMethodSymbol>()
+                .Where(method => method.Name is "ToString" or "TryFormat");
+            foreach (var method in methods)
+            {
+                VisitMethod(method, substitutions);
+            }
+        }
         IOperation?[] operations = [model.GetOperation(interpolation, token)];
         foreach (var content in operations.OfType<IInterpolatedStringOperation>())
         {
