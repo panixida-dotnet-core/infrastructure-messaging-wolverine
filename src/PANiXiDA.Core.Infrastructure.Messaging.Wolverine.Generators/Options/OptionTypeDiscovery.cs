@@ -8,10 +8,10 @@ using TypeSubstitutions = System.Collections.Generic.Dictionary<Microsoft.CodeAn
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Options;
 
-internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationToken token)
+internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationToken token, GenericOptionTemplates templates, bool collectTemplates = false)
 {
-    private readonly Dictionary<SyntaxTree, SemanticModel> semanticModels = [];
     private readonly HashSet<INamedTypeSymbol> types = new(SymbolEqualityComparer.Default);
+    private readonly HashSet<INamedTypeSymbol> optionTemplates = new(SymbolEqualityComparer.Default);
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
     private readonly RecursionGuard active = new();
     private readonly RecursionGuard activeMethods = new();
@@ -20,6 +20,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), IInvocationOperation[]> disposalCalls = [];
     private readonly INamedTypeSymbol? notifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.INotifyCompletion");
     private readonly INamedTypeSymbol? criticalNotifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.ICriticalNotifyCompletion");
+
+    internal bool HasOptionTemplates => optionTemplates.Count != 0;
 
     internal IEnumerable<INamedTypeSymbol> Discover()
     {
@@ -30,13 +32,15 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         return types;
     }
 
+    internal IEnumerable<INamedTypeSymbol> DiscoverTemplates(IMethodSymbol method)
+    {
+        VisitMethod(method, new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default));
+        return optionTemplates;
+    }
+
     private void Visit(SyntaxNode root, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
     {
-        if (!semanticModels.TryGetValue(root.SyntaxTree, out var model))
-        {
-            model = compilation.GetSemanticModel(root.SyntaxTree);
-            semanticModels.Add(root.SyntaxTree, model);
-        }
+        var model = templates.GetModel(root.SyntaxTree);
         foreach (var node in root.DescendantNodes())
         {
             token.ThrowIfCancellationRequested();
@@ -398,6 +402,13 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         }
         AddType(Substitute(method.ReturnType, substitutions));
         VisitDefinition(DispatchDefinition(definition), substitutions);
+        if (method.IsGenericMethod || containing.IsGenericType)
+        {
+            foreach (var template in templates.Read(definition))
+            {
+                AddType(Substitute(template, substitutions));
+            }
+        }
         if (method.MethodKind is MethodKind.Ordinary or MethodKind.PropertyGet or MethodKind.PropertySet or MethodKind.EventAdd or MethodKind.EventRemove or
             MethodKind.UserDefinedOperator or MethodKind.Conversion &&
             (containing.TypeKind == TypeKind.Interface || method.IsVirtual || method.IsAbstract || method.IsOverride))
@@ -472,7 +483,9 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private void VisitDefinition(ISymbol definition, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions, bool instanceInitializers = false)
     {
         var activeDefinitions = instanceInitializers ? activeInstanceInitializers : active;
-        if (definition.DeclaringSyntaxReferences.Length == 0 || substitutions.Values.Any(type => ContainsTypeParameter(type)) ||
+        if (definition.DeclaringSyntaxReferences.Length == 0 ||
+            !SymbolEqualityComparer.Default.Equals(definition.ContainingAssembly, compilation.Assembly) ||
+            !collectTemplates && substitutions.Values.Any(ContainsTypeParameter) ||
             !activeDefinitions.TryEnter(definition, substitutions, out var entered))
         {
             return;
@@ -515,8 +528,19 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private void AddType(ITypeSymbol type)
     {
-        if (type is not INamedTypeSymbol { IsAbstract: false, IsUnboundGenericType: false } named || ContainsTypeParameter(named) ||
-            !types.Add(named) || named.DeclaringSyntaxReferences.Length == 0)
+        if (type is not INamedTypeSymbol { IsAbstract: false, IsUnboundGenericType: false } named)
+        {
+            return;
+        }
+        if (ContainsTypeParameter(named))
+        {
+            if (templates.IsOption(named))
+            {
+                optionTemplates.Add(named);
+            }
+            return;
+        }
+        if (!types.Add(named) || named.DeclaringSyntaxReferences.Length == 0)
         {
             return;
         }

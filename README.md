@@ -37,7 +37,7 @@ It provides an in-process mediator, in-process domain event publishing by defaul
 - Kafka only when external event topics are registered
 
 Kafka and recurring-command option binding is generated at compile time, including derived `TOption` models; existing registration calls are unchanged.
-Closed options are also discovered through generic helpers whose source is available in the compilation, including inferred type arguments, helper chains and generic containing classes.
+Closed generic options are discovered through helpers in the current compilation and in referenced projects built with the Wolverine generator.
 Full Native AOT support is not currently provided: the mediator still uses Wolverine runtime compilation and EF Core.
 
 ### Installation

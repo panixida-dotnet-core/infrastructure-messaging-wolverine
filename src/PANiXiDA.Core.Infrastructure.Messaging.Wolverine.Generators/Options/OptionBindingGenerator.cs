@@ -42,6 +42,8 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
             .Where(type => type is not null).ToArray();
         var keyNameAttribute = compilation.GetTypeByMetadataName("Microsoft.Extensions.Configuration.ConfigurationKeyNameAttribute");
         var metadataAttribute = compilation.GetTypeByMetadataName("System.Reflection.AssemblyMetadataAttribute");
+        var templates = new GenericOptionTemplates(compilation, metadataAttribute, type => IsOption(type, optionTypes));
+        var discovery = new OptionTypeDiscovery(compilation, context.CancellationToken, templates);
         var source = new StringBuilder("""
             #nullable disable
             #pragma warning disable CA2255, CS0618
@@ -66,7 +68,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         var optionIndex = 0;
         var metadata = new StringBuilder();
         var methods = new StringBuilder();
-        var candidates = GetCandidates(compilation, context.CancellationToken)
+        var candidates = GetCandidates(compilation, discovery.Discover())
             .Where(type => IsOption(type, optionTypes) && !HasGeneratedBinder(type, metadataAttribute))
             .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
             .OrderBy(type => type.ToDisplayString(), StringComparer.Ordinal).ToArray();
@@ -109,6 +111,10 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
             }
         }
 
+        if (discovery.HasOptionTemplates)
+        {
+            templates.AppendExports(metadata, context.CancellationToken);
+        }
         source.Append("    }\n").Append("""
                 private static bool IsNullValue(global::Microsoft.Extensions.Configuration.IConfigurationSection section)
                     => global::System.String.IsNullOrEmpty(section.Value) &&
@@ -147,12 +153,12 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
             attribute.ConstructorArguments[1].Value as string == type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
     }
 
-    private static IEnumerable<INamedTypeSymbol> GetCandidates(Compilation compilation, CancellationToken token)
+    private static IEnumerable<INamedTypeSymbol> GetCandidates(Compilation compilation, IEnumerable<INamedTypeSymbol> discovered)
     {
         var declaredTypes = compilation.SourceModule.ReferencedAssemblySymbols.Append(compilation.Assembly)
             .SelectMany(assembly => ValidatorRegistrationGenerator.EnumerateTypes(assembly.GlobalNamespace))
             .Where(type => !type.IsAbstract && !ValidatorRegistrationGenerator.HasTypeParameters(type));
-        return declaredTypes.Concat(new OptionTypeDiscovery(compilation, token).Discover());
+        return declaredTypes.Concat(discovered);
     }
 
     private static bool IsOption(INamedTypeSymbol type, INamedTypeSymbol?[] optionTypes)

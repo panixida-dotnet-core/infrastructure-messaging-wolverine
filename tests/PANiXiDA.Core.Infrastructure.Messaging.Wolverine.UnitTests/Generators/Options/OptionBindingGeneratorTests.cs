@@ -71,6 +71,42 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldNotContain(".Register<global::HiddenSettings>");
     }
 
+    [Theory(DisplayName = "Option generator discovers closed registrations through separately compiled generic helpers")]
+    [InlineData(false, "public static class Setup { public static void Register<T>(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "Setup.Register<int>(kafka);")]
+    [InlineData(true, "public static class Setup { public static void Register<T>(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "Setup.Register<int>(kafka);")]
+    [InlineData(false, "public static class Setup<T> { public static void Register(Kafka kafka) => Forward<T>(kafka); private static void Forward<U>(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<U>>(); }", "Setup<int>.Register(kafka);")]
+    public void GeneratorShouldDiscoverReferencedGenericRegistration(bool sourceReference, string helper, string call)
+    {
+        const string kafka = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration";
+        var referenced = CreateCompilation($$"""
+            using Kafka = {{kafka}};
+            [assembly: System.Reflection.AssemblyMetadata("PANiXiDA.Wolverine.GenericOptionTemplate.v1:ignored", null)]
+            [assembly: System.Reflection.AssemblyMetadata(null, "ignored")]
+            public sealed class ExportedSettings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            file static class FileLocalRegistration
+            {
+                public static void Register<T>(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>();
+            }
+            {{helper}}
+            """, "ReferencedGenericRegistrations");
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new OptionBindingGenerator());
+        driver = driver.RunGeneratorsAndUpdateCompilation(referenced, out var generated, out var diagnostics, TestContext.Current.CancellationToken);
+        diagnostics.ShouldBeEmpty();
+        driver.GetRunResult().GeneratedTrees.Single().ToString().ShouldNotContain("FileLocalRegistration");
+        using var stream = new MemoryStream();
+        generated.Emit(stream, options: new Microsoft.CodeAnalysis.Emit.EmitOptions(includePrivateMembers: false),
+            cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
+        MetadataReference reference = sourceReference ? generated.ToMetadataReference() : MetadataReference.CreateFromImage(stream.ToArray());
+        var host = CreateCompilation($$"""
+            public static class Host { public static void Register({{kafka}} kafka) { {{call}} } }
+            """).AddReferences(reference);
+
+        var (source, hostDiagnostics) = Generate(host);
+
+        hostDiagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::ExportedSettings<int>>");
+    }
+
     [Theory(DisplayName = "Option generator reuses binders from the options assembly without revalidating internal converters")]
     [InlineData(false)]
     [InlineData(true)]
