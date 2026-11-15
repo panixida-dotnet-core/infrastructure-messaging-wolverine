@@ -10,6 +10,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Options;
 
 internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationToken token, GenericOptionTemplates templates, bool collectTemplates = false)
 {
+    private static readonly Func<ITypeSymbol, bool> IsOpenArgument = new(ContainsTypeParameter);
     private readonly HashSet<INamedTypeSymbol> types = new(SymbolEqualityComparer.Default);
     private readonly HashSet<INamedTypeSymbol> optionTemplates = new(SymbolEqualityComparer.Default);
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
@@ -32,9 +33,17 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         return types;
     }
 
-    internal IEnumerable<INamedTypeSymbol> DiscoverTemplates(IMethodSymbol method)
+    internal IEnumerable<INamedTypeSymbol> DiscoverTemplates(ISymbol member)
     {
-        VisitMethod(method, new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default));
+        var substitutions = new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default);
+        if (member is IMethodSymbol method)
+        {
+            VisitMethod(method, substitutions);
+        }
+        else
+        {
+            VisitGenericField((IFieldSymbol)member, substitutions);
+        }
         return optionTemplates;
     }
 
@@ -314,7 +323,16 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         var containing = field.ContainingType!;
         var arguments = ContainingArguments(containing, substitutions);
         VisitDefinition(field.OriginalDefinition, arguments);
+        VisitMemberTemplates(field.OriginalDefinition, arguments);
         VisitStaticInitialization(containing, arguments);
+    }
+
+    private void VisitMemberTemplates(ISymbol member, TypeSubstitutions substitutions)
+    {
+        foreach (var template in templates.Read(member))
+        {
+            AddType(Substitute(template, substitutions));
+        }
     }
 
     private void VisitDisposals(SemanticModel model, SyntaxNode node, TypeSubstitutions substitutions)
@@ -430,10 +448,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         VisitDefinition(DispatchDefinition(definition), substitutions);
         if (method.IsGenericMethod || containing.IsGenericType)
         {
-            foreach (var template in templates.Read(definition))
-            {
-                AddType(Substitute(template, substitutions));
-            }
+            VisitMemberTemplates(definition, substitutions);
         }
         if (method.MethodKind is MethodKind.Ordinary or MethodKind.PropertyGet or MethodKind.PropertySet or MethodKind.EventAdd or MethodKind.EventRemove or
             MethodKind.UserDefinedOperator or MethodKind.Conversion &&
@@ -512,7 +527,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         {
             return;
         }
-        if (substitutions.Values.Any(ContainsTypeParameter) && !collectTemplates)
+        if (!collectTemplates && substitutions.Values.Any(IsOpenArgument))
         {
             return;
         }

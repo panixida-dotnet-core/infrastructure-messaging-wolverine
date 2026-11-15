@@ -78,6 +78,10 @@ public sealed class OptionBindingGeneratorTests
     [InlineData(false, "public interface IRegistration { void Configure(Kafka kafka); } public sealed class Registration<T> : IRegistration { public void Configure(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "IRegistration registration = new Registration<int>(); registration.Configure(kafka);")]
     [InlineData(false, "public interface IRegistration { void Configure(Kafka kafka); } public sealed class Registration<T> : IRegistration { void IRegistration.Configure(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "IRegistration registration = new Registration<int>(); registration.Configure(kafka);")]
     [InlineData(false, "public abstract class Registration { public abstract void Configure(Kafka kafka); } public sealed class Concrete<T> : Registration { public override void Configure(Kafka kafka) => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "Registration registration = new Concrete<int>(); registration.Configure(kafka);")]
+    [InlineData(false, "public static class Setup<T> { public static readonly System.Action<Kafka> Configure = kafka => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "Setup<int>.Configure(kafka);")]
+    [InlineData(false, "public static class Setup<T> { public static readonly System.Action<Kafka> Configure; static Setup() => Configure = kafka => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "Setup<int>.Configure(kafka);")]
+    [InlineData(false, "public sealed class Setup<T> { public readonly System.Action<Kafka> Configure = kafka => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "new Setup<int>().Configure(kafka);")]
+    [InlineData(false, "public static class Setup<T> { public static System.Action<Kafka> Configure { get; } = kafka => kafka.AddKafkaBroker<ExportedSettings<T>>(); }", "Setup<int>.Configure(kafka);")]
     public void GeneratorShouldDiscoverReferencedGenericRegistration(bool sourceReference, string helper, string call)
     {
         const string kafka = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration";

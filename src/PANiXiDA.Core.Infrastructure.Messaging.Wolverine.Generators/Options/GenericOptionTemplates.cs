@@ -27,9 +27,9 @@ internal sealed class GenericOptionTemplates(Compilation compilation, INamedType
         return model;
     }
 
-    internal IEnumerable<ITypeSymbol> Read(IMethodSymbol method)
+    internal IEnumerable<ITypeSymbol> Read(ISymbol member)
     {
-        var assembly = method.ContainingAssembly!;
+        var assembly = member.ContainingAssembly!;
         if (SymbolEqualityComparer.Default.Equals(assembly, compilation.Assembly))
         {
             return [];
@@ -37,7 +37,7 @@ internal sealed class GenericOptionTemplates(Compilation compilation, INamedType
         var catalog = GetCatalog(assembly);
         return catalog.Count == 0
             ? []
-            : catalog[KeyPrefix + method.GetDocumentationCommentId()]
+            : catalog[KeyPrefix + member.GetDocumentationCommentId()]
                 .SelectMany(id => DocumentationCommentId.GetSymbolsForReferenceId(id, compilation)).OfType<ITypeSymbol>();
     }
 
@@ -57,26 +57,33 @@ internal sealed class GenericOptionTemplates(Compilation compilation, INamedType
 
     internal void AppendExports(StringBuilder source, CancellationToken token)
     {
-        var methods = ValidatorRegistrationGenerator.EnumerateTypes(compilation.Assembly.GlobalNamespace)
-            .Where(IsPublishedType).SelectMany(type => type.GetMembers().OfType<IMethodSymbol>())
-            .Where(method => (method.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal ||
-                !method.ExplicitInterfaceImplementations.IsEmpty) &&
-                (method.IsGenericMethod || method.ContainingType.IsGenericType) && method.DeclaringSyntaxReferences.Length != 0)
-            .OrderBy(method => method.GetDocumentationCommentId(), StringComparer.Ordinal);
-        foreach (var method in methods)
+        var members = ValidatorRegistrationGenerator.EnumerateTypes(compilation.Assembly.GlobalNamespace)
+            .Where(IsPublishedType).SelectMany(type => type.GetMembers()).Where(IsPublishedMember)
+            .OrderBy(member => member.GetDocumentationCommentId(), StringComparer.Ordinal);
+        foreach (var member in members)
         {
             token.ThrowIfCancellationRequested();
             var discovery = new OptionTypeDiscovery(compilation, token, this, collectTemplates: true);
-            var types = discovery.DiscoverTemplates(method).Select(DocumentationCommentId.CreateReferenceId)
+            var types = discovery.DiscoverTemplates(member).Select(DocumentationCommentId.CreateReferenceId)
                 .Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal);
             foreach (var id in types)
             {
                 source.Append("[assembly: global::System.Reflection.AssemblyMetadata(")
-                    .Append(SymbolDisplay.FormatLiteral(KeyPrefix + method.GetDocumentationCommentId(), true)).Append(", ")
+                    .Append(SymbolDisplay.FormatLiteral(KeyPrefix + member.GetDocumentationCommentId(), true)).Append(", ")
                     .Append(SymbolDisplay.FormatLiteral(id, true)).Append(")]\n");
             }
         }
     }
+
+    private static bool IsPublishedMember(ISymbol member)
+        => member.DeclaringSyntaxReferences.Length != 0 && (member switch
+        {
+            IMethodSymbol method => (method.IsGenericMethod || method.ContainingType.IsGenericType) &&
+                (method.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal || !method.ExplicitInterfaceImplementations.IsEmpty),
+            IFieldSymbol field => field.ContainingType.IsGenericType &&
+                field.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal,
+            _ => false,
+        });
 
     private static bool IsPublishedType(INamedTypeSymbol? type)
         => type is null || !type.IsFileLocal && type.DeclaredAccessibility != Accessibility.Private && IsPublishedType(type.ContainingType);
