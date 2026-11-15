@@ -31,14 +31,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         foreach (var node in root.DescendantNodes())
         {
             token.ThrowIfCancellationRequested();
-            if (node is ExpressionSyntax expression)
-            {
-                VisitOperators(model, expression, substitutions);
-            }
-            if (node is InitializerExpressionSyntax initializer && initializer.IsKind(SyntaxKind.CollectionInitializerExpression))
-            {
-                VisitCollectionInitializer(model, initializer, substitutions);
-            }
+            VisitImplicitCalls(model, node, substitutions);
             if (!IsSymbolReference(node, substitutions.Count != 0))
             {
                 continue;
@@ -54,11 +47,11 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             }
             else if (symbol is IPropertySymbol property)
             {
-                VisitAccessors(property.GetMethod, property.SetMethod, substitutions);
+                VisitMethods(substitutions, property.GetMethod, property.SetMethod);
             }
             else if (symbol is IEventSymbol @event)
             {
-                VisitAccessors(@event.AddMethod, @event.RemoveMethod, substitutions);
+                VisitMethods(substitutions, @event.AddMethod, @event.RemoveMethod);
             }
             else if (symbol is IFieldSymbol { ContainingType.IsGenericType: true } field)
             {
@@ -74,6 +67,30 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         => node is GenericNameSyntax or InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or
             PrimaryConstructorBaseTypeSyntax or MemberAccessExpressionSyntax or MemberBindingExpressionSyntax or ElementAccessExpressionSyntax or
             ElementBindingExpressionSyntax || hasSubstitutions && node is IdentifierNameSyntax;
+
+    private void VisitImplicitCalls(SemanticModel model, SyntaxNode node, TypeSubstitutions substitutions)
+    {
+        if (node is ExpressionSyntax expression)
+        {
+            VisitOperators(model, expression, substitutions);
+        }
+
+        switch (node)
+        {
+            case InitializerExpressionSyntax initializer when initializer.IsKind(SyntaxKind.CollectionInitializerExpression):
+                VisitCollectionInitializer(model, initializer, substitutions);
+                break;
+            case CommonForEachStatementSyntax enumeration:
+                var iteration = model.GetForEachStatementInfo(enumeration);
+                VisitMethods(substitutions, iteration.GetEnumeratorMethod, iteration.MoveNextMethod, iteration.CurrentProperty?.GetMethod,
+                    iteration.DisposeMethod, iteration.CurrentConversion.MethodSymbol, iteration.ElementConversion.MethodSymbol);
+                break;
+            case AwaitExpressionSyntax awaitExpression:
+                var awaiter = model.GetAwaitExpressionInfo(awaitExpression);
+                VisitMethods(substitutions, awaiter.GetAwaiterMethod, awaiter.IsCompletedProperty?.GetMethod, awaiter.GetResultMethod);
+                break;
+        }
+    }
 
     private void VisitCollectionInitializer(SemanticModel model, InitializerExpressionSyntax initializer, TypeSubstitutions substitutions)
     {
@@ -108,11 +125,11 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             _ => null,
         };
 
-    private void VisitAccessors(IMethodSymbol? first, IMethodSymbol? second, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
+    private void VisitMethods(TypeSubstitutions substitutions, params IMethodSymbol?[] methods)
     {
-        foreach (var accessor in new[] { first, second }.OfType<IMethodSymbol>())
+        foreach (var method in methods.OfType<IMethodSymbol>())
         {
-            VisitMethod(accessor, substitutions);
+            VisitMethod(method, substitutions);
         }
     }
 

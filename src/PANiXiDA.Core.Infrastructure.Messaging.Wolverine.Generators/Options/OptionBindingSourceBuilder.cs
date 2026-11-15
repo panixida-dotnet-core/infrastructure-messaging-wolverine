@@ -626,7 +626,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
     private void AppendSequenceBody(StringBuilder body, ITypeSymbol type, ITypeSymbol element, bool copy, bool set, bool readOnlySet)
     {
-        var rawArray = copy && GetCustomConverter(element) is not null;
+        var captureConversion = copy && GetCustomConverter(element) is not null;
         var elementName = Name(element);
         var named = type as INamedTypeSymbol;
         var concrete = Collections + (set ? "HashSet" : "List") + "<" + elementName + ">";
@@ -649,7 +649,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
         else if (copy)
         {
-            AppendCopiedSequence(body, concrete, rawArray);
+            AppendCopiedSequence(body);
         }
         else
         {
@@ -659,7 +659,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             body.Append($"        hasNewValue = {replacement};\n        option ??= {create};\n        var items = ({Collections}{collectionInterface}<{elementName}>)option;\n");
         }
 
-        AppendSequenceItems(body, element, copy, readOnlySet, rawArray);
+        AppendSequenceItems(body, element, copy, readOnlySet, captureConversion);
     }
 
     private static string EmptyCopiedSequenceValue(ITypeSymbol type, string elementName)
@@ -667,38 +667,30 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             ? "option is null && section.Value == string.Empty ? throw new global::System.ArgumentNullException(\"elementType\") : option"
             : $"!readOnly && option is null && section.Value == string.Empty ? global::System.Array.Empty<{elementName}>() : option";
 
-    private static void AppendCopiedSequence(StringBuilder body, string concrete, bool rawArray)
+    private static void AppendCopiedSequence(StringBuilder body)
     {
-        body.Append("        hasNewValue = true;\n");
-        if (rawArray)
-        {
-            body.Append($"        var items = new {Collections}List<object>();\n")
-                .Append("        if (option is not null)\n        {\n            foreach (var existing in option) items.Add(existing);\n        }\n");
-        }
-        else
-        {
-            body.Append($"        var items = option is null ? new {concrete}() : new {concrete}(option);\n");
-        }
+        body.Append($"        hasNewValue = true;\n        var items = new {Collections}List<object>();\n")
+            .Append("        if (option is not null)\n        {\n            foreach (var existing in (global::System.Collections.IEnumerable)option) items.Add(existing);\n        }\n");
     }
 
-    private void AppendSequenceItems(StringBuilder body, ITypeSymbol element, bool copy, bool readOnlySet, bool rawArray)
+    private void AppendSequenceItems(StringBuilder body, ITypeSymbol element, bool copy, bool readOnlySet, bool captureConversion)
     {
         var scalarConversion = ScalarConversionCondition(element, ChildVariable);
-        var nonNullableArray = copy && !rawArray && element.IsValueType && !IsNullable(element) && scalarConversion != FalseLiteral;
+        var nonNullableArray = copy && !captureConversion && element.IsValueType && !IsNullable(element) && scalarConversion != FalseLiteral;
         if (nonNullableArray)
         {
             body.Append("        var nullElement = false;\n");
         }
 
         var rejectNull = nonNullableArray ? $"if (child.Value is null && !global::System.Linq.Enumerable.Any(child.GetChildren()) && ({scalarConversion})) {{ nullElement = true; continue; }}\n                " : string.Empty;
-        var capture = rawArray ? ", captureConvertedValue: item => rawValue = item" : string.Empty;
-        var binding = rawArray ? "object rawValue = null;\n                " : string.Empty;
+        var capture = captureConversion ? ", captureConvertedValue: item => rawValue = item" : string.Empty;
+        var binding = captureConversion ? "object rawValue = null;\n                " : string.Empty;
         binding += $"var value = {Build(element)}(child, default, out var changed, out var itemConvertedNull, parentCollection: true, hasExistingValue: false{ConversionArgument(element)}{capture});\n                ";
         if (nonNullableArray)
         {
             binding += "if (itemConvertedNull) { nullElement = true; continue; }\n                ";
         }
-        var item = rawArray ? "itemConvertedNull ? null : rawValue ?? (object)value" : "value";
+        var item = captureConversion ? "itemConvertedNull ? null : rawValue ?? (object)value" : "value";
         AppendItems(body, element, rejectNull + binding + $"if (changed) items.Add({item});");
         if (nonNullableArray)
         {
@@ -706,13 +698,9 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         var result = readOnlySet ? "readOnly ? option : items" : OptionVariable;
-        if (rawArray)
+        if (copy)
         {
             result = $"CopyToArray<{Name(element)}>(items)";
-        }
-        else if (copy)
-        {
-            result = "items.ToArray()";
         }
 
         body.Append($"        return {result};\n");

@@ -10,6 +10,29 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingSectionTests
 {
+    [Fact(DisplayName = "Generated array-compatible binding enumerates existing values instead of using CopyTo")]
+    public void BinderShouldEnumerateCopiedSequence()
+    {
+        var configuration = new ConfigurationManager { ["Options:Values:0"] = "2" };
+
+        var original = configuration.GetSection("Options").Get<SequenceCopyOptions<EnumerationOnlyList>>()!;
+        var generated = OptionBindingRegistry.GetRequired<SequenceCopyOptions<EnumerationOnlyList>>(configuration, "Options");
+
+        generated.Values.ShouldBe(original.Values);
+        generated.Values.ShouldBe([1, 2]);
+    }
+
+    [Fact(DisplayName = "Generated array-compatible binding preserves failures when enumerating existing values")]
+    public void BinderShouldPreserveCopiedSequenceEnumerationFailure()
+    {
+        var configuration = new ConfigurationManager { ["Options:Values:0"] = "2" };
+
+        var original = Should.Throw<FormatException>(() => configuration.GetSection("Options").Get<SequenceCopyOptions<FailingEnumerationList>>());
+        var generated = Should.Throw<FormatException>(() => OptionBindingRegistry.GetRequired<SequenceCopyOptions<FailingEnumerationList>>(configuration, "Options"));
+
+        generated.Message.ShouldBe(original.Message);
+    }
+
     [Fact(DisplayName = "Generated binding dispatches Add through the declared set interface")]
     public void BinderShouldUseSetInterfaceAdd()
     {
@@ -401,6 +424,25 @@ public sealed class OptionBindingSectionTests
     {
         public ISet<string> Values { get; } = new DistinctSet();
         public DistinctSet Concrete { get; } = [];
+    }
+
+    public sealed class SequenceCopyOptions<T> : KafkaConsumerOption where T : ICollection<int>, new()
+    {
+        public IEnumerable<int> Values { get; init; } = new T();
+    }
+
+    public sealed class EnumerationOnlyList : List<int>, ICollection<int>
+    {
+        public EnumerationOnlyList() => Add(1);
+
+        void ICollection<int>.CopyTo(int[] array, int arrayIndex) => throw new InvalidOperationException("CopyTo must not run.");
+        IEnumerator<int> IEnumerable<int>.GetEnumerator() => throw new InvalidOperationException("Use the non-generic enumerator.");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => new[] { 1 }.GetEnumerator();
+    }
+
+    public sealed class FailingEnumerationList : List<int>, ICollection<int>
+    {
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new FormatException("Enumeration failed.");
     }
 
     public sealed class DistinctSet : HashSet<string>, ISet<string>
