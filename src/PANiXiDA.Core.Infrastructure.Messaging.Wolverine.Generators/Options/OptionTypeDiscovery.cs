@@ -1,14 +1,17 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
+using TypeSubstitutions = System.Collections.Generic.Dictionary<Microsoft.CodeAnalysis.ITypeParameterSymbol, Microsoft.CodeAnalysis.ITypeSymbol>;
+
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Options;
 
 internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationToken token)
 {
     private readonly HashSet<INamedTypeSymbol> types = new(SymbolEqualityComparer.Default);
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
-    private readonly HashSet<ISymbol> active = new(SymbolEqualityComparer.Default);
-    private readonly HashSet<ISymbol> activeInstanceInitializers = new(SymbolEqualityComparer.Default);
+    private readonly RecursionGuard active = new();
+    private readonly RecursionGuard activeMethods = new();
+    private readonly RecursionGuard activeInstanceInitializers = new();
     private readonly Dictionary<INamedTypeSymbol, MethodDispatch> methodDispatches = new(SymbolEqualityComparer.Default);
 
     internal IEnumerable<INamedTypeSymbol> Discover()
@@ -70,11 +73,19 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         var substitutions = ContainingArguments(containing, inherited);
         var definition = (method.ReducedFrom ?? method).OriginalDefinition;
         var implementation = definition.PartialImplementationPart ?? definition;
+        var methodArguments = method.TypeArguments.Select(argument => Substitute(argument, inherited)).ToArray();
         for (var index = 0; index < method.TypeArguments.Length; index++)
         {
-            var argument = Substitute(method.TypeArguments[index], inherited);
-            substitutions[definition.TypeParameters[index]] = argument;
-            substitutions[implementation.TypeParameters[index]] = argument;
+            substitutions[definition.TypeParameters[index]] = methodArguments[index];
+            substitutions[implementation.TypeParameters[index]] = methodArguments[index];
+        }
+        if (!activeMethods.TryEnter(definition, substitutions, out var entered))
+        {
+            return;
+        }
+
+        foreach (var argument in methodArguments)
+        {
             AddType(argument);
         }
         AddType(Substitute(method.ReturnType, substitutions));
@@ -97,6 +108,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             AddType(Substitute(containing, substitutions));
             VisitImplicitBaseConstructor(implementation, containing, substitutions);
         }
+        activeMethods.Exit(definition, entered);
     }
 
     private void VisitImplicitBaseConstructor(IMethodSymbol method, INamedTypeSymbol containing,
@@ -151,7 +163,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private void VisitDefinition(ISymbol definition, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions, bool instanceInitializers = false)
     {
         var activeDefinitions = instanceInitializers ? activeInstanceInitializers : active;
-        if (definition.DeclaringSyntaxReferences.Length == 0 || substitutions.Values.Any(type => ContainsTypeParameter(type)) || activeDefinitions.Contains(definition))
+        if (definition.DeclaringSyntaxReferences.Length == 0 || substitutions.Values.Any(type => ContainsTypeParameter(type)) ||
+            !activeDefinitions.TryEnter(definition, substitutions, out var entered))
         {
             return;
         }
@@ -161,10 +174,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             .OrderBy(value => value, StringComparer.Ordinal));
         if (!visited.Add(key))
         {
+            activeDefinitions.Exit(definition, entered);
             return;
         }
 
-        activeDefinitions.Add(definition);
         if (definition is INamedTypeSymbol typeDefinition)
         {
             VisitMemberInitializers(typeDefinition, substitutions, instanceInitializers);
@@ -176,7 +189,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
                 Visit(reference.GetSyntax(token), substitutions);
             }
         }
-        activeDefinitions.Remove(definition);
+        activeDefinitions.Exit(definition, entered);
     }
 
     private void VisitMemberInitializers(INamedTypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions, bool instanceInitializers)
@@ -259,7 +272,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private void VisitImplementations(INamedTypeSymbol type, IMethodSymbol call)
     {
-        foreach (var implementation in FindImplementations(type, call).Where(implementation => !active.Contains(DispatchDefinition(implementation.OriginalDefinition))))
+        foreach (var implementation in FindImplementations(type, call))
         {
             var method = call.Arity == 0 ? implementation : implementation.Construct([.. call.TypeArguments]);
             VisitMethod(method, new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default));
@@ -313,6 +326,39 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     {
         internal HashSet<IMethodSymbol> Calls { get; } = new(SymbolEqualityComparer.Default);
         internal HashSet<INamedTypeSymbol> Implementations { get; } = new(SymbolEqualityComparer.Default);
+    }
+
+    private sealed class RecursionGuard
+    {
+        private readonly Dictionary<ISymbol, TypeSubstitutions> active = new(SymbolEqualityComparer.Default);
+
+        internal bool TryEnter(ISymbol definition, TypeSubstitutions substitutions, out bool entered)
+        {
+            if (!active.TryGetValue(definition, out var previous))
+            {
+                entered = true;
+                active.Add(definition, substitutions);
+                return true;
+            }
+
+            entered = false;
+            var arguments = previous.Where(pair => substitutions.ContainsKey(pair.Key)).ToArray();
+            var remaining = GenericTypeBudget.MaxRecursiveTypeNodes;
+            foreach (var pair in arguments)
+            {
+                GenericTypeBudget.TryConsume(pair.Value, ref remaining);
+            }
+            var budget = GenericTypeBudget.MaxRecursiveTypeNodes - remaining;
+            return arguments.All(pair => GenericTypeBudget.TryConsume(substitutions[pair.Key], ref budget));
+        }
+
+        internal void Exit(ISymbol definition, bool entered)
+        {
+            if (entered)
+            {
+                active.Remove(definition);
+            }
+        }
     }
 
     private ITypeSymbol Substitute(ITypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)

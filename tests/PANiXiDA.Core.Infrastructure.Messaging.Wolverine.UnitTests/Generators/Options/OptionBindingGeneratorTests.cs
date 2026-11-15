@@ -775,6 +775,9 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("_ = new Registration<int>(kafka);", "sealed partial class Registration<T> { public partial Registration(Kafka kafka); } sealed partial class Registration<T> { public partial Registration(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     [InlineData("Registration<int>.Configure += _ => {};", "static partial class Registration<T> { public static partial event System.Action<Kafka> Configure; } static partial class Registration<T> { public static partial event System.Action<Kafka> Configure { add => ((Kafka)null!).AddKafkaBroker<Settings<T>>(); remove {} } }", "int")]
     [InlineData("IRegistration registration = new Registration<int>(); registration.Configure += _ => {};", "interface IRegistration { event System.Action<Kafka> Configure; } sealed class Registration<T> : IRegistration { public event System.Action<Kafka> Configure { add => ((Kafka)null!).AddKafkaBroker<Settings<T>>(); remove {} } }", "int")]
+    [InlineData("Register<int, string>(kafka, false);", "static void Register<TFirst, TSecond>(Kafka kafka, bool swapped) { kafka.AddKafkaBroker<Settings<TFirst>>(); if (!swapped) Register<TSecond, TFirst>(kafka, true); }", "string")]
+    [InlineData("Register<int>(kafka, false);", "static void Register<T>(Kafka kafka, bool swapped) { kafka.AddKafkaBroker<Settings<T>>(); if (!swapped) Other<T>(kafka); } static void Other<U>(Kafka kafka) => Register<string>(kafka, true);", "string")]
+    [InlineData("IRegistration registration = new Registration<int, string>(); registration.Configure(kafka, false);", "interface IRegistration { void Configure(Kafka kafka, bool swapped); } sealed class Registration<TFirst, TSecond> : IRegistration { public void Configure(Kafka kafka, bool swapped) { kafka.AddKafkaBroker<Settings<TFirst>>(); if (!swapped) { IRegistration next = new Registration<TSecond, TFirst>(); next.Configure(kafka, true); } } }", "string")]
     public void GeneratorShouldDiscoverGenericHelpers(string call, string helper, string argument)
     {
         var compilation = CreateCompilation($$"""
@@ -791,6 +794,33 @@ public sealed class OptionBindingGeneratorTests
 
         diagnostics.ShouldBeEmpty();
         source.ShouldContain(".Register<global::Settings<" + argument + ">>");
+    }
+
+    [Fact(DisplayName = "Option generator bounds expanding recursion in static field initializers")]
+    public void GeneratorShouldBoundGrowingFieldInitializer()
+    {
+        var compilation = CreateCompilation("""
+            using Kafka = PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration;
+            public sealed class Settings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public static class Setup
+            {
+                public static void Configure(Kafka kafka) => Registration<int>.Configure(kafka);
+            }
+            public static class Registration<T>
+            {
+                public static readonly System.Action<Kafka> Configure = kafka =>
+                {
+                    kafka.AddKafkaBroker<Settings<T>>();
+                    _ = Registration<T[]>.Configure;
+                };
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::Settings<int>>");
+        source.ShouldNotContain(".Register<global::Settings<int[][]>>");
     }
 
     [Theory(DisplayName = "Option generator reports recursively expanding generic model shapes")]
