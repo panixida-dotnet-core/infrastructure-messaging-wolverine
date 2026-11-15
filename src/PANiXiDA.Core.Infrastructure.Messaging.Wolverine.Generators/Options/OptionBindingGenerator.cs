@@ -125,6 +125,18 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
                 private sealed class UnsupportedRuntimeTypeException(global::System.Type type, global::System.Type declaredType, string path)
                     : global::System.NotSupportedException($"Runtime configuration type '{type}' at '{path}' differs from the declared model type '{declaredType}'. Declare the concrete configuration model type.") { }
 
+                private static T CastPropertyValue<T>(object value, global::System.Type propertyType)
+                {
+                    try
+                    {
+                        return (T)value;
+                    }
+                    catch (global::System.InvalidCastException)
+                    {
+                        throw new global::System.ArgumentException($"Object of type '{value.GetType()}' cannot be converted to type '{propertyType}'.");
+                    }
+                }
+
                 private static T[] MergeConstructorSeed<T>(string seed, global::System.Collections.Generic.IEnumerable<T> values)
                 {
                     var items = new global::System.Collections.Generic.List<object>();

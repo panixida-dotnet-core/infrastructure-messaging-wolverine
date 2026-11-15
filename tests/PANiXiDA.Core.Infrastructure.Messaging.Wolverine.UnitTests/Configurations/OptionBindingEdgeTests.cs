@@ -156,6 +156,24 @@ public sealed class OptionBindingEdgeTests
         generated.Value.Select(number => number.Value).ShouldBe([42]);
     }
 
+    [Theory(DisplayName = "Generated property binding preserves assignment errors for incompatible converter results")]
+    [InlineData("init")]
+    [InlineData("set")]
+    [InlineData("struct")]
+    [InlineData("nullable")]
+    public void BinderShouldPreserveIncompatiblePropertyConversionFailure(string shape)
+    {
+        var configuration = new ConfigurationManager { ["Options:Value"] = "incompatible" };
+
+        switch (shape)
+        {
+            case "init": AssertFailure<ValueOptions<OptionBindingSectionTests.ConvertedPayload>>(configuration); break;
+            case "set": AssertFailure<WritableValueOptions>(configuration); break;
+            case "struct": AssertFailure<ValueOptions<OptionBindingSectionTests.ConvertedValue>>(configuration); break;
+            default: AssertFailure<ValueOptions<OptionBindingSectionTests.ConvertedValue?>>(configuration); break;
+        }
+    }
+
     [Theory(DisplayName = "Generated binding preserves constructor validation error messages")]
     [InlineData("private")]
     [InlineData("multiple")]
@@ -197,6 +215,11 @@ public sealed class OptionBindingEdgeTests
     public sealed class ValueOptions<T> : KafkaConsumerOption
     {
         public T Value { get; init; } = default!;
+    }
+
+    public sealed class WritableValueOptions : KafkaConsumerOption
+    {
+        public OptionBindingSectionTests.ConvertedPayload? Value { get; set; }
     }
 
     public sealed class NullConversionOptions : KafkaConsumerOption

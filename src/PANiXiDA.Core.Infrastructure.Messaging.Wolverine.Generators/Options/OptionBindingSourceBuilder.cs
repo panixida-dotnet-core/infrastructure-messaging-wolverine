@@ -289,10 +289,21 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var initialArgument = byteArray ? DefaultValue : initial;
         var initialGetter = byteArray ? $", getInitialValue: () => {initial}" : string.Empty;
         var value = "value" + index;
+        var captureConversion = writable && GetCustomConverter(property.Type) is not null;
+        var capture = captureConversion ? $", captureConvertedValue: item => converted{index} = item" : string.Empty;
+        if (captureConversion)
+        {
+            body.Append($"        object converted{index} = null;\n");
+        }
         body.Append($"        var changed{index} = false;\n")
             .Append($"        {Name(property.Type)} {value} = {(constructorBound ? "!created && " : string.Empty)}hasChild{index}\n")
-            .Append($"            ? {Build(property.Type)}(child{index}, {initialArgument}, out changed{index}, {(writable ? FalseLiteral : "true")}{ConversionArgument(property.Type, probe)}{initialGetter})\n")
+            .Append($"            ? {Build(property.Type)}(child{index}, {initialArgument}, out changed{index}, {(writable ? FalseLiteral : "true")}{ConversionArgument(property.Type, probe)}{initialGetter}{capture})\n")
             .Append($"            : {(writable ? getter : DefaultValue)};\n");
+        if (captureConversion)
+        {
+            var convertedType = IsNullable(property.Type) ? ((INamedTypeSymbol)property.Type).TypeArguments[0] : property.Type;
+            body.Append($"        if (converted{index} is not null) {value} = CastPropertyValue<{Name(convertedType)}>(converted{index}, typeof({Name(property.Type)}));\n");
+        }
         if (!writable)
         {
             return;

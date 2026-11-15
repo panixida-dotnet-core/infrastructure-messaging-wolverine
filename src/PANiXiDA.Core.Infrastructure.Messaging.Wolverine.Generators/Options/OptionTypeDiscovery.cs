@@ -108,6 +108,9 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             case QueryExpressionSyntax query:
                 VisitQuery(model, query, substitutions);
                 break;
+            case InterpolatedStringExpressionSyntax interpolation:
+                VisitInterpolation(model, interpolation, substitutions);
+                break;
             case AssignmentExpressionSyntax { Left: DeclarationExpressionSyntax or TupleExpressionSyntax } assignment:
                 VisitDeconstruction(model.GetDeconstructionInfo(assignment), substitutions);
                 break;
@@ -146,6 +149,33 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         foreach (var call in calls)
         {
             VisitMethod(call.TargetMethod, substitutions);
+        }
+    }
+
+    private void VisitInterpolation(SemanticModel model, InterpolatedStringExpressionSyntax interpolation, TypeSubstitutions substitutions)
+    {
+        IOperation?[] operations = [model.GetOperation(interpolation, token)];
+        foreach (var content in operations.OfType<IInterpolatedStringOperation>())
+        {
+            var parent = content.Parent;
+            while (parent is IInterpolatedStringAdditionOperation)
+            {
+                parent = parent.Parent;
+            }
+            if (parent is not IInterpolatedStringHandlerCreationOperation handler)
+            {
+                continue;
+            }
+
+            foreach (var creation in handler.ChildOperations.OfType<IObjectCreationOperation>())
+            {
+                VisitMethods(substitutions, creation.Constructor);
+            }
+            var appends = content.Parts.OfType<IInterpolatedStringAppendOperation>().Select(append => append.AppendCall).OfType<IInvocationOperation>();
+            foreach (var append in appends)
+            {
+                VisitMethod(append.TargetMethod, substitutions);
+            }
         }
     }
 

@@ -935,6 +935,32 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldContain(".Register<global::Settings<int>>");
     }
 
+    [Theory(DisplayName = "Option generator discovers the selected generic interpolated string handler members")]
+    [InlineData("kafka.AddKafkaBroker<Settings<T>>();", "", "", "kafka, $\"setup\"")]
+    [InlineData("", "kafka.AddKafkaBroker<Settings<T>>();", "", "kafka, $\"setup\"")]
+    [InlineData("", "", "kafka.AddKafkaBroker<Settings<TValue>>();", "kafka, $\"setup\" + $\"{42}\"")]
+    public void GeneratorShouldDiscoverInterpolatedStringHandler(string constructor, string literal, string formatted, string arguments)
+        => AssertDiscoversGenericHelper(
+            $"Log<string>({arguments});",
+            $$"""
+            static void Log<T>(Kafka kafka, [System.Runtime.CompilerServices.InterpolatedStringHandlerArgument("kafka")] Registration<T> message) { }
+            [System.Runtime.CompilerServices.InterpolatedStringHandler]
+            ref struct Registration<T>
+            {
+                private readonly Kafka target;
+
+                public Registration(int literalLength, int formattedCount, Kafka kafka)
+                {
+                    target = kafka;
+                    {{constructor}}
+                }
+
+                public void AppendLiteral(string text) { var kafka = target; {{literal}} }
+                public void AppendFormatted<TValue>(TValue value) { var kafka = target; {{formatted}} }
+            }
+            """,
+            formatted.Length == 0 ? "string" : "int");
+
     [Theory(DisplayName = "Option generator discovers closed options through pattern members")]
     [InlineData("if (new Registration<int>() is { Configure: var configure }) configure(kafka);", "sealed class Registration<T> { public System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     [InlineData("if (new Registration<int>() is ({ Configure: var configure })) configure(kafka);", "sealed class Registration<T> { public System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
