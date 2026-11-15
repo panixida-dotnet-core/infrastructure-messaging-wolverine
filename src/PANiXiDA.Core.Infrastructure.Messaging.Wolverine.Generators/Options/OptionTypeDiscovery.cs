@@ -87,6 +87,9 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             case CommonForEachStatementSyntax enumeration:
                 VisitEnumeration(model, enumeration, substitutions);
                 break;
+            case CollectionExpressionSyntax collection:
+                VisitCollectionExpression(model, collection, substitutions);
+                break;
             case AssignmentExpressionSyntax { Left: DeclarationExpressionSyntax or TupleExpressionSyntax } assignment:
                 VisitDeconstruction(model.GetDeconstructionInfo(assignment), substitutions);
                 break;
@@ -106,14 +109,51 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private void VisitEnumeration(SemanticModel model, CommonForEachStatementSyntax enumeration, TypeSubstitutions substitutions)
     {
-        var iteration = model.GetForEachStatementInfo(enumeration);
-        VisitMethods(substitutions, iteration.GetEnumeratorMethod, iteration.MoveNextMethod, iteration.CurrentProperty?.GetMethod,
-            iteration.DisposeMethod, iteration.CurrentConversion.MethodSymbol, iteration.ElementConversion.MethodSymbol);
+        VisitIteration(model.GetForEachStatementInfo(enumeration), substitutions);
         if (enumeration is ForEachVariableStatementSyntax deconstruction)
         {
             VisitDeconstruction(model.GetDeconstructionInfo(deconstruction), substitutions);
         }
     }
+
+    private void VisitCollectionExpression(SemanticModel model, CollectionExpressionSyntax collection, TypeSubstitutions substitutions)
+    {
+        if (model.GetOperation(collection, token) is not ICollectionExpressionOperation operation)
+        {
+            return;
+        }
+        VisitMethods(substitutions, operation.ConstructMethod);
+        foreach (var spread in operation.Elements.OfType<ISpreadOperation>())
+        {
+            VisitMethods(substitutions, spread.ElementConversion.MethodSymbol);
+            VisitIteration(BindSpreadIteration(model, (SpreadElementSyntax)spread.Syntax), substitutions);
+        }
+    }
+
+    private static ForEachStatementInfo BindSpreadIteration(SemanticModel model, SpreadElementSyntax spread)
+    {
+        // ISpreadOperation exposes the item conversion but not the enumeration members.
+        // Bind a foreach at the same location so Roslyn selects the same pattern and extension methods.
+        var loop = SyntaxFactory.ForEachStatement(SyntaxFactory.IdentifierName("var"),
+            SyntaxFactory.Identifier("__wolverineSpreadItem"), spread.Expression.WithoutTrivia(), SyntaxFactory.Block());
+        if (model.TryGetSpeculativeSemanticModel(spread.SpanStart, loop, out var body))
+        {
+            return body.GetForEachStatementInfo(loop);
+        }
+
+        // Field and auto-property initializers use a separate semantic model.
+        var lambda = SyntaxFactory.ParenthesizedLambdaExpression(SyntaxFactory.Block(loop));
+        var cast = SyntaxFactory.CastExpression(SyntaxFactory.ParseTypeName("global::System.Action"),
+            SyntaxFactory.ParenthesizedExpression(lambda));
+        var initializer = SyntaxFactory.EqualsValueClause(cast);
+        return model.TryGetSpeculativeSemanticModel(spread.SpanStart, initializer, out var field)
+            ? field.GetForEachStatementInfo(initializer.DescendantNodes().OfType<ForEachStatementSyntax>().First())
+            : default;
+    }
+
+    private void VisitIteration(ForEachStatementInfo iteration, TypeSubstitutions substitutions)
+        => VisitMethods(substitutions, iteration.GetEnumeratorMethod, iteration.MoveNextMethod, iteration.CurrentProperty?.GetMethod,
+            iteration.DisposeMethod, iteration.CurrentConversion.MethodSymbol, iteration.ElementConversion.MethodSymbol);
 
     private void VisitDeconstruction(DeconstructionInfo deconstruction, TypeSubstitutions substitutions)
     {
@@ -194,7 +234,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             if (!disposalCalls.TryGetValue(key, out var calls))
             {
                 ControlFlowGraph?[] graphs = [ControlFlowGraph.Create(syntax, model, token)];
-                calls = graphs.OfType<ControlFlowGraph>().SelectMany(GetDisposalCalls).ToArray();
+                calls = [.. graphs.OfType<ControlFlowGraph>().SelectMany(GetDisposalCalls)];
                 disposalCalls.Add(key, calls);
             }
             foreach (var call in calls.Where(call => node.Span.Contains(call.Syntax.Span)))

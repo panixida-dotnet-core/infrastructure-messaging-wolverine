@@ -819,6 +819,23 @@ public sealed class OptionBindingGeneratorTests
     public void GeneratorShouldDiscoverPatternMembers(string call, string helper, string argument)
         => AssertDiscoversGenericHelper(call, helper, argument);
 
+    [Theory(DisplayName = "Option generator discovers closed options through collection expression spreads")]
+    [InlineData("System.Action<Kafka>[] callbacks = [..new Registration<int>()]; callbacks[0](kafka);", "sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>> { public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator() { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); } System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator(); }")]
+    [InlineData("System.Action<Kafka>[] callbacks = [..new Registration<int>()]; callbacks[0](kafka);", "sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>> { System.Collections.Generic.IEnumerator<System.Action<Kafka>> System.Collections.Generic.IEnumerable<System.Action<Kafka>>.GetEnumerator() { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); } System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new System.NotSupportedException(); }")]
+    [InlineData("System.Action<Kafka>[] callbacks = [..new Registration<int>()]; callbacks[0](kafka);", "sealed class Registration<T> { public Enumerator GetEnumerator() => new(); public sealed class Enumerator { public bool MoveNext() => false; public System.Action<Kafka> Current => kafka => kafka.AddKafkaBroker<Settings<T>>(); } }")]
+    [InlineData("System.Action<Kafka>[] callbacks = [..new Registration<int>()]; callbacks[0](kafka);", "public sealed class Registration<T>; public static System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator<T>(this Registration<T> registration) { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); }")]
+    [InlineData("System.Action<Kafka>[] callbacks = [..new[] { new Registration<int>() }]; callbacks[0](kafka);", "sealed class Registration<T> { public static implicit operator System.Action<Kafka>(Registration<T> _) => kafka => kafka.AddKafkaBroker<Settings<T>>(); }")]
+    [InlineData("Callbacks[0](kafka);", "static readonly System.Action<Kafka>[] Callbacks = [..new Registration<int>()]; sealed class Registration<T> { public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator() { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); } }")]
+    public void GeneratorShouldDiscoverCollectionSpread(string call, string helper)
+        => AssertDiscoversGenericHelper(call, helper, "int");
+
+    [Fact(DisplayName = "Option generator discovers closed options through a collection expression builder")]
+    public void GeneratorShouldDiscoverCollectionBuilder()
+        => AssertDiscoversGenericHelper(
+            "Registration<int> callbacks = []; foreach (var callback in callbacks) callback(kafka);",
+            "[System.Runtime.CompilerServices.CollectionBuilder(typeof(Builder), nameof(Builder.Create))] public sealed class Registration<T>(System.Action<Kafka> callback) { public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator() { yield return callback; } } public static class Builder { public static Registration<T> Create<T>(System.ReadOnlySpan<System.Action<Kafka>> items) => new(kafka => kafka.AddKafkaBroker<Settings<T>>()); }",
+            "int");
+
     [Fact(DisplayName = "Option generator discovers disposal inside a generic local function and lambda")]
     public void GeneratorShouldDiscoverUsingInsideGenericLambda()
         => AssertDiscoversGenericHelper(
@@ -844,16 +861,19 @@ public sealed class OptionBindingGeneratorTests
         source.ShouldContain(".Register<global::Settings<" + argument + ">>");
     }
 
-    [Fact(DisplayName = "Option generator still registers options when a foreach is incomplete")]
+    [Fact(DisplayName = "Option generator still registers options when an enumeration is incomplete")]
     public void GeneratorShouldContinueAfterUnboundEnumeration()
     {
         var compilation = CreateCompilation("""
             public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public sealed class ValuesAttribute(int[] values) : System.Attribute;
+            [Values([..new[] { 1 }])]
             public static class Setup
             {
                 public static void Configure()
                 {
                     foreach (var item in new object()) { }
+                    var untyped = [..new[] { 1 }];
                 }
             }
             """);
