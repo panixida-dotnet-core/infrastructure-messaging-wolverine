@@ -36,16 +36,20 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             {
                 VisitMethod(method, substitutions);
             }
-            else if (symbol is IPropertySymbol or IFieldSymbol && symbol.ContainingType is { IsGenericType: true } containing)
+            else if (symbol is IPropertySymbol or IFieldSymbol && symbol.ContainingType!.IsGenericType)
             {
-                VisitDefinition(symbol.OriginalDefinition, ContainingArguments(containing, substitutions));
+                var containing = symbol.ContainingType!;
+                var arguments = ContainingArguments(containing, substitutions);
+                VisitDefinition(symbol.OriginalDefinition, arguments);
+                VisitStaticConstructors(containing, arguments);
             }
         }
     }
 
     private void VisitMethod(IMethodSymbol method, Dictionary<ITypeParameterSymbol, ITypeSymbol> inherited)
     {
-        var substitutions = ContainingArguments(method.ContainingType, inherited);
+        var containing = method.ContainingType!;
+        var substitutions = ContainingArguments(containing, inherited);
         var definition = (method.ReducedFrom ?? method).OriginalDefinition;
         for (var index = 0; index < method.TypeArguments.Length; index++)
         {
@@ -55,6 +59,18 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         }
         AddType(Substitute(method.ReturnType, substitutions));
         VisitDefinition(definition, substitutions);
+        if (containing.IsGenericType)
+        {
+            VisitStaticConstructors(containing, substitutions);
+        }
+    }
+
+    private void VisitStaticConstructors(INamedTypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
+    {
+        foreach (var initializer in type.OriginalDefinition.StaticConstructors)
+        {
+            VisitDefinition(initializer, substitutions);
+        }
     }
 
     private Dictionary<ITypeParameterSymbol, ITypeSymbol> ContainingArguments(INamedTypeSymbol? type,
