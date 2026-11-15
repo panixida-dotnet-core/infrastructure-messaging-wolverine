@@ -115,7 +115,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
         {
             templates.AppendExports(metadata, context.CancellationToken);
         }
-        source.Append("    }\n").Append("""
+        source.Append("    }\n").Append($$"""
                 private static bool IsNullValue(global::Microsoft.Extensions.Configuration.IConfigurationSection section)
                     => global::System.String.IsNullOrEmpty(section.Value) &&
                         (section is global::Microsoft.Extensions.Configuration.ConfigurationSection concrete
@@ -125,7 +125,18 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
                 private sealed class UnsupportedRuntimeTypeException(global::System.Type type, global::System.Type declaredType, string path)
                     : global::System.NotSupportedException($"Runtime configuration type '{type}' at '{path}' differs from the declared model type '{declaredType}'. Declare the concrete configuration model type.") { }
 
-                private static T CastPropertyValue<T>(object value, global::System.Type propertyType)
+                private static object ConvertValue<T>(global::Microsoft.Extensions.Configuration.IConfigurationSection section, global::System.ComponentModel.TypeConverter converter)
+                {
+                    object result = null;
+                    {{Registry}}.Parse<T>(section, value =>
+                    {
+                        result = converter.ConvertFromInvariantString(value);
+                        return default;
+                    });
+                    return result;
+                }
+
+                private static T CastAssignedValue<T>(object value, global::System.Type targetType)
                 {
                     try
                     {
@@ -133,7 +144,7 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
                     }
                     catch (global::System.InvalidCastException)
                     {
-                        throw new global::System.ArgumentException($"Object of type '{value.GetType()}' cannot be converted to type '{propertyType}'.");
+                        throw new global::System.ArgumentException($"Object of type '{value.GetType()}' cannot be converted to type '{targetType}'.");
                     }
                 }
 

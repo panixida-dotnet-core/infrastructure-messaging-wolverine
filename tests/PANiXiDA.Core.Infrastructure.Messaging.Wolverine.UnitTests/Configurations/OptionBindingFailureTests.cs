@@ -94,6 +94,28 @@ public sealed class OptionBindingFailureTests
         }
     }
 
+    [Theory(DisplayName = "Generated binding validates incompatible converter results for roots and constructor arguments")]
+    [InlineData("root")]
+    [InlineData("reference-parameter")]
+    [InlineData("struct-parameter")]
+    [InlineData("nullable-parameter")]
+    public void BinderShouldPreserveIncompatibleRootAndParameterConversion(string kind)
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options"] = "configured",
+            ["Options:value"] = "configured",
+        };
+
+        switch (kind)
+        {
+            case "root": AssertSameFailure<IncompatibleConverterOptions>(configuration); break;
+            case "reference-parameter": AssertSameFailure<ParameterOptions<OptionBindingSectionTests.ConvertedPayload>>(configuration); break;
+            case "struct-parameter": AssertSameFailure<ParameterOptions<OptionBindingSectionTests.ConvertedValue>>(configuration); break;
+            default: AssertSameFailure<ParameterOptions<OptionBindingSectionTests.ConvertedValue?>>(configuration); break;
+        }
+    }
+
     [Theory(DisplayName = "Generated constructor binding rejects unconvertible scalar parameters")]
     [InlineData("object", "invalid")]
     [InlineData("object", "")]
@@ -266,6 +288,9 @@ public sealed class OptionBindingFailureTests
 
     [TypeConverter(typeof(ThrowingTypedConverter))]
     public sealed class ThrowingTypedConverterOptions : KafkaConsumerOption;
+
+    [TypeConverter(typeof(OptionBindingSectionTests.IncompatibleConverter))]
+    public sealed class IncompatibleConverterOptions : KafkaConsumerOption;
 
     public sealed class ThrowingConverter : TypeConverter
     {

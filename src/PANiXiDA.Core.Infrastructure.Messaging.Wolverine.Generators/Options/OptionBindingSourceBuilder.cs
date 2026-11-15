@@ -92,10 +92,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var byteArray = IsByteArray(type);
         var arguments = "bool readOnly = false, bool parentCollection = false, bool? conversionProbe = null, bool hasExistingValue = true" +
             (byteArray ? ", global::System.Func<byte[]> getInitialValue = null" : string.Empty) +
-            (converter is not null ? ", global::System.Action<object> captureConvertedValue = null" : string.Empty);
+            (converter is not null ? ", global::System.Action<object> captureConvertedValue = null, bool validateAssignment = false" : string.Empty);
         var forwarded = "readOnly, parentCollection, conversionProbe, hasExistingValue" +
             (byteArray ? ", getInitialValue" : string.Empty) +
-            (converter is not null ? ", captureConvertedValue" : string.Empty);
+            (converter is not null ? ", captureConvertedValue, validateAssignment" : string.Empty);
         source.Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, {arguments})\n")
             .Append($"        => {name}(section, option, out _, {forwarded});\n")
             .Append($"    private static {Name(type)} {name}({Section} section, {Name(type)} option, out bool hasNewValue, {arguments})\n")
@@ -129,10 +129,11 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             var convertedType = IsNullable(type) ? ((INamedTypeSymbol)type).TypeArguments[0] : type;
             body.Append($"        if (section.Value is not null || IsNullValue(section) || !{AnyChildren})\n        {{\n            global::System.ComponentModel.TypeConverter converter = {converter};\n")
                 .Append("            if ((conversionProbe ??= converter.CanConvertFrom(typeof(string))) == true)\n            {\n")
-                .Append($"                var nullConversion = {nullTest};\n")
-                .Append($"                var convertedValue = nullConversion ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, value =>\n                {{\n                    var result = converter.ConvertFromInvariantString(value);\n                    nullConversion = result is null;\n                    if (captureConvertedValue is not null)\n                    {{\n                        captureConvertedValue(result);\n                        return default({Name(convertedType)});\n                    }}\n                    return readOnly || nullConversion ? default({Name(convertedType)}) : ({Name(convertedType)})result;\n                }});\n")
-                .Append("                convertedNull = nullConversion;\n")
-                .Append("                if (readOnly) return option;\n                hasNewValue = true;\n                return nullConversion ? default : convertedValue;\n            }\n        }\n");
+                .Append($"                var convertedValue = {nullTest} ? null : ConvertValue<{Name(convertedType)}>(section, converter);\n")
+                .Append("                convertedNull = convertedValue is null;\n                captureConvertedValue?.Invoke(convertedValue);\n")
+                .Append("                if (readOnly) return option;\n                hasNewValue = true;\n")
+                .Append("                if (convertedNull || captureConvertedValue is not null) return default;\n")
+                .Append($"                return validateAssignment ? CastAssignedValue<{Name(convertedType)}>(convertedValue, typeof({Name(type)})) : ({Name(convertedType)})convertedValue;\n            }}\n        }}\n");
         }
 
         AppendComplexBody(body, type, method);
@@ -289,21 +290,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         var initialArgument = byteArray ? DefaultValue : initial;
         var initialGetter = byteArray ? $", getInitialValue: () => {initial}" : string.Empty;
         var value = "value" + index;
-        var captureConversion = writable && GetCustomConverter(property.Type) is not null;
-        var capture = captureConversion ? $", captureConvertedValue: item => converted{index} = item" : string.Empty;
-        if (captureConversion)
-        {
-            body.Append($"        object converted{index} = null;\n");
-        }
         body.Append($"        var changed{index} = false;\n")
             .Append($"        {Name(property.Type)} {value} = {(constructorBound ? "!created && " : string.Empty)}hasChild{index}\n")
-            .Append($"            ? {Build(property.Type)}(child{index}, {initialArgument}, out changed{index}, {(writable ? FalseLiteral : "true")}{ConversionArgument(property.Type, probe)}{initialGetter}{capture})\n")
+            .Append($"            ? {Build(property.Type)}(child{index}, {initialArgument}, out changed{index}, {(writable ? FalseLiteral : "true")}{ConversionArgument(property.Type, probe, validateAssignment: writable)}{initialGetter})\n")
             .Append($"            : {(writable ? getter : DefaultValue)};\n");
-        if (captureConversion)
-        {
-            var convertedType = IsNullable(property.Type) ? ((INamedTypeSymbol)property.Type).TypeArguments[0] : property.Type;
-            body.Append($"        if (converted{index} is not null) {value} = CastPropertyValue<{Name(convertedType)}>(converted{index}, typeof({Name(property.Type)}));\n");
-        }
         if (!writable)
         {
             return;
@@ -491,7 +481,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
                 .Append($"            throw new global::System.ArgumentException($\"Object of type 'System.String' cannot be converted to type '{{typeof({Name(parameterType)})}}'.\");\n");
         }
 
-        body.Append($"        var value = {Build(parameterType)}(section, default, out _, out var convertedNull, hasExistingValue: false{ConversionArgument(parameterType)});\n")
+        body.Append($"        var value = {Build(parameterType)}(section, default, out _, out var convertedNull, hasExistingValue: false{ConversionArgument(parameterType, validateAssignment: true)});\n")
             .Append($"        if (convertedNull) {missingStatement};\n");
         if (arraySeed)
         {
@@ -821,9 +811,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
     }
 
-    private string ConversionArgument(ITypeSymbol type, string variable = ConversionVariable)
+    private string ConversionArgument(ITypeSymbol type, string variable = ConversionVariable, bool validateAssignment = false)
     {
-        return GetCustomConverter(type) is null ? string.Empty : $", conversionProbe: {variable}";
+        var assignment = validateAssignment ? ", validateAssignment: true" : string.Empty;
+        return GetCustomConverter(type) is null ? string.Empty : $", conversionProbe: {variable}{assignment}";
     }
 
     private string ScalarConversionCondition(ITypeSymbol type, string section, string probe = ConversionVariable)
