@@ -908,6 +908,33 @@ public sealed class OptionBindingGeneratorTests
     public void GeneratorShouldDiscoverGenericHelpers(string call, string helper, string argument)
         => AssertDiscoversGenericHelper(call, helper, argument);
 
+    [Theory(DisplayName = "Option generator discovers closed options from unqualified property and field references")]
+    [InlineData("using static Registration<int>;", "", "public static System.Action<Kafka> ConfigureBroker => kafka => kafka.AddKafkaBroker<Settings<T>>();")]
+    [InlineData("using static Registration<int>;", "", "public static readonly System.Action<Kafka> ConfigureBroker = kafka => kafka.AddKafkaBroker<Settings<T>>();")]
+    [InlineData("", ": Registration<int>", "protected static System.Action<Kafka> ConfigureBroker => kafka => kafka.AddKafkaBroker<Settings<T>>();")]
+    public void GeneratorShouldDiscoverUnqualifiedGenericMember(string import, string inheritance, string member)
+    {
+        var compilation = CreateCompilation($$"""
+            using Kafka = PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration;
+            {{import}}
+            public sealed class Settings<T> : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public class Registration<T> { {{member}} }
+            public sealed class Host {{inheritance}}
+            {
+                public static void Register(Kafka kafka)
+                {
+                    var configure = ConfigureBroker;
+                    configure(kafka);
+                }
+            }
+            """);
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::Settings<int>>");
+    }
+
     [Theory(DisplayName = "Option generator discovers closed options through pattern members")]
     [InlineData("if (new Registration<int>() is { Configure: var configure }) configure(kafka);", "sealed class Registration<T> { public System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     [InlineData("if (new Registration<int>() is ({ Configure: var configure })) configure(kafka);", "sealed class Registration<T> { public System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]

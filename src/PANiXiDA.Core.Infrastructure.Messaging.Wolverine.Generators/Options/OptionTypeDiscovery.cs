@@ -54,7 +54,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         {
             token.ThrowIfCancellationRequested();
             VisitImplicitCalls(model, node, substitutions);
-            if (!IsSymbolReference(node, substitutions.Count != 0))
+            if (!IsSymbolReference(node))
             {
                 continue;
             }
@@ -82,10 +82,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         }
     }
 
-    private static bool IsSymbolReference(SyntaxNode node, bool hasSubstitutions)
-        => node is GenericNameSyntax or InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or
+    private static bool IsSymbolReference(SyntaxNode node)
+        => node is SimpleNameSyntax or InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or
             PrimaryConstructorBaseTypeSyntax or MemberAccessExpressionSyntax or MemberBindingExpressionSyntax or ElementAccessExpressionSyntax or
-            ElementBindingExpressionSyntax || hasSubstitutions && node is IdentifierNameSyntax;
+            ElementBindingExpressionSyntax;
 
     private void VisitImplicitCalls(SemanticModel model, SyntaxNode node, TypeSubstitutions substitutions)
     {
