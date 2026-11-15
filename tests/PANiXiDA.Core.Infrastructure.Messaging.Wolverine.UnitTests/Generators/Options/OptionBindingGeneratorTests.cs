@@ -1106,6 +1106,26 @@ public sealed class OptionBindingGeneratorTests
             }
             """, "int");
 
+    [Theory(DisplayName = "Option generator discovers formatting callbacks behind framework composite formatting")]
+    [InlineData("_ = string.Format(\"{0}\", new Registration<int>(kafka));")]
+    [InlineData("_ = string.Format(System.Globalization.CultureInfo.InvariantCulture, \"{0}\", new Registration<int>(kafka));")]
+    [InlineData("_ = string.Concat(new Registration<int>(kafka));")]
+    [InlineData("_ = string.Join(\",\", new[] { new Registration<int>(kafka) });")]
+    [InlineData("_ = new System.Text.StringBuilder().Append(new Registration<int>(kafka));")]
+    [InlineData("System.Console.WriteLine(new Registration<int>(kafka));")]
+    [InlineData("_ = \"prefix\" + new Registration<int>(kafka);")]
+    [InlineData("var value = \"prefix\"; value += new Registration<int>(kafka);")]
+    public void GeneratorShouldDiscoverCompositeFormattingCallback(string call)
+        => AssertDiscoversGenericHelper(call,
+            """
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public override string ToString() { kafka.AddKafkaBroker<Settings<T>>(); return "registered"; }
+            }
+            """, "int");
+
     [Fact(DisplayName = "Option generator discovers formatting registrations exported by a metadata-only generic helper")]
     public void GeneratorShouldDiscoverReferencedFormattingCallback()
         => AssertReferencedGenericRegistration(false,

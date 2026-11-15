@@ -215,6 +215,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         var arguments = operation!.ChildOperations.OfType<IArgumentOperation>().ToArray();
         foreach (var argument in arguments)
         {
+            VisitFormattingContracts(substitutions);
             VisitExternalInterfaceArgument(argument, substitutions);
         }
         var enumerables = arguments.Where(argument => EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)).Any());
@@ -377,19 +378,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     {
         if (interpolation.Contents.OfType<InterpolationSyntax>().Any())
         {
-            // Framework handlers and FormattableString call these contracts outside the source operation tree.
-            INamedTypeSymbol?[] formattingContracts =
-            [
-                compilation.GetSpecialType(SpecialType.System_Object),
-                compilation.GetTypeByMetadataName("System.IFormattable"),
-                compilation.GetTypeByMetadataName("System.ISpanFormattable"),
-            ];
-            var methods = formattingContracts.OfType<INamedTypeSymbol>().SelectMany(contract => contract.GetMembers()).OfType<IMethodSymbol>()
-                .Where(method => method.Name is "ToString" or "TryFormat");
-            foreach (var method in methods)
-            {
-                VisitMethod(method, substitutions);
-            }
+            VisitFormattingContracts(substitutions);
         }
         IOperation?[] operations = [model.GetOperation(interpolation, token)];
         foreach (var content in operations.OfType<IInterpolatedStringOperation>())
@@ -413,6 +402,23 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             {
                 VisitMethod(append.TargetMethod, substitutions);
             }
+        }
+    }
+
+    private void VisitFormattingContracts(TypeSubstitutions substitutions)
+    {
+        // Metadata-only callees can invoke formatting callbacks outside the source operation tree.
+        INamedTypeSymbol?[] contracts =
+        [
+            compilation.GetSpecialType(SpecialType.System_Object),
+            compilation.GetTypeByMetadataName("System.IFormattable"),
+            compilation.GetTypeByMetadataName("System.ISpanFormattable"),
+        ];
+        var methods = contracts.OfType<INamedTypeSymbol>().SelectMany(contract => contract.GetMembers()).OfType<IMethodSymbol>()
+            .Where(method => method.Name is "ToString" or "TryFormat");
+        foreach (var method in methods)
+        {
+            VisitMethod(method, substitutions);
         }
     }
 
@@ -674,6 +680,11 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         {
             var operation = model.GetOperation(expression, token);
             VisitMethods(substitutions, FindOperator(operation));
+            if (operation is IBinaryOperation { OperatorKind: BinaryOperatorKind.Add, Type.SpecialType: SpecialType.System_String } or
+                ICompoundAssignmentOperation { OperatorKind: BinaryOperatorKind.Add, Type.SpecialType: SpecialType.System_String })
+            {
+                VisitFormattingContracts(substitutions);
+            }
             if (operation is IBinaryOperation { OperatorMethod: not null, OperatorKind: BinaryOperatorKind.ConditionalAnd or BinaryOperatorKind.ConditionalOr })
             {
                 // The semantic binary operation exposes & or |; the flow graph exposes its short-circuit operator.
