@@ -796,7 +796,21 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("foreach (var configure in new Registration<int>()) configure(kafka);", "sealed class Registration<T> { public Enumerator GetEnumerator() => new(); public sealed class Enumerator { public bool MoveNext() => false; public System.Action<Kafka> Current => kafka => kafka.AddKafkaBroker<Settings<T>>(); } }", "int")]
     [InlineData("foreach (System.Action<Kafka> configure in new[] { new Registration<int>() }) configure(kafka);", "sealed class Registration<T> { public static implicit operator System.Action<Kafka>(Registration<T> _) => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     [InlineData("_ = Run<int>(kafka);", "static async System.Threading.Tasks.Task Run<T>(Kafka kafka) { var configure = await new Registration<T>(); configure(kafka); } static async System.Threading.Tasks.Task Ignore(dynamic source) { foreach (var _ in source) {} await source; } sealed class Registration<T> { public Awaiter GetAwaiter() => new(); public sealed class Awaiter : System.Runtime.CompilerServices.INotifyCompletion { public bool IsCompleted => true; public void OnCompleted(System.Action continuation) => continuation(); public System.Action<Kafka> GetResult() => kafka => kafka.AddKafkaBroker<Settings<T>>(); } }", "int")]
+    [InlineData("using (new Registration<int>(kafka)) {}", "sealed class Registration<T> : System.IDisposable { private readonly Kafka kafka; public Registration(Kafka kafka) => this.kafka = kafka; public void Dispose() => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("using System.IDisposable registration = new Registration<int>(kafka);", "sealed class Registration<T> : System.IDisposable { private readonly Kafka kafka; public Registration(Kafka kafka) => this.kafka = kafka; void System.IDisposable.Dispose() => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("using var registration = new Registration<int>(kafka);", "ref struct Registration<T> { private readonly Kafka kafka; public Registration(Kafka kafka) => this.kafka = kafka; public void Dispose() => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("_ = Run<int>(kafka);", "static async System.Threading.Tasks.Task Run<T>(Kafka kafka) { await using var registration = new Registration<T>(kafka); } sealed class Registration<T> { private readonly Kafka kafka; public Registration(Kafka kafka) => this.kafka = kafka; public System.Threading.Tasks.ValueTask DisposeAsync(int optional = 0) { kafka.AddKafkaBroker<Settings<T>>(); return default; } }", "int")]
     public void GeneratorShouldDiscoverGenericHelpers(string call, string helper, string argument)
+        => AssertDiscoversGenericHelper(call, helper, argument);
+
+    [Fact(DisplayName = "Option generator discovers disposal inside a generic local function and lambda")]
+    public void GeneratorShouldDiscoverUsingInsideGenericLambda()
+        => AssertDiscoversGenericHelper(
+            "Run<int>(); void Run<T>() { System.Action action = () => { using var registration = new Registration<T>(kafka); }; action(); }",
+            "sealed class Registration<T>(Kafka kafka) : System.IDisposable { public void Dispose() => kafka.AddKafkaBroker<Settings<T>>(); }",
+            "int");
+
+    private static void AssertDiscoversGenericHelper(string call, string helper, string argument)
     {
         var compilation = CreateCompilation($$"""
             using Kafka = PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration;
@@ -812,6 +826,27 @@ public sealed class OptionBindingGeneratorTests
 
         diagnostics.ShouldBeEmpty();
         source.ShouldContain(".Register<global::Settings<" + argument + ">>");
+    }
+
+    [Fact(DisplayName = "Option generator still registers options when a foreach is incomplete")]
+    public void GeneratorShouldContinueAfterUnboundEnumeration()
+    {
+        var compilation = CreateCompilation("""
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public static class Setup
+            {
+                public static void Configure()
+                {
+                    foreach (var item in new object()) { }
+                }
+            }
+            """);
+
+        var driver = CSharpGeneratorDriver.Create(new OptionBindingGenerator()).RunGenerators(compilation, TestContext.Current.CancellationToken);
+        var result = driver.GetRunResult();
+
+        result.Diagnostics.ShouldBeEmpty();
+        result.GeneratedTrees.ShouldContain(tree => tree.ToString().Contains(".Register<global::Settings>", StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "Option generator bounds expanding recursion in static field initializers")]

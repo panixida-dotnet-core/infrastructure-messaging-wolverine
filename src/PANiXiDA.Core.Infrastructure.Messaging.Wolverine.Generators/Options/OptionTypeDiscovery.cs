@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FlowAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 
 using TypeSubstitutions = System.Collections.Generic.Dictionary<Microsoft.CodeAnalysis.ITypeParameterSymbol, Microsoft.CodeAnalysis.ITypeSymbol>;
@@ -9,12 +10,14 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generators.Options;
 
 internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationToken token)
 {
+    private readonly Dictionary<SyntaxTree, SemanticModel> semanticModels = new();
     private readonly HashSet<INamedTypeSymbol> types = new(SymbolEqualityComparer.Default);
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
     private readonly RecursionGuard active = new();
     private readonly RecursionGuard activeMethods = new();
     private readonly RecursionGuard activeInstanceInitializers = new();
     private readonly Dictionary<INamedTypeSymbol, MethodDispatch> methodDispatches = new(SymbolEqualityComparer.Default);
+    private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), IInvocationOperation[]> disposalCalls = new();
 
     internal IEnumerable<INamedTypeSymbol> Discover()
     {
@@ -27,7 +30,11 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
     private void Visit(SyntaxNode root, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
     {
-        var model = compilation.GetSemanticModel(root.SyntaxTree);
+        if (!semanticModels.TryGetValue(root.SyntaxTree, out var model))
+        {
+            model = compilation.GetSemanticModel(root.SyntaxTree);
+            semanticModels.Add(root.SyntaxTree, model);
+        }
         foreach (var node in root.DescendantNodes())
         {
             token.ThrowIfCancellationRequested();
@@ -89,6 +96,52 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
                 var awaiter = model.GetAwaitExpressionInfo(awaitExpression);
                 VisitMethods(substitutions, awaiter.GetAwaiterMethod, awaiter.IsCompletedProperty?.GetMethod, awaiter.GetResultMethod);
                 break;
+            case UsingStatementSyntax:
+            case LocalDeclarationStatementSyntax declaration when declaration.UsingKeyword.RawKind != 0:
+                VisitDisposals(model, node, substitutions);
+                break;
+        }
+    }
+
+    private void VisitDisposals(SemanticModel model, SyntaxNode node, TypeSubstitutions substitutions)
+    {
+        foreach (var operation in new[] { model.GetOperation(node, token) }.OfType<IOperation>())
+        {
+            var root = operation;
+            while (root.Parent is { } parent)
+            {
+                root = parent;
+            }
+            var syntax = root.Syntax;
+            var key = (syntax.SyntaxTree, syntax.SpanStart, syntax.Span.Length);
+            if (!disposalCalls.TryGetValue(key, out var calls))
+            {
+                calls = new[] { ControlFlowGraph.Create(syntax, model, token) }.OfType<ControlFlowGraph>()
+                    .SelectMany(GetDisposalCalls).ToArray();
+                disposalCalls.Add(key, calls);
+            }
+            foreach (var call in calls.Where(call => node.Span.Contains(call.Syntax.Span)))
+            {
+                VisitMethod(call.TargetMethod, substitutions);
+            }
+        }
+    }
+
+    private IEnumerable<IInvocationOperation> GetDisposalCalls(ControlFlowGraph graph)
+    {
+        var operations = graph.Blocks.SelectMany(block => block.Operations.Concat(new[] { block.BranchValue }.OfType<IOperation>()))
+            .SelectMany(operation => operation.DescendantsAndSelf()).ToArray();
+        foreach (var call in operations.OfType<IInvocationOperation>()
+            .Where(call => call.IsImplicit && call.TargetMethod.Name is "Dispose" or "DisposeAsync"))
+        {
+            yield return call;
+        }
+        var nested = graph.LocalFunctions.Select(method => graph.GetLocalFunctionControlFlowGraph(method, token))
+            .Concat(operations.OfType<IFlowAnonymousFunctionOperation>()
+                .Select(function => graph.GetAnonymousFunctionControlFlowGraph(function, token)));
+        foreach (var inner in nested.SelectMany(GetDisposalCalls))
+        {
+            yield return inner;
         }
     }
 

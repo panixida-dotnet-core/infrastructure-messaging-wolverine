@@ -86,6 +86,80 @@ public sealed class OptionBindingInitializationTests
         Should.Throw<ArgumentNullException>(() => new TestInitializer(null!));
     }
 
+    [Fact(DisplayName = "Binding options with a converter does not root a collectible assembly")]
+    public void BinderShouldAllowConverterAssemblyUnloading()
+    {
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+            .Select(path => MetadataReference.CreateFromFile(path));
+        var compilation = CreateCompilation("""
+            using System;
+            using System.ComponentModel;
+            using System.Globalization;
+            using Microsoft.Extensions.Configuration;
+            using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options;
+            using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Generators.Options;
+
+            public sealed class PluginSettings : KafkaBrokerOption
+            {
+                public ConvertedPayload Payload { get; init; }
+            }
+
+            [TypeConverter(typeof(PluginConverter))]
+            public sealed class ConvertedPayload;
+
+            public sealed class PluginConverter : TypeConverter
+            {
+                public static int Calls { get; private set; }
+                public override bool CanConvertFrom(ITypeDescriptorContext context, Type sourceType) => sourceType == typeof(string);
+                public override object ConvertFrom(ITypeDescriptorContext context, CultureInfo culture, object value)
+                {
+                    Calls++;
+                    return new ConvertedPayload();
+                }
+            }
+
+            public static class Plugin
+            {
+                public static bool Bind()
+                {
+                    var configuration = new ConfigurationManager
+                    {
+                        ["Settings:BootstrapServers"] = "localhost:9092",
+                        ["Settings:Payload"] = "value",
+                    };
+                    return OptionBindingInitializationTests.Bind<PluginSettings>(configuration) == "localhost:9092" &&
+                        PluginConverter.Calls == 1;
+                }
+            }
+            """, references);
+
+        var context = BindAndUnload(compilation);
+        for (var attempt = 0; attempt < 10 && context.IsAlive; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+
+        context.IsAlive.ShouldBeFalse();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference BindAndUnload(CSharpCompilation compilation)
+    {
+        var context = new AssemblyLoadContext("CollectedOptions", isCollectible: true);
+        try
+        {
+            var assembly = GenerateAssembly(compilation, context);
+            assembly.GetType("Plugin")!.GetMethod("Bind")!.Invoke(null, null).ShouldBe(true);
+            return new WeakReference(context);
+        }
+        finally
+        {
+            context.Unload();
+        }
+    }
+
     private sealed class TestInitializer(Type optionType) : OptionBindingInitializerAttribute(optionType)
     {
         public override void RegisterBindings() { }
@@ -96,7 +170,7 @@ public sealed class OptionBindingInitializationTests
             [CSharpSyntaxTree.ParseText(source, cancellationToken: TestContext.Current.CancellationToken)], references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-    private static Assembly GenerateAssembly(CSharpCompilation compilation)
+    private static Assembly GenerateAssembly(CSharpCompilation compilation, AssemblyLoadContext? context = null)
     {
         GeneratorDriver driver = CSharpGeneratorDriver.Create(new OptionBindingGenerator());
         driver.RunGeneratorsAndUpdateCompilation(compilation, out var generated, out var diagnostics, TestContext.Current.CancellationToken);
@@ -105,6 +179,6 @@ public sealed class OptionBindingInitializationTests
         var emitted = generated.Emit(stream, cancellationToken: TestContext.Current.CancellationToken);
         emitted.Success.ShouldBeTrue(string.Join(Environment.NewLine, emitted.Diagnostics));
         stream.Position = 0;
-        return AssemblyLoadContext.Default.LoadFromStream(stream);
+        return (context ?? AssemblyLoadContext.Default).LoadFromStream(stream);
     }
 }

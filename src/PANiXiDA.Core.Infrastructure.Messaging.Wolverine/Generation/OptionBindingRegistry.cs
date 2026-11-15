@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -13,7 +12,7 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 [EditorBrowsable(EditorBrowsableState.Never)]
 public static class OptionBindingRegistry
 {
-    private static readonly ConcurrentDictionary<Type, TypeConverter> Converters = new();
+    private static readonly ConditionalWeakTable<Type, TypeConverter> Converters = new();
 
     /// <summary>
     /// Registers a statically compiled binder for an options type.
@@ -33,8 +32,9 @@ public static class OptionBindingRegistry
     public static TypeConverter GetConverter<TValue>(Func<TypeConverter> factory)
     {
         ArgumentNullException.ThrowIfNull(factory);
-        return Converters.GetOrAdd(typeof(TValue), static (_, create) => create()
-            ?? throw new InvalidOperationException("The converter factory returned null."), factory);
+        var type = typeof(TValue);
+        return Converters.TryGetValue(type, out var converter) ? converter : Converters.GetValue(type,
+            _ => factory() ?? throw new InvalidOperationException("The converter factory returned null."));
     }
 
     /// <summary>
