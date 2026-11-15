@@ -158,6 +158,49 @@ public sealed class OptionBindingGeneratorTests
             }
             """, call, string.Empty);
 
+    [Theory(DisplayName = "Option generator exports framework enumeration through generic helpers")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeneratorShouldDiscoverReferencedFrameworkEnumeration(bool sourceReference)
+        => AssertReferencedGenericRegistration(sourceReference,
+            """
+            public static class Setup<T>
+            {
+                public static void Register(Kafka kafka) => System.Linq.Enumerable.First(new Registration<T>())(kafka);
+            }
+            public sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>>
+            {
+                public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator()
+                {
+                    yield return kafka => kafka.AddKafkaBroker<ExportedSettings<T>>();
+                }
+                System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+            """, "Setup<int>.Register(kafka);", string.Empty);
+
+    [Fact(DisplayName = "Option generator exports a private enumerator behind a generic helper")]
+    public void GeneratorShouldDiscoverReferencedPrivateEnumerator()
+        => AssertReferencedGenericRegistration(false,
+            """
+            public static class Setup<T>
+            {
+                public static void Register(Kafka kafka) => System.Linq.Enumerable.First(new Registration<T>())(kafka);
+            }
+            public sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>>
+            {
+                public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator() => new Enumerator();
+                System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+                private sealed class Enumerator : System.Collections.Generic.IEnumerator<System.Action<Kafka>>
+                {
+                    public System.Action<Kafka> Current => kafka => kafka.AddKafkaBroker<ExportedSettings<T>>();
+                    object System.Collections.IEnumerator.Current => Current;
+                    public bool MoveNext() => true;
+                    public void Reset() { }
+                    public void Dispose() { }
+                }
+            }
+            """, "Setup<int>.Register(kafka);", string.Empty);
+
     private static void AssertReferencedGenericRegistration(bool sourceReference, string helper, string call, string hostType)
     {
         const string kafka = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration";
@@ -1036,6 +1079,54 @@ public sealed class OptionBindingGeneratorTests
             }
             """,
             formatted.Length == 0 ? "string" : "int");
+
+    [Theory(DisplayName = "Option generator discovers closed enumerators consumed by framework helpers")]
+    [InlineData("System.Linq.Enumerable.ToArray(new Registration<int>())[0](kafka);")]
+    [InlineData("System.Linq.Enumerable.First(new Registration<int>())(kafka);")]
+    [InlineData("new System.Collections.Generic.List<System.Action<Kafka>>(new Registration<int>())[0](kafka);")]
+    [InlineData("System.Linq.Enumerable.First(System.Linq.Enumerable.Select(new Registration<int>(), value => value))(kafka);")]
+    [InlineData("System.Collections.Generic.IEnumerable<System.Action<Kafka>> sequence = new Registration<int>(); System.Linq.Enumerable.First(sequence)(kafka);")]
+    [InlineData("System.Linq.Enumerable.First(System.Linq.Enumerable.Cast<System.Action<Kafka>>(new Registration<int>()))(kafka);")]
+    [InlineData("Forward(new Registration<int>(), kafka);")]
+    public void GeneratorShouldDiscoverFrameworkEnumeration(string call)
+        => AssertDiscoversGenericHelper(call,
+            """
+            static void Forward<T>(Registration<T> source, Kafka kafka) => System.Linq.Enumerable.First(source)(kafka);
+            sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>>
+            {
+                public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator()
+                {
+                    yield return kafka => kafka.AddKafkaBroker<Settings<T>>();
+                }
+                System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+            """, "int");
+
+    [Theory(DisplayName = "Option generator discovers enumerator members consumed by framework helpers")]
+    [InlineData("Current")]
+    [InlineData("MoveNext")]
+    [InlineData("Dispose")]
+    public void GeneratorShouldDiscoverFrameworkEnumeratorMembers(string member)
+        => AssertDiscoversGenericHelper("System.Linq.Enumerable.First(new Registration<int>(kafka))(kafka);",
+            $$"""
+            sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator() => new Enumerator<T>(kafka);
+                System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+            }
+            sealed class Enumerator<T> : System.Collections.Generic.IEnumerator<System.Action<Kafka>>
+            {
+                private readonly Kafka kafka;
+                public Enumerator(Kafka kafka) => this.kafka = kafka;
+                public System.Action<Kafka> Current { get { {{(member == "Current" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return _ => { }; } }
+                object System.Collections.IEnumerator.Current => Current;
+                public bool MoveNext() { {{(member == "MoveNext" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return true; }
+                public void Reset() { }
+                public void Dispose() { {{(member == "Dispose" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} }
+            }
+            """, "int");
 
     [Theory(DisplayName = "Option generator discovers closed options through record copy constructors")]
     [InlineData("_ = new Registration<int>(kafka) with { };", false, false)]

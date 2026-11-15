@@ -19,6 +19,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     private readonly RecursionGuard activeInstanceInitializers = new();
     private readonly Dictionary<INamedTypeSymbol, MethodDispatch> methodDispatches = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), (SyntaxNode Syntax, IMethodSymbol Method, bool Disposal)[]> implicitFlowCalls = [];
+    private readonly INamedTypeSymbol? enumerable = compilation.GetTypeByMetadataName("System.Collections.IEnumerable");
+    private readonly INamedTypeSymbol? genericEnumerable = compilation.GetTypeByMetadataName("System.Collections.Generic.IEnumerable`1");
     private readonly INamedTypeSymbol? notifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.INotifyCompletion");
     private readonly INamedTypeSymbol? criticalNotifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.ICriticalNotifyCompletion");
 
@@ -96,6 +98,9 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
         switch (node)
         {
+            case InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax:
+                VisitExternalEnumeration(model.GetOperation(node, token), substitutions);
+                break;
             case WithExpressionSyntax:
                 if (model.GetOperation(node, token) is IWithOperation operation)
                 {
@@ -144,6 +149,75 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         }
     }
 
+    private void VisitExternalEnumeration(IOperation? operation, TypeSubstitutions substitutions)
+    {
+        var method = operation switch
+        {
+            IInvocationOperation invocation => invocation.TargetMethod,
+            IObjectCreationOperation creation => creation.Constructor,
+            _ => null,
+        };
+        if (method is null || HasSource(method.OriginalDefinition))
+        {
+            return;
+        }
+        var arguments = operation!.ChildOperations.OfType<IArgumentOperation>()
+            .Where(argument => EnumerableContracts(argument.Parameter?.Type).Any());
+        foreach (var argument in arguments)
+        {
+            foreach (var contract in EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)))
+            {
+                VisitExternalEnumerator(contract.GetMembers("GetEnumerator").OfType<IMethodSymbol>().Single(), substitutions);
+            }
+            var value = argument.Value;
+            while (value is IConversionOperation conversion)
+            {
+                value = conversion.Operand;
+            }
+            if (value.Type is not null && Substitute(value.Type, substitutions) is INamedTypeSymbol source)
+            {
+                foreach (var contract in EnumerableContracts(source))
+                {
+                    var enumerator = contract.GetMembers("GetEnumerator").OfType<IMethodSymbol>().Single();
+                    VisitExternalEnumerator(source.FindImplementationForInterfaceMember(enumerator) as IMethodSymbol, substitutions);
+                }
+            }
+        }
+    }
+
+    private void VisitExternalEnumerator(IMethodSymbol? getEnumerator, TypeSubstitutions substitutions)
+    {
+        if (getEnumerator is null)
+        {
+            return;
+        }
+        VisitMethod(getEnumerator, substitutions);
+        if (Substitute(getEnumerator.ReturnType, substitutions) is not INamedTypeSymbol enumerator)
+        {
+            return;
+        }
+        var members = enumerator.AllInterfaces.Concat(new[] { enumerator }).SelectMany(type => type.GetMembers());
+        foreach (var member in members)
+        {
+            switch (member)
+            {
+                case IMethodSymbol { Name: "MoveNext" or "Dispose" } method:
+                    VisitMethod(method, substitutions);
+                    break;
+                case IPropertySymbol { Name: "Current" } property:
+                    VisitMethods(substitutions, property.GetMethod);
+                    break;
+            }
+        }
+    }
+
+    private IEnumerable<INamedTypeSymbol> EnumerableContracts(ITypeSymbol? type)
+        => type is INamedTypeSymbol named
+            ? named.AllInterfaces.Concat(new[] { named }).Where(contract =>
+                SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, enumerable) ||
+                SymbolEqualityComparer.Default.Equals(contract.OriginalDefinition, genericEnumerable))
+            : [];
+
     private void VisitEnumeration(SemanticModel model, CommonForEachStatementSyntax enumeration, TypeSubstitutions substitutions)
     {
         var iteration = model.GetForEachStatementInfo(enumeration);
@@ -166,6 +240,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         foreach (var call in calls)
         {
             VisitMethod(call.TargetMethod, substitutions);
+            VisitExternalEnumeration(call, substitutions);
         }
     }
 
@@ -670,7 +745,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             {
                 optionTemplates.Add(named);
             }
-            return;
+            if (!collectTemplates)
+            {
+                return;
+            }
         }
         if (!types.Add(named) ||
             named.DeclaringSyntaxReferences.Length == 0 && !templates.HasExports(named.ContainingAssembly!))
