@@ -118,6 +118,16 @@ public sealed class OptionBindingGenerator : IIncrementalGenerator
                 private sealed class UnsupportedRuntimeTypeException(global::System.Type type, global::System.Type declaredType, string path)
                     : global::System.NotSupportedException($"Runtime configuration type '{type}' at '{path}' differs from the declared model type '{declaredType}'. Declare the concrete configuration model type.") { }
 
+                private static T[] MergeConstructorSeed<T>(string seed, global::System.Collections.Generic.IEnumerable<T> values)
+                {
+                    var items = new global::System.Collections.Generic.List<object>();
+                    foreach (var character in seed) items.Add(character);
+                    foreach (var value in values) items.Add(value);
+                    var merged = new T[items.Count];
+                    ((global::System.Collections.IList)items).CopyTo(merged, 0);
+                    return merged;
+                }
+
             """).Append(methods).Append("}\n");
         context.AddSource("OptionBindings.g.cs", metadata.Append(source).ToString());
     }

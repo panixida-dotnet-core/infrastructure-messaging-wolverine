@@ -439,16 +439,24 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
         AppendConversionProbe(body, parameterType);
         var conversion = ScalarConversionCondition(parameterType, "section");
+        var arraySeed = false;
         if (conversion != "true")
         {
             var nullableEmpty = IsNullable(parameterType) ? " && section.Value != string.Empty" : string.Empty;
-            var arrayLeaf = IsArrayLike(parameterType) ? $" && !{AnyChildren}" : string.Empty;
+            arraySeed = IsArrayLike(parameterType);
+            var arrayLeaf = arraySeed ? $" && !{AnyChildren}" : string.Empty;
             body.Append($"        if (section.Value is not null{nullableEmpty}{arrayLeaf} && !({conversion}))\n")
                 .Append($"            throw new global::System.ArgumentException($\"Object of type 'System.String' cannot be converted to type '{{typeof({Name(parameterType)})}}'.\");\n");
         }
 
         body.Append($"        var value = {Build(parameterType)}(section, default, out _, out var convertedNull, hasExistingValue: false{ConversionArgument(parameterType)});\n")
             .Append($"        if (convertedNull) {missingStatement};\n");
+        if (arraySeed)
+        {
+            var element = parameterType is IArrayTypeSymbol array ? array.ElementType : ((INamedTypeSymbol)parameterType).TypeArguments[0];
+            body.Append($"        if (section.Value is {{ Length: > 0 }} seed && {AnyChildren})\n")
+                .Append($"            return MergeConstructorSeed<{Name(element)}>(seed, value);\n");
+        }
         body.Append(parameterType.IsReferenceType || IsNullable(parameterType)
             ? $"        return value is null ? {missing} : value;\n"
             : "        return value;\n");
@@ -635,12 +643,12 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         }
 
         var rejectNull = nonNullableArray ? $"if (child.Value is null && !global::System.Linq.Enumerable.Any(child.GetChildren()) && ({scalarConversion})) {{ nullElement = true; continue; }}\n                " : string.Empty;
-        var binding = $"var value = {Build(element)}(child, default, out _, out var itemConvertedNull, parentCollection: true, hasExistingValue: false{ConversionArgument(element)});\n                ";
+        var binding = $"var value = {Build(element)}(child, default, out var changed, out var itemConvertedNull, parentCollection: true, hasExistingValue: false{ConversionArgument(element)});\n                ";
         if (nonNullableArray)
         {
             binding += "if (itemConvertedNull) { nullElement = true; continue; }\n                ";
         }
-        AppendItems(body, element, rejectNull + binding + "items.Add(value);");
+        AppendItems(body, element, rejectNull + binding + "if (changed) items.Add(value);");
         if (nonNullableArray)
         {
             body.Append("        if (nullElement) throw new global::System.InvalidCastException(\"At least one element in the source array could not be cast down to the destination array type.\");\n");

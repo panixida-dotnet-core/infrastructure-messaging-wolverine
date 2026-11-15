@@ -7,7 +7,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 {
     private readonly HashSet<INamedTypeSymbol> types = new(SymbolEqualityComparer.Default);
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
-    private readonly HashSet<IMethodSymbol> active = new(SymbolEqualityComparer.Default);
+    private readonly HashSet<ISymbol> active = new(SymbolEqualityComparer.Default);
 
     internal IEnumerable<INamedTypeSymbol> Discover()
     {
@@ -22,7 +22,9 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     {
         var model = compilation.GetSemanticModel(root.SyntaxTree);
         foreach (var node in root.DescendantNodes().Where(node => node is GenericNameSyntax or InvocationExpressionSyntax or
-            BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or PrimaryConstructorBaseTypeSyntax))
+            BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or PrimaryConstructorBaseTypeSyntax or
+            MemberAccessExpressionSyntax or MemberBindingExpressionSyntax ||
+            substitutions.Count != 0 && node is IdentifierNameSyntax))
         {
             token.ThrowIfCancellationRequested();
             var symbol = model.GetSymbolInfo(node, token).Symbol;
@@ -34,19 +36,16 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             {
                 VisitMethod(method, substitutions);
             }
+            else if (symbol is IPropertySymbol or IFieldSymbol && symbol.ContainingType is { IsGenericType: true } containing)
+            {
+                VisitDefinition(symbol.OriginalDefinition, ContainingArguments(containing, substitutions));
+            }
         }
     }
 
     private void VisitMethod(IMethodSymbol method, Dictionary<ITypeParameterSymbol, ITypeSymbol> inherited)
     {
-        var substitutions = new Dictionary<ITypeParameterSymbol, ITypeSymbol>(inherited, SymbolEqualityComparer.Default);
-        for (var containing = method.ContainingType; containing is not null; containing = containing.ContainingType)
-        {
-            for (var index = 0; index < containing.TypeArguments.Length; index++)
-            {
-                substitutions[containing.OriginalDefinition.TypeParameters[index]] = Substitute(containing.TypeArguments[index], inherited);
-            }
-        }
+        var substitutions = ContainingArguments(method.ContainingType, inherited);
         var definition = (method.ReducedFrom ?? method).OriginalDefinition;
         for (var index = 0; index < method.TypeArguments.Length; index++)
         {
@@ -55,7 +54,25 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             AddType(argument);
         }
         AddType(Substitute(method.ReturnType, substitutions));
+        VisitDefinition(definition, substitutions);
+    }
 
+    private Dictionary<ITypeParameterSymbol, ITypeSymbol> ContainingArguments(INamedTypeSymbol? type,
+        Dictionary<ITypeParameterSymbol, ITypeSymbol> inherited)
+    {
+        var substitutions = new Dictionary<ITypeParameterSymbol, ITypeSymbol>(inherited, SymbolEqualityComparer.Default);
+        for (var containing = type; containing is not null; containing = containing.ContainingType)
+        {
+            for (var index = 0; index < containing.TypeArguments.Length; index++)
+            {
+                substitutions[containing.OriginalDefinition.TypeParameters[index]] = Substitute(containing.TypeArguments[index], inherited);
+            }
+        }
+        return substitutions;
+    }
+
+    private void VisitDefinition(ISymbol definition, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
+    {
         if (definition.DeclaringSyntaxReferences.Length == 0 || substitutions.Values.Any(type => ContainsTypeParameter(type)) || active.Contains(definition))
         {
             return;

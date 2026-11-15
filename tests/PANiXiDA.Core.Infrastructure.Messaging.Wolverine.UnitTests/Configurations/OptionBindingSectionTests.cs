@@ -10,6 +10,73 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingSectionTests
 {
+    [Fact(DisplayName = "Generated collections skip entries that produce no value")]
+    public void BinderShouldOmitUnboundCollectionEntries()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Sets:0:0"] = "1",
+            ["Options:Maps:0:true"] = "1",
+        };
+
+        var original = configuration.GetSection("Options").Get<NestedCollectionOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<NestedCollectionOptions>(configuration, "Options");
+
+        generated.Sets.ShouldBe(original.Sets);
+        generated.Maps.ShouldBe(original.Maps);
+        generated.Sets.ShouldBeEmpty();
+        generated.Maps.ShouldBeEmpty();
+    }
+
+    [Theory(DisplayName = "Generated array-like constructor arguments preserve scalar sequences")]
+    [InlineData("array")]
+    [InlineData("enumerable")]
+    [InlineData("collection")]
+    [InlineData("list")]
+    public void BinderShouldPreserveConstructorArraySeeds(string kind)
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Value"] = "ab",
+            ["Options:Value:0"] = "c",
+        };
+
+        switch (kind)
+        {
+            case "array": AssertSeed<char[]>(configuration); break;
+            case "enumerable": AssertSeed<IEnumerable<char>>(configuration); break;
+            case "collection": AssertSeed<IReadOnlyCollection<char>>(configuration); break;
+            default: AssertSeed<IReadOnlyList<char>>(configuration); break;
+        }
+    }
+
+    [Fact(DisplayName = "Generated array constructor arguments preserve incompatible scalar seed failures")]
+    public void BinderShouldRejectIncompatibleArraySeeds()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Value"] = "ab",
+            ["Options:Value:0"] = "configured",
+        };
+
+        var original = Record.Exception(() => configuration.GetSection("Options").Get<OptionBindingFailureTests.ParameterOptions<string[]>>());
+        var generated = Record.Exception(() => OptionBindingRegistry.GetRequired<OptionBindingFailureTests.ParameterOptions<string[]>>(configuration, "Options"));
+
+        original.ShouldNotBeNull();
+        generated.ShouldNotBeNull();
+        generated.GetType().ShouldBe(original.GetType());
+        generated.Message.ShouldBe(original.Message);
+    }
+
+    private static void AssertSeed<T>(ConfigurationManager configuration) where T : IEnumerable<char>
+    {
+        var original = configuration.GetSection("Options").Get<OptionBindingFailureTests.ParameterOptions<T>>()!;
+        var generated = OptionBindingRegistry.GetRequired<OptionBindingFailureTests.ParameterOptions<T>>(configuration, "Options");
+
+        generated.Value.ToArray().ShouldBe(original.Value.ToArray());
+        generated.Value.ToArray().ShouldBe(['a', 'b', 'c']);
+    }
+
     [Fact(DisplayName = "Generated scalar constructor parameters preserve explicit null results with children")]
     public void BinderShouldPreserveNullScalarParameters()
     {
@@ -211,6 +278,12 @@ public sealed class OptionBindingSectionTests
     public sealed class OptionalScalarOptions(int value = 42) : KafkaConsumerOption
     {
         public int Value { get; } = value;
+    }
+
+    public sealed class NestedCollectionOptions : KafkaConsumerOption
+    {
+        public List<ISet<int>> Sets { get; init; } = [];
+        public IReadOnlyDictionary<bool, int>[] Maps { get; init; } = [];
     }
 
     public sealed class StructOptions : KafkaConsumerOption

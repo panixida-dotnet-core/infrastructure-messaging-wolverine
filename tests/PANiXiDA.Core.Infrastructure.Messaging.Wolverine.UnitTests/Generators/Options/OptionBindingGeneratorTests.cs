@@ -402,6 +402,8 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("Point")]
     [InlineData("Point?")]
     [InlineData("Point[]")]
+    [InlineData("Point[][]")]
+    [InlineData("System.Collections.Generic.IReadOnlyList<char>")]
     [InlineData("Microsoft.Extensions.Configuration.IConfigurationSection")]
     public void GeneratorShouldCompileConstructorParameters(string type)
     {
@@ -736,6 +738,10 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("_ = new Registration<int>(kafka);", "sealed class Registration<T> { public Registration(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     [InlineData("Registration<int> registration = new(kafka);", "sealed class Registration<T> { public Registration(Kafka kafka) : this(kafka, 0) {} private Registration(Kafka kafka, int _) => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     [InlineData("_ = new Registration<int>(kafka);", "sealed class Registration<T>(Kafka kafka) : RegistrationBase<T>(kafka); class RegistrationBase<T> { protected RegistrationBase(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("Registration<int>.Configure(kafka);", "static class Registration<T> { public static System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("Registration<int>.Configure(kafka);", "static class Registration<T> { public static System.Action<Kafka> Configure { get; } = kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("Registration<int>.Configure(kafka);", "static class Registration<T> { public static readonly System.Action<Kafka> Configure = kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("Registration<int>? registration = new(); registration?.Configure(kafka);", "sealed class Registration<T> { public System.Action<Kafka> Configure => Forward; private System.Action<Kafka> Forward => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     public void GeneratorShouldDiscoverGenericHelpers(string call, string helper, string argument)
     {
         var compilation = CreateCompilation($$"""
