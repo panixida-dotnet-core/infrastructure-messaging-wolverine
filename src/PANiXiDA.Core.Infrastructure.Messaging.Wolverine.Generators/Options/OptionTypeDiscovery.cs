@@ -96,6 +96,12 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
         switch (node)
         {
+            case WithExpressionSyntax:
+                if (model.GetOperation(node, token) is IWithOperation operation)
+                {
+                    VisitMethods(substitutions, operation.CloneMethod);
+                }
+                break;
             case ElementAccessExpressionSyntax or ElementBindingExpressionSyntax:
                 if (model.GetOperation(node, token) is IImplicitIndexerReferenceOperation indexer)
                 {
@@ -521,6 +527,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         {
             VisitDispatchCall(method, substitutions);
         }
+        if (containing.IsRecord && method is { IsImplicitlyDeclared: true, Name: "<Clone>$" })
+        {
+            VisitMethods(substitutions, containing.InstanceConstructors.FirstOrDefault(IsRecordCopyConstructor));
+        }
         if (containing.IsGenericType)
         {
             VisitStaticInitialization(containing, substitutions);
@@ -549,8 +559,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
 
+        var copyConstructor = method.IsImplicitlyDeclared && IsRecordCopyConstructor(method);
         var candidates = baseType.InstanceConstructors
-            .Where(constructor => constructor.Parameters.All(parameter => parameter.IsOptional || parameter.IsParams) &&
+            .Where(constructor => (copyConstructor ? IsRecordCopyConstructor(constructor) :
+                constructor.Parameters.All(parameter => parameter.IsOptional || parameter.IsParams)) &&
                 compilation.IsSymbolAccessibleWithin(constructor, containing))
             .OrderBy(constructor => constructor.Parameters.Any(parameter => parameter.IsParams))
             .ThenBy(constructor => constructor.Parameters.Length);
@@ -559,6 +571,11 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             VisitMethod(constructor, substitutions);
         }
     }
+
+    private static bool IsRecordCopyConstructor(IMethodSymbol method)
+        => method.ContainingType is { IsRecord: true, IsValueType: false } containing &&
+            method.MethodKind == MethodKind.Constructor && method.Parameters.Length == 1 &&
+            SymbolEqualityComparer.Default.Equals(method.Parameters[0].Type, containing);
 
     private static bool IsExplicitConstructorInitializer(SyntaxNode node)
         => node is ConstructorInitializerSyntax ||

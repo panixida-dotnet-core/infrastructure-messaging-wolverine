@@ -134,6 +134,30 @@ public sealed class OptionBindingGeneratorTests
             }
             """);
 
+    [Theory(DisplayName = "Option generator imports record copy registrations from reference assemblies")]
+    [InlineData(false, "_ = new Registration<int>(kafka) with { };")]
+    [InlineData(false, "_ = new Derived<int>(kafka) with { };")]
+    [InlineData(false, "Registration<int> value = new Derived<int>(kafka); _ = value with { };")]
+    [InlineData(true, "Registration<int> value = new Derived<int>(kafka); _ = value with { };")]
+    public void GeneratorShouldDiscoverReferencedRecordCopy(bool sourceReference, string call)
+        => AssertReferencedGenericRegistration(sourceReference,
+            """
+            public record Registration<T>
+            {
+                protected Kafka Kafka { get; }
+                public Registration(Kafka kafka) => Kafka = kafka;
+                protected Registration(Registration<T> other)
+                {
+                    Kafka = other.Kafka;
+                    Kafka.AddKafkaBroker<ExportedSettings<T>>();
+                }
+            }
+            public sealed record Derived<T> : Registration<T>
+            {
+                public Derived(Kafka kafka) : base(kafka) { }
+            }
+            """, call, string.Empty);
+
     private static void AssertReferencedGenericRegistration(bool sourceReference, string helper, string call, string hostType)
     {
         const string kafka = "PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration";
@@ -1012,6 +1036,30 @@ public sealed class OptionBindingGeneratorTests
             }
             """,
             formatted.Length == 0 ? "string" : "int");
+
+    [Theory(DisplayName = "Option generator discovers closed options through record copy constructors")]
+    [InlineData("_ = new Registration<int>(kafka) with { };", false, false)]
+    [InlineData("Clone(new Registration<int>(kafka));", false, false)]
+    [InlineData("_ = new Derived<int>(kafka) with { };", true, false)]
+    [InlineData("Registration<int> value = new Derived<int>(kafka); _ = value with { };", true, true)]
+    [InlineData("Registration<int> value = new Derived<int>(kafka); _ = value with { };", true, false)]
+    public void GeneratorShouldDiscoverRecordCopyConstructors(string call, bool derived, bool inDerived)
+        => AssertDiscoversGenericHelper(call,
+            $$"""
+            static void Clone<T>(Registration<T> value) { _ = value with { }; }
+            record Registration<T>
+            {
+                protected Kafka Kafka { get; }
+                public Registration(Kafka kafka) => Kafka = kafka;
+                protected Registration(Registration<T> other)
+                {
+                    Kafka = other.Kafka;
+                    {{(!inDerived ? "Kafka.AddKafkaBroker<Settings<T>>();" : "")}}
+                }
+            }
+            {{(derived ? "sealed record Derived<T> : Registration<T> { public Derived(Kafka kafka) : base(kafka) { } " +
+                (inDerived ? "private Derived(Derived<T> other) : base(other) { Kafka.AddKafkaBroker<Settings<T>>(); }" : "") + " }" : "")}}
+            """, "int");
 
     [Theory(DisplayName = "Option generator discovers closed options through implicit index members")]
     [InlineData("[^1]", "Length", true)]
