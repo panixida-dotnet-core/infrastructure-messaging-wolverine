@@ -1126,6 +1126,42 @@ public sealed class OptionBindingGeneratorTests
             }
             """, "int");
 
+    [Theory(DisplayName = "Option generator discovers framework custom formatter callbacks")]
+    [InlineData("_ = string.Format(new Registration<int>(kafka), \"{0}\", 42);")]
+    [InlineData("_ = string.Create(new Registration<int>(kafka), $\"{42}\");")]
+    public void GeneratorShouldDiscoverCustomFormattingCallback(string call)
+        => AssertDiscoversGenericHelper(call,
+            """
+            sealed class Registration<T> : System.IFormatProvider, System.ICustomFormatter
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public object GetFormat(System.Type type) => this;
+                public string Format(string format, object value, System.IFormatProvider provider)
+                {
+                    kafka.AddKafkaBroker<Settings<T>>();
+                    return "registered";
+                }
+            }
+            """, "int");
+
+    [Fact(DisplayName = "Option generator discovers framework UTF8 formatting callbacks")]
+    public void GeneratorShouldDiscoverUtf8FormattingCallback()
+        => AssertDiscoversGenericHelper("System.Span<byte> destination = stackalloc byte[256]; _ = System.Text.Unicode.Utf8.TryWrite(destination, $\"{new Registration<int>(kafka)}\", out _);",
+            """
+            sealed class Registration<T> : System.IUtf8SpanFormattable
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public bool TryFormat(System.Span<byte> destination, out int written, System.ReadOnlySpan<char> format, System.IFormatProvider provider)
+                {
+                    kafka.AddKafkaBroker<Settings<T>>();
+                    written = 0;
+                    return true;
+                }
+            }
+            """, "int");
+
     [Fact(DisplayName = "Option generator discovers formatting registrations exported by a metadata-only generic helper")]
     public void GeneratorShouldDiscoverReferencedFormattingCallback()
         => AssertReferencedGenericRegistration(false,

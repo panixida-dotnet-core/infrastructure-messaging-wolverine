@@ -413,9 +413,11 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             compilation.GetSpecialType(SpecialType.System_Object),
             compilation.GetTypeByMetadataName("System.IFormattable"),
             compilation.GetTypeByMetadataName("System.ISpanFormattable"),
+            compilation.GetTypeByMetadataName("System.IUtf8SpanFormattable"),
+            compilation.GetTypeByMetadataName("System.ICustomFormatter"),
         ];
         var methods = contracts.OfType<INamedTypeSymbol>().SelectMany(contract => contract.GetMembers()).OfType<IMethodSymbol>()
-            .Where(method => method.Name is "ToString" or "TryFormat");
+            .Where(method => method.Name is "ToString" or "TryFormat" or "Format");
         foreach (var method in methods)
         {
             VisitMethod(method, substitutions);
