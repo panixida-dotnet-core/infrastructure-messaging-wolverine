@@ -819,6 +819,96 @@ public sealed class OptionBindingGeneratorTests
     public void GeneratorShouldDiscoverPatternMembers(string call, string helper, string argument)
         => AssertDiscoversGenericHelper(call, helper, argument);
 
+    [Theory(DisplayName = "Option generator discovers closed options through awaiter continuation methods")]
+    [InlineData("System.Runtime.CompilerServices.INotifyCompletion", "void System.Runtime.CompilerServices.INotifyCompletion.OnCompleted(System.Action continuation) { kafka.AddKafkaBroker<Settings<T>>(); continuation(); }")]
+    [InlineData("System.Runtime.CompilerServices.ICriticalNotifyCompletion", "void System.Runtime.CompilerServices.INotifyCompletion.OnCompleted(System.Action continuation) => throw new System.NotSupportedException(); void System.Runtime.CompilerServices.ICriticalNotifyCompletion.UnsafeOnCompleted(System.Action continuation) { kafka.AddKafkaBroker<Settings<T>>(); continuation(); }")]
+    public void GeneratorShouldDiscoverAwaiterContinuation(string contract, string continuation)
+        => AssertDiscoversGenericHelper(
+            "_ = Run(kafka);",
+            $$"""
+            static async System.Threading.Tasks.Task Run(Kafka kafka) => await new Registration<int>(kafka);
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public Awaiter GetAwaiter() => new(kafka);
+                public sealed class Awaiter : {{contract}}
+                {
+                    private readonly Kafka kafka;
+                    public Awaiter(Kafka kafka) => this.kafka = kafka;
+                    public bool IsCompleted => false;
+                    public void GetResult() { }
+                    {{continuation}}
+                }
+            }
+            """,
+            "int");
+
+    [Fact(DisplayName = "Option generator discovers a continuation behind an awaiter interface")]
+    public void GeneratorShouldDiscoverInterfaceAwaiterContinuation()
+        => AssertDiscoversGenericHelper(
+            "_ = Run(kafka);",
+            """
+            static async System.Threading.Tasks.Task Run(Kafka kafka) => await new Registration<int>(kafka);
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public IAwaiter GetAwaiter() => new Awaiter<T>(kafka);
+            }
+            interface IAwaiter : System.Runtime.CompilerServices.INotifyCompletion
+            {
+                bool IsCompleted { get; }
+                void GetResult();
+            }
+            sealed class Awaiter<T> : IAwaiter
+            {
+                private readonly Kafka kafka;
+                public Awaiter(Kafka kafka) => this.kafka = kafka;
+                public bool IsCompleted => false;
+                public void GetResult() { }
+                void System.Runtime.CompilerServices.INotifyCompletion.OnCompleted(System.Action continuation)
+                {
+                    kafka.AddKafkaBroker<Settings<T>>();
+                    continuation();
+                }
+            }
+            """,
+            "int");
+
+    [Fact(DisplayName = "Option generator selects awaiter continuation from the declared generic constraint")]
+    public void GeneratorShouldDiscoverConstrainedAwaiterContinuation()
+        => AssertDiscoversGenericHelper(
+            "_ = Run(new Awaiter<int>(kafka));",
+            """
+            static async System.Threading.Tasks.Task Run<TAwaiter>(TAwaiter awaiter) where TAwaiter : IAwaiter
+                => await new Registration<TAwaiter>(awaiter);
+            sealed class Registration<TAwaiter>(TAwaiter awaiter)
+            {
+                public TAwaiter GetAwaiter() => awaiter;
+            }
+            interface IAwaiter : System.Runtime.CompilerServices.INotifyCompletion
+            {
+                bool IsCompleted { get; }
+                void GetResult();
+            }
+            sealed class Awaiter<T> : IAwaiter, System.Runtime.CompilerServices.ICriticalNotifyCompletion
+            {
+                private readonly Kafka kafka;
+                public Awaiter(Kafka kafka) => this.kafka = kafka;
+                public bool IsCompleted => false;
+                public void GetResult() { }
+                void System.Runtime.CompilerServices.INotifyCompletion.OnCompleted(System.Action continuation)
+                {
+                    kafka.AddKafkaBroker<Settings<T>>();
+                    continuation();
+                }
+                void System.Runtime.CompilerServices.ICriticalNotifyCompletion.UnsafeOnCompleted(System.Action continuation)
+                    => throw new System.NotSupportedException();
+            }
+            """,
+            "int");
+
     [Theory(DisplayName = "Option generator discovers closed options through collection expression spreads")]
     [InlineData("System.Action<Kafka>[] callbacks = [..new Registration<int>()]; callbacks[0](kafka);", "sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>> { public System.Collections.Generic.IEnumerator<System.Action<Kafka>> GetEnumerator() { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); } System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator(); }")]
     [InlineData("System.Action<Kafka>[] callbacks = [..new Registration<int>()]; callbacks[0](kafka);", "sealed class Registration<T> : System.Collections.Generic.IEnumerable<System.Action<Kafka>> { System.Collections.Generic.IEnumerator<System.Action<Kafka>> System.Collections.Generic.IEnumerable<System.Action<Kafka>>.GetEnumerator() { yield return kafka => kafka.AddKafkaBroker<Settings<T>>(); } System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new System.NotSupportedException(); }")]

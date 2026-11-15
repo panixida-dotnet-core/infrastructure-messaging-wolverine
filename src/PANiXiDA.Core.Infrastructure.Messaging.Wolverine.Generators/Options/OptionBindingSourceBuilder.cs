@@ -723,7 +723,8 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         AppendCollectionLeaf(body, type, create, OptionVariable);
         if (readOnly)
         {
-            body.Append($"        if (readOnly && option is null) return option;\n        hasNewValue = !readOnly;\n        var items = option is null ? new {concrete}() : new {concrete}(option);\n");
+            body.Append($"        if (readOnly && option is null) return option;\n        hasNewValue = !readOnly;\n        var items = new {concrete}();\n")
+                .Append($"        if (option is not null)\n        {{\n            foreach ({Collections}KeyValuePair<{Name(key)}, {Name(value)}> entry in (global::System.Collections.IEnumerable)option)\n            {{\n                items.Add(entry.Key, entry.Value);\n            }}\n        }}\n");
         }
         else
         {

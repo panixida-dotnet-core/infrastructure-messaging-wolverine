@@ -18,6 +18,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private readonly RecursionGuard activeInstanceInitializers = new();
     private readonly Dictionary<INamedTypeSymbol, MethodDispatch> methodDispatches = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), IInvocationOperation[]> disposalCalls = [];
+    private readonly INamedTypeSymbol? notifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.INotifyCompletion");
+    private readonly INamedTypeSymbol? criticalNotifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.ICriticalNotifyCompletion");
 
     internal IEnumerable<INamedTypeSymbol> Discover()
     {
@@ -97,8 +99,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
                 VisitPattern(model, pattern, substitutions);
                 break;
             case AwaitExpressionSyntax awaitExpression:
-                var awaiter = model.GetAwaitExpressionInfo(awaitExpression);
-                VisitMethods(substitutions, awaiter.GetAwaiterMethod, awaiter.IsCompletedProperty?.GetMethod, awaiter.GetResultMethod);
+                VisitAwait(model.GetAwaitExpressionInfo(awaitExpression), substitutions);
                 break;
             case UsingStatementSyntax:
             case LocalDeclarationStatementSyntax declaration when declaration.UsingKeyword.RawKind != 0:
@@ -154,6 +155,37 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private void VisitIteration(ForEachStatementInfo iteration, TypeSubstitutions substitutions)
         => VisitMethods(substitutions, iteration.GetEnumeratorMethod, iteration.MoveNextMethod, iteration.CurrentProperty?.GetMethod,
             iteration.DisposeMethod, iteration.CurrentConversion.MethodSymbol, iteration.ElementConversion.MethodSymbol);
+
+    private void VisitAwait(AwaitExpressionInfo awaiter, TypeSubstitutions substitutions)
+    {
+        VisitMethods(substitutions, awaiter.GetAwaiterMethod, awaiter.IsCompletedProperty?.GetMethod, awaiter.GetResultMethod);
+        ITypeSymbol?[] returnTypes = [awaiter.GetAwaiterMethod?.ReturnType];
+        foreach (var declaredType in returnTypes.OfType<ITypeSymbol>())
+        {
+            if (Substitute(declaredType, substitutions) is INamedTypeSymbol closedType)
+            {
+                VisitAwaitContinuation(declaredType, closedType, substitutions);
+            }
+        }
+    }
+
+    private void VisitAwaitContinuation(ITypeSymbol declaredType, INamedTypeSymbol awaiter, TypeSubstitutions substitutions)
+    {
+        INamedTypeSymbol?[] contracts =
+        [
+            declaredType.AllInterfaces.Any(type => SymbolEqualityComparer.Default.Equals(type, criticalNotifyCompletion))
+                ? criticalNotifyCompletion : notifyCompletion,
+        ];
+        var methods = contracts.OfType<INamedTypeSymbol>().SelectMany(type => type.GetMembers()).OfType<IMethodSymbol>();
+        foreach (var method in methods)
+        {
+            if (awaiter.TypeKind == TypeKind.Interface)
+            {
+                TrackDispatch(awaiter.OriginalDefinition, method);
+            }
+            VisitMethods(substitutions, awaiter.FindImplementationForInterfaceMember(method) as IMethodSymbol);
+        }
+    }
 
     private void VisitDeconstruction(DeconstructionInfo deconstruction, TypeSubstitutions substitutions)
     {
@@ -483,7 +515,12 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
 
         var declaration = FindDeclaration(contract, method);
         var call = arguments.Length == 0 ? declaration : declaration.Construct(arguments);
-        var dispatch = GetDispatch(contract.TypeKind == TypeKind.Interface ? contract.OriginalDefinition : contract);
+        TrackDispatch(contract.TypeKind == TypeKind.Interface ? contract.OriginalDefinition : contract, call);
+    }
+
+    private void TrackDispatch(INamedTypeSymbol contract, IMethodSymbol call)
+    {
+        var dispatch = GetDispatch(contract);
         if (dispatch.Calls.Add(call))
         {
             foreach (var implementation in dispatch.Implementations.ToArray())

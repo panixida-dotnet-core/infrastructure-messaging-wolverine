@@ -10,6 +10,19 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingSectionTests
 {
+    [Fact(DisplayName = "Generated read-only dictionary binding copies existing entries through non-generic enumeration")]
+    public void BinderShouldEnumerateCopiedDictionary()
+    {
+        var configuration = new ConfigurationManager { ["Options:Values:added"] = "2" };
+
+        var original = configuration.GetSection("Options").Get<DictionaryCopyOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<DictionaryCopyOptions>(configuration, "Options");
+
+        generated.Values.ShouldBe(original.Values);
+        generated.Values["existing"].ShouldBe(1);
+        generated.Values["added"].ShouldBe(2);
+    }
+
     [Fact(DisplayName = "Generated array-compatible binding enumerates existing values instead of using CopyTo")]
     public void BinderShouldEnumerateCopiedSequence()
     {
@@ -429,6 +442,21 @@ public sealed class OptionBindingSectionTests
     public sealed class SequenceCopyOptions<T> : KafkaConsumerOption where T : ICollection<int>, new()
     {
         public IEnumerable<int> Values { get; init; } = new T();
+    }
+
+    public sealed class DictionaryCopyOptions : KafkaBrokerOption
+    {
+        public IReadOnlyDictionary<string, int> Values { get; init; } = new EnumerationOnlyDictionary();
+    }
+
+    public sealed class EnumerationOnlyDictionary : Dictionary<string, int>, ICollection<KeyValuePair<string, int>>
+    {
+        public EnumerationOnlyDictionary() => Add("existing", 1);
+
+        int ICollection<KeyValuePair<string, int>>.Count => throw new InvalidOperationException("Use enumeration instead of reading Count.");
+        IEnumerator<KeyValuePair<string, int>> IEnumerable<KeyValuePair<string, int>>.GetEnumerator()
+            => throw new InvalidOperationException("Use the non-generic enumerator.");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     public sealed class EnumerationOnlyList : List<int>, ICollection<int>
