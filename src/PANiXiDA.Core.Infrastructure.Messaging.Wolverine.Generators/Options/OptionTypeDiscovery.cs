@@ -40,10 +40,11 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             }
             else if (symbol is IPropertySymbol property)
             {
-                foreach (var accessor in new[] { property.GetMethod, property.SetMethod }.OfType<IMethodSymbol>())
-                {
-                    VisitMethod(accessor, substitutions);
-                }
+                VisitAccessors(property.GetMethod, property.SetMethod, substitutions);
+            }
+            else if (symbol is IEventSymbol @event)
+            {
+                VisitAccessors(@event.AddMethod, @event.RemoveMethod, substitutions);
             }
             else if (symbol is IFieldSymbol { ContainingType.IsGenericType: true } field)
             {
@@ -55,20 +56,30 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         }
     }
 
+    private void VisitAccessors(IMethodSymbol? first, IMethodSymbol? second, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
+    {
+        foreach (var accessor in new[] { first, second }.OfType<IMethodSymbol>())
+        {
+            VisitMethod(accessor, substitutions);
+        }
+    }
+
     private void VisitMethod(IMethodSymbol method, Dictionary<ITypeParameterSymbol, ITypeSymbol> inherited)
     {
         var containing = method.ContainingType!;
         var substitutions = ContainingArguments(containing, inherited);
         var definition = (method.ReducedFrom ?? method).OriginalDefinition;
+        var implementation = definition.PartialImplementationPart ?? definition;
         for (var index = 0; index < method.TypeArguments.Length; index++)
         {
             var argument = Substitute(method.TypeArguments[index], inherited);
             substitutions[definition.TypeParameters[index]] = argument;
+            substitutions[implementation.TypeParameters[index]] = argument;
             AddType(argument);
         }
         AddType(Substitute(method.ReturnType, substitutions));
         VisitDefinition(DispatchDefinition(definition), substitutions);
-        if (method.MethodKind is MethodKind.Ordinary or MethodKind.PropertyGet or MethodKind.PropertySet &&
+        if (method.MethodKind is MethodKind.Ordinary or MethodKind.PropertyGet or MethodKind.PropertySet or MethodKind.EventAdd or MethodKind.EventRemove &&
             (containing.TypeKind == TypeKind.Interface || method.IsVirtual || method.IsAbstract || method.IsOverride))
         {
             VisitDispatchCall(method, substitutions);
@@ -84,7 +95,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         if (method.MethodKind == MethodKind.Constructor)
         {
             AddType(Substitute(containing, substitutions));
-            VisitImplicitBaseConstructor(method, containing, substitutions);
+            VisitImplicitBaseConstructor(implementation, containing, substitutions);
         }
     }
 
@@ -255,7 +266,12 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         }
     }
 
-    private static ISymbol DispatchDefinition(IMethodSymbol method) => method.AssociatedSymbol ?? method;
+    private static ISymbol DispatchDefinition(IMethodSymbol method) => method.AssociatedSymbol switch
+    {
+        IPropertySymbol property => property.PartialImplementationPart ?? property,
+        IEventSymbol @event => @event.PartialImplementationPart ?? @event,
+        _ => method.PartialImplementationPart ?? method,
+    };
 
     private IEnumerable<IMethodSymbol> FindImplementations(INamedTypeSymbol type, IMethodSymbol call)
     {

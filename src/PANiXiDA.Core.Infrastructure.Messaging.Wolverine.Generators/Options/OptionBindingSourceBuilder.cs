@@ -13,6 +13,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private const string ReturnOption = "        return option;\n";
     private const string EndMethod = "    }\n";
     private const string FalseLiteral = "false";
+    private const string DefaultValue = "default";
     private const string OptionVariable = "option";
     private const string ChildVariable = "child";
     private const string ConversionVariable = "scalarConversion";
@@ -310,13 +311,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         AppendConversionProbe(body, property.Type, probe);
         var initial = InitialValue(property.Type, ChildVariable + index, getter, probe, readOnly: !writable);
         var byteArray = IsByteArray(property.Type);
-        var initialArgument = byteArray ? "default" : initial;
+        var initialArgument = byteArray ? DefaultValue : initial;
         var initialGetter = byteArray ? $", getInitialValue: () => {initial}" : string.Empty;
         var value = "value" + index;
         body.Append($"        var changed{index} = false;\n")
             .Append($"        {Name(property.Type)} {value} = {(constructorBound ? "!created && " : string.Empty)}hasChild{index}\n")
             .Append($"            ? {Build(property.Type)}(child{index}, {initialArgument}, out changed{index}, {(writable ? FalseLiteral : "true")}{ConversionArgument(property.Type, probe)}{initialGetter})\n")
-            .Append($"            : {(writable ? getter : "default")};\n");
+            .Append($"            : {(writable ? getter : DefaultValue)};\n");
         if (!writable)
         {
             return;
@@ -412,7 +413,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             return OptionBindingGenerator.GetConversion(type) is not null
                 ? $"{child}.Value is not null || IsNullValue({child}) || !global::System.Linq.Enumerable.Any({child}.GetChildren()) ? default : {getter}"
-                : "default";
+                : DefaultValue;
         }
         if (conversion != FalseLiteral)
         {
@@ -541,7 +542,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
 
         if (parameter.ExplicitDefaultValue is null)
         {
-            return "default";
+            return DefaultValue;
         }
 
         var suffix = parameter.ExplicitDefaultValue is decimal ? "m" : string.Empty;
