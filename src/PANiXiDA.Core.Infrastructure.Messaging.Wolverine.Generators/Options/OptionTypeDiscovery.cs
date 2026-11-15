@@ -96,6 +96,13 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
         switch (node)
         {
+            case ElementAccessExpressionSyntax or ElementBindingExpressionSyntax:
+                if (model.GetOperation(node, token) is IImplicitIndexerReferenceOperation indexer)
+                {
+                    VisitPatternMember(indexer.LengthSymbol, substitutions);
+                    VisitPatternMember(indexer.IndexerSymbol, substitutions);
+                }
+                break;
             case InitializerExpressionSyntax initializer when initializer.IsKind(SyntaxKind.CollectionInitializerExpression):
                 VisitCollectionInitializer(model, initializer, substitutions);
                 break;

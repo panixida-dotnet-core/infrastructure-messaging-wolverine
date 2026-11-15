@@ -1013,6 +1013,31 @@ public sealed class OptionBindingGeneratorTests
             """,
             formatted.Length == 0 ? "string" : "int");
 
+    [Theory(DisplayName = "Option generator discovers closed options through implicit index members")]
+    [InlineData("[^1]", "Length", true)]
+    [InlineData("[^1]", "Count", true)]
+    [InlineData("?[ ^1 ]", "Length", true)]
+    [InlineData("[1..^1]", "Length", true)]
+    [InlineData("?[1..^1]", "Count", true)]
+    [InlineData("[^1]", "Length", false)]
+    [InlineData("?[ ^1 ]", "Count", false)]
+    [InlineData("[1..^1]", "Length", false)]
+    [InlineData("?[1..^1]", "Length", false)]
+    public void GeneratorShouldDiscoverImplicitIndexMembers(string access, string length, bool inLength)
+        => AssertDiscoversGenericHelper(
+            "_ = new Registration<int>(kafka)" + access + ";",
+            $$"""
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public int {{length}} { get { {{(inLength ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return 3; } }
+                public int this[int index] { get { {{(!inLength ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return 1; } }
+                public int Slice(int start, int length) { {{(!inLength ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return 1; }
+            }
+            """,
+            "int");
+
     [Theory(DisplayName = "Option generator discovers closed options through pattern members")]
     [InlineData("if (new Registration<int>() is { Configure: var configure }) configure(kafka);", "sealed class Registration<T> { public System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     [InlineData("if (new Registration<int>() is ({ Configure: var configure })) configure(kafka);", "sealed class Registration<T> { public System.Action<Kafka> Configure => kafka => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
