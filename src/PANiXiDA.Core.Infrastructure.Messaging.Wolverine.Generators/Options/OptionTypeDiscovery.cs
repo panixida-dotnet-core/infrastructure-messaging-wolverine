@@ -35,6 +35,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
             {
                 VisitOperators(model, expression, substitutions);
             }
+            if (node is InitializerExpressionSyntax initializer && initializer.IsKind(SyntaxKind.CollectionInitializerExpression))
+            {
+                VisitCollectionInitializer(model, initializer, substitutions);
+            }
             if (!IsSymbolReference(node, substitutions.Count != 0))
             {
                 continue;
@@ -70,6 +74,15 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
         => node is GenericNameSyntax or InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or
             PrimaryConstructorBaseTypeSyntax or MemberAccessExpressionSyntax or MemberBindingExpressionSyntax or ElementAccessExpressionSyntax or
             ElementBindingExpressionSyntax || hasSubstitutions && node is IdentifierNameSyntax;
+
+    private void VisitCollectionInitializer(SemanticModel model, InitializerExpressionSyntax initializer, TypeSubstitutions substitutions)
+    {
+        var additions = initializer.Expressions.Select(expression => model.GetCollectionInitializerSymbolInfo(expression, token).Symbol);
+        foreach (var method in additions.OfType<IMethodSymbol>())
+        {
+            VisitMethod(method, substitutions);
+        }
+    }
 
     private void VisitOperators(SemanticModel model, ExpressionSyntax expression, TypeSubstitutions substitutions)
     {
