@@ -716,6 +716,9 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("kafka.Register<int>();", "public static void Register<T>(this Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>();", "int")]
     [InlineData("42.Register(kafka);", "public static void Register<T>(this T value, Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>();", "int")]
     [InlineData("Register<int>(kafka);", "static void Register<T>(Kafka kafka) { void Inner() => kafka.AddKafkaBroker<Settings<T>>(); Inner(); }", "int")]
+    [InlineData("_ = new Registration<int>(kafka);", "sealed class Registration<T> { public Registration(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("Registration<int> registration = new(kafka);", "sealed class Registration<T> { public Registration(Kafka kafka) : this(kafka, 0) {} private Registration(Kafka kafka, int _) => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
+    [InlineData("_ = new Registration<int>(kafka);", "sealed class Registration<T>(Kafka kafka) : RegistrationBase<T>(kafka); class RegistrationBase<T> { protected RegistrationBase(Kafka kafka) => kafka.AddKafkaBroker<Settings<T>>(); }", "int")]
     public void GeneratorShouldDiscoverGenericHelpers(string call, string helper, string argument)
     {
         var compilation = CreateCompilation($$"""

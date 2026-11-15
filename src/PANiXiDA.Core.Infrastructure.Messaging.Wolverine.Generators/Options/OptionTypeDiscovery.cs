@@ -21,7 +21,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, CancellationT
     private void Visit(SyntaxNode root, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions)
     {
         var model = compilation.GetSemanticModel(root.SyntaxTree);
-        foreach (var node in root.DescendantNodes().Where(node => node is GenericNameSyntax or InvocationExpressionSyntax))
+        foreach (var node in root.DescendantNodes().Where(node => node is GenericNameSyntax or InvocationExpressionSyntax or
+            BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax or PrimaryConstructorBaseTypeSyntax))
         {
             token.ThrowIfCancellationRequested();
             var symbol = model.GetSymbolInfo(node, token).Symbol;

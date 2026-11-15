@@ -10,6 +10,72 @@ namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.UnitTests.Configurati
 
 public sealed class OptionBindingSectionTests
 {
+    [Fact(DisplayName = "Generated binding preserves high-precision decimal constructor defaults")]
+    public void BinderShouldPreserveDecimalDefaults()
+    {
+        var configuration = new ConfigurationManager { ["Options:TopicName"] = "configured" };
+
+        var original = configuration.GetSection("Options").Get<DecimalOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<DecimalOptions>(configuration, "Options");
+
+        generated.Rate.ShouldBe(original.Rate);
+        generated.Rate.ShouldBe(0.1234567890123456789012345678m);
+    }
+
+    [Fact(DisplayName = "Generated binding preserves lazy getter mutations in nested structs")]
+    public void BinderShouldPreserveStructGetterMutations()
+    {
+        var configuration = new ConfigurationManager { ["Options:Value:Child:Name"] = "configured" };
+
+        var original = configuration.GetSection("Options").Get<OptionBindingEdgeTests.ValueOptions<LazyModel>>()!;
+        var generated = OptionBindingRegistry.GetRequired<OptionBindingEdgeTests.ValueOptions<LazyModel>>(configuration, "Options");
+
+        generated.Value.Child.Name.ShouldBe(original.Value.Child.Name);
+        generated.Value.Child.Name.ShouldBe("configured");
+    }
+
+    [Fact(DisplayName = "Generated binding validates child properties of scalar models")]
+    public void BinderShouldValidateScalarChildren()
+    {
+        var configuration = new ConfigurationManager { ["Options:Value:Major"] = "invalid" };
+
+        var original = Should.Throw<InvalidOperationException>(() =>
+            configuration.GetSection("Options").Get<ReferenceScalarOptions>());
+        var generated = Should.Throw<InvalidOperationException>(() =>
+            OptionBindingRegistry.GetRequired<ReferenceScalarOptions>(configuration, "Options"));
+
+        generated.Message.ShouldBe(original.Message);
+    }
+
+    [Fact(DisplayName = "Generated binding populates culture format properties from child keys")]
+    public void BinderShouldUpdateCultureChildren()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Options:Culture:NumberFormat:NumberDecimalSeparator"] = "~",
+            ["Options:Culture:DateTimeFormat:DateSeparator"] = "*",
+        };
+
+        var original = configuration.GetSection("Options").Get<ReferenceScalarOptions>()!;
+        var generated = OptionBindingRegistry.GetRequired<ReferenceScalarOptions>(configuration, "Options");
+
+        generated.Culture.NumberFormat.NumberDecimalSeparator.ShouldBe(original.Culture.NumberFormat.NumberDecimalSeparator);
+        generated.Culture.NumberFormat.NumberDecimalSeparator.ShouldBe("~");
+        generated.Culture.DateTimeFormat.DateSeparator.ShouldBe(original.Culture.DateTimeFormat.DateSeparator);
+        generated.Culture.DateTimeFormat.DateSeparator.ShouldBe("*");
+    }
+
+    [Fact(DisplayName = "Generated binding reports configured polymorphic framework properties")]
+    public void BinderShouldRejectAbstractFrameworkMembers()
+    {
+        var configuration = new ConfigurationManager { ["Options:Culture:Calendar:TwoDigitYearMax"] = "2050" };
+
+        var error = Should.Throw<NotSupportedException>(() =>
+            OptionBindingRegistry.GetRequired<ReferenceScalarOptions>(configuration, "Options"));
+
+        error.Message.ShouldContain("Options:Culture:Calendar");
+    }
+
     [Theory(DisplayName = "Generated binding ignores read-only complex getters for unconvertible scalar leaves")]
     [InlineData(false)]
     [InlineData(true)]
@@ -92,6 +158,23 @@ public sealed class OptionBindingSectionTests
     {
         configuration.GetSection("Options").Get<T>().ShouldNotBeNull();
         OptionBindingRegistry.GetRequired<T>(configuration, "Options").ShouldNotBeNull();
+    }
+
+    public sealed class DecimalOptions(decimal rate = 0.1234567890123456789012345678m) : KafkaConsumerOption
+    {
+        public decimal Rate { get; } = rate;
+    }
+
+    public struct LazyModel
+    {
+        private OptionBindingFailureTests.Payload? child;
+        public OptionBindingFailureTests.Payload Child => child ??= new();
+    }
+
+    public sealed class ReferenceScalarOptions : KafkaConsumerOption
+    {
+        public Version Value { get; init; } = new(7, 0);
+        public CultureInfo Culture { get; init; } = new("en-US");
     }
 
     public sealed class ConvertedOptions : KafkaConsumerOption

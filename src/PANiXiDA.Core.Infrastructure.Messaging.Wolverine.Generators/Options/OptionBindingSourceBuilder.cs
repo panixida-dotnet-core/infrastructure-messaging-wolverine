@@ -115,17 +115,19 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         body.Append($"        if (section.Value is null && !IsNullValue(section) && {AnyChildren})\n        {{\n");
         if (IsNullable(type))
         {
-            body.Append("            return readOnly ? option : option.GetValueOrDefault();\n");
-        }
-        else if (type.IsReferenceType)
-        {
-            var creation = Construction((INamedTypeSymbol)type, method);
-            body.Append($"            if (!readOnly && option is null)\n            {{\n                hasNewValue = true;\n                return {creation};\n            }}\n")
-                .Append("            return option;\n");
+            var underlying = ((INamedTypeSymbol)type).TypeArguments[0];
+            body.Append($"            if (readOnly && !option.HasValue) return option;\n            var boundValue = {Build(underlying)}(section, option.GetValueOrDefault(), readOnly: readOnly);\n            return readOnly ? option : boundValue;\n");
         }
         else
         {
-            body.Append("            return option;\n");
+            var named = (INamedTypeSymbol)type;
+            if (type.IsReferenceType)
+            {
+                AppendRuntimeTypeCheck(body, named);
+                var creation = Construction(named, method);
+                body.Append($"            if (option is null)\n            {{\n                if (readOnly) return option;\n                hasNewValue = true;\n                option = {creation};\n            }}\n");
+            }
+            AppendProperties(body, named, method, []);
         }
         body.Append("        }\n");
     }
@@ -241,7 +243,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     {
         var writable = property.SetMethod?.DeclaredAccessibility == Accessibility.Public;
         AppendPropertySection(body, property, index);
-        var getter = AppendGetter(property, method + "Get" + index) + "(option)";
+        if (IsAbstractFrameworkMember(property))
+        {
+            body.Append($"        if (hasChild{index}) throw new global::System.NotSupportedException($\"The framework property {property.Name} at '{{child{index}.Path}}' requires a concrete configuration model.\");\n");
+            return;
+        }
+        var receiver = property.ContainingType.IsValueType ? "ref option" : "option";
+        var getter = AppendGetter(property, method + "Get" + index) + "(" + receiver + ")";
         var probe = ConversionVariable + index;
         AppendConversionProbe(body, property.Type, probe);
         var initial = InitialValue(property.Type, ChildVariable + index, getter, probe, readOnly: !writable);
@@ -263,6 +271,13 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         body.Append("        {\n");
         AppendSetter(body, type, property, method + "Set" + index, value);
         body.Append("        }\n");
+    }
+
+    private bool IsAbstractFrameworkMember(IPropertySymbol property)
+    {
+        var model = property.Type is IArrayTypeSymbol array ? array.ElementType : property.Type;
+        return model is { TypeKind: TypeKind.Class, IsAbstract: true } &&
+            SymbolEqualityComparer.Default.Equals(property.ContainingAssembly, compilation.GetSpecialType(SpecialType.System_Object).ContainingAssembly);
     }
 
     private void AppendSetter(StringBuilder body, INamedTypeSymbol type, IPropertySymbol property, string method, string value)
@@ -315,8 +330,9 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
     private string AppendGetter(IPropertySymbol property, string method)
     {
         var body = new StringBuilder();
+        var reference = property.ContainingType.IsValueType ? "ref " : string.Empty;
         AppendInvocation(body, $"return {(property.IsStatic ? Name(property.ContainingType) : OptionVariable)}.@{property.Name};");
-        source.Append($"    private static {Name(property.Type)} {method}({Name(property.ContainingType)} option)\n    {{\n")
+        source.Append($"    private static {Name(property.Type)} {method}({reference}{Name(property.ContainingType)} option)\n    {{\n")
             .Append(body).Append(EndMethod);
         return method;
     }
@@ -459,7 +475,8 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             return "default";
         }
 
-        return "(" + Name(parameter.Type) + ")" + SymbolDisplay.FormatPrimitive(parameter.ExplicitDefaultValue, quoteStrings: true, useHexadecimalNumbers: false);
+        var suffix = parameter.ExplicitDefaultValue is decimal ? "m" : string.Empty;
+        return "(" + Name(parameter.Type) + ")" + SymbolDisplay.FormatPrimitive(parameter.ExplicitDefaultValue, quoteStrings: true, useHexadecimalNumbers: false) + suffix;
     }
 
     private string InvalidConstruction(INamedTypeSymbol type, string method, string message)
