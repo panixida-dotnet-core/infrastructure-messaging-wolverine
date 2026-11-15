@@ -99,10 +99,10 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             var nullTest = IsNullable(type) ? "global::System.String.IsNullOrEmpty(section.Value)" : "section.Value is null";
             var convertedType = IsNullable(type) ? ((INamedTypeSymbol)type).TypeArguments[0] : type;
-            body.Append($"        if (section.Value is not null || !{AnyChildren})\n        {{\n            global::System.ComponentModel.TypeConverter converter = {converter};\n")
+            body.Append($"        if (section.Value is not null || IsNullValue(section) || !{AnyChildren})\n        {{\n            global::System.ComponentModel.TypeConverter converter = {converter};\n")
                 .Append("            if ((conversionProbe ??= converter.CanConvertFrom(typeof(string))) == true)\n            {\n")
                 .Append($"                var nullConversion = {nullTest};\n")
-                .Append($"                var convertedValue = nullConversion ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, value =>\n                {{\n                    var result = converter.ConvertFromInvariantString(value);\n                    nullConversion = result is null;\n                    return nullConversion ? default({Name(convertedType)}) : ({Name(convertedType)})result;\n                }});\n")
+                .Append($"                var convertedValue = nullConversion ? default({Name(type)}) : {OptionBindingGenerator.Registry}.Parse(section, value =>\n                {{\n                    var result = converter.ConvertFromInvariantString(value);\n                    nullConversion = result is null;\n                    return readOnly || nullConversion ? default({Name(convertedType)}) : ({Name(convertedType)})result;\n                }});\n")
                 .Append("                convertedNull = nullConversion;\n")
                 .Append("                if (readOnly) return option;\n                hasNewValue = true;\n                return nullConversion ? default : convertedValue;\n            }\n        }\n");
         }
@@ -327,11 +327,12 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         {
             return readOnly ? $"!IsNullValue({child}) && {child}.Value is null && global::System.Linq.Enumerable.Any({child}.GetChildren()) ? default : {getter}" : getter;
         }
-        if (readOnly && (type is IArrayTypeSymbol || type.OriginalDefinition.ToDisplayString() is
-            EnumerableInterface or "System.Collections.Generic.IReadOnlyCollection<T>" or "System.Collections.Generic.IReadOnlyList<T>"))
+        if (readOnly && IsArrayLike(type))
         {
             return $"global::System.Linq.Enumerable.Any({child}.GetChildren()) || !global::System.String.IsNullOrEmpty({child}.Value) ? default : {getter}";
         }
+        var readOnlyLeaf = $"!global::System.String.IsNullOrEmpty({child}.Value) && !global::System.Linq.Enumerable.Any({child}.GetChildren())";
+        var skipGetter = readOnly ? readOnlyLeaf + " || " : string.Empty;
         var conversion = ScalarConversionCondition(type, child, probe);
         if (conversion == "true")
         {
@@ -342,14 +343,18 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         if (conversion != FalseLiteral)
         {
             var nullValue = IsNullable(type) ? $"IsNullValue({child}) || " : string.Empty;
-            return $"{nullValue}({child}.Value is not null || !global::System.Linq.Enumerable.Any({child}.GetChildren())) && ({conversion}) ? default : {getter}";
+            return $"{skipGetter}{nullValue}({child}.Value is not null || IsNullValue({child}) || !global::System.Linq.Enumerable.Any({child}.GetChildren())) && ({conversion}) ? default : {getter}";
         }
         if (IsNullable(type))
         {
-            return $"IsNullValue({child}) || ({child}.Value is null && !global::System.Linq.Enumerable.Any({child}.GetChildren())) ? default : {getter}";
+            return $"{skipGetter}IsNullValue({child}) || ({child}.Value is null && !global::System.Linq.Enumerable.Any({child}.GetChildren())) ? default : {getter}";
         }
-        return getter;
+        return readOnly ? $"{readOnlyLeaf} ? default : {getter}" : getter;
     }
+
+    private static bool IsArrayLike(ITypeSymbol type)
+        => type is IArrayTypeSymbol || type.OriginalDefinition.ToDisplayString() is
+            EnumerableInterface or "System.Collections.Generic.IReadOnlyCollection<T>" or "System.Collections.Generic.IReadOnlyList<T>";
 
     private string Construction(INamedTypeSymbol type, string method)
     {
@@ -415,7 +420,8 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
         if (conversion != "true")
         {
             var nullableEmpty = IsNullable(parameterType) ? " && section.Value != string.Empty" : string.Empty;
-            body.Append($"        if (section.Value is not null{nullableEmpty} && !{AnyChildren} && !({conversion}))\n")
+            var arrayLeaf = IsArrayLike(parameterType) ? $" && !{AnyChildren}" : string.Empty;
+            body.Append($"        if (section.Value is not null{nullableEmpty}{arrayLeaf} && !({conversion}))\n")
                 .Append($"            throw new global::System.ArgumentException($\"Object of type 'System.String' cannot be converted to type '{{typeof({Name(parameterType)})}}'.\");\n");
         }
 
@@ -569,7 +575,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
                 : $"!readOnly && option is null && section.Value == string.Empty ? global::System.Array.Empty<{elementName}>() : option";
         }
         AppendCollectionLeaf(body, type, create, empty);
-        if (copy || readOnlySet)
+        if (copy)
         {
             body.Append("        if (readOnly) return option;\n");
         }
@@ -578,7 +584,12 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             body.Append("        if (readOnly && option is null) return option;\n");
         }
 
-        if (copy || readOnlySet)
+        if (readOnlySet)
+        {
+            body.Append($"        hasNewValue = !readOnly;\n        var items = new {concrete}();\n")
+                .Append("        if (option is not null)\n        {\n            foreach (var existing in option) items.Add(existing);\n        }\n");
+        }
+        else if (copy)
         {
             body.Append($"        hasNewValue = true;\n        var items = option is null ? new {concrete}() : new {concrete}(option);\n");
         }
@@ -612,7 +623,7 @@ internal sealed class OptionBindingSourceBuilder(Compilation compilation, INamed
             body.Append("        if (nullElement) throw new global::System.InvalidCastException(\"At least one element in the source array could not be cast down to the destination array type.\");\n");
         }
 
-        var result = readOnlySet ? "items" : OptionVariable;
+        var result = readOnlySet ? "readOnly ? option : items" : OptionVariable;
         if (copy)
         {
             result = "items.ToArray()";
