@@ -717,8 +717,8 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
         var truth = kind == SyntaxKind.EqualsExpression ? "op_False" : "op_True";
-        INamedTypeSymbol?[] types = [result as INamedTypeSymbol];
-        var hierarchy = types.OfType<INamedTypeSymbol>().SelectMany(type => DispatchContracts(type)
+        INamedTypeSymbol?[] resultTypes = [result as INamedTypeSymbol];
+        var hierarchy = resultTypes.OfType<INamedTypeSymbol>().SelectMany(type => DispatchContracts(type)
             .Where(contract => contract.TypeKind != TypeKind.Interface).Prepend(type));
         VisitMethods(substitutions, hierarchy.SelectMany(type => type.GetMembers(truth)).OfType<IMethodSymbol>().FirstOrDefault());
     }
