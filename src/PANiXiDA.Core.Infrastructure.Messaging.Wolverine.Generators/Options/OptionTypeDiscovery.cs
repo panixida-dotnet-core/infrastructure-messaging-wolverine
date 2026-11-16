@@ -786,16 +786,14 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
         var attributes = method.GetAttributes().Concat(method.ReturnType.GetAttributes());
-        var builder = attributes.FirstOrDefault(attribute => SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, asyncBuilderAttribute))?
-            .ConstructorArguments.FirstOrDefault().Value as INamedTypeSymbol;
-        if (builder is null)
+        if (attributes.FirstOrDefault(attribute => SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, asyncBuilderAttribute))?
+            .ConstructorArguments.FirstOrDefault().Value is not INamedTypeSymbol builder)
         {
             return;
         }
         if (builder.IsUnboundGenericType)
         {
-            var result = Substitute(method.ReturnType, substitutions) as INamedTypeSymbol;
-            if (result is null || result.TypeArguments.Length != builder.Arity)
+            if (Substitute(method.ReturnType, substitutions) is not INamedTypeSymbol result || result.TypeArguments.Length != builder.Arity)
             {
                 return;
             }
