@@ -42,7 +42,7 @@ internal sealed class RecurringCommandOptionValidator : IValidateOptions<Recurri
         }
         catch (ArgumentException)
         {
-            failures.Add($"{sectionName}:CronExpression must be a valid Wolverine cron expression with a minimum cadence of five seconds.");
+            failures.Add($"{sectionName}:CronExpression must be a valid Wolverine cron expression with a minimum cadence of one second.");
         }
     }
 

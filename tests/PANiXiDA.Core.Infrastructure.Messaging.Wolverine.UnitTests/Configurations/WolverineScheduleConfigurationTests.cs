@@ -104,9 +104,25 @@ public sealed class WolverineScheduleConfigurationTests
         options.Durability.EnableRecurringMessages.ShouldBeFalse();
     }
 
+    [Fact(DisplayName = "Recurring commands support one-second cron schedules")]
+    public void RecurringCommandsShouldSupportSecondLevelSchedules()
+    {
+        var configuration = CreateConfiguration();
+        configuration["TestRecurringCommandOption:CronExpression"] = "* * * * * *";
+        var options = new WolverineOptions();
+        var schedules = new WolverineScheduleConfiguration(options, configuration);
+
+        schedules.AddRecurringCommand<TestRecurringCommandOption, TestCommand>(_ => new TestCommand(Guid.NewGuid()));
+
+        options.Durability.EnableRecurringMessages.ShouldBeTrue();
+        var schedule = options.Schedules.FindByName("test-command");
+        schedule.ShouldNotBeNull();
+        schedule.Schedule.Expression.ShouldBe("* * * * * *");
+    }
+
     [Theory(DisplayName = "Recurring commands reject invalid or unsupported cron expressions")]
     [InlineData("not a cron")]
-    [InlineData("* * * * * *")]
+    [InlineData("60 * * * * *")]
     public void RecurringCommandsShouldRejectInvalidCron(string cron)
     {
         var configuration = CreateConfiguration();
