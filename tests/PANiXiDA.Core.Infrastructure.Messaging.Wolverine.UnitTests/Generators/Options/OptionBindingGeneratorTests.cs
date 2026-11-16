@@ -1126,6 +1126,105 @@ public sealed class OptionBindingGeneratorTests
             }
             """, "int");
 
+    [Theory(DisplayName = "Option generator discovers selected tuple element comparison operators")]
+    [InlineData("_ = (new Registration<int>(kafka), 0) == (new Registration<int>(kafka), 0);", "class", "==")]
+    [InlineData("_ = (new Registration<int>(kafka), 0) != (new Registration<int>(kafka), 0);", "class", "!=")]
+    [InlineData("_ = ((new Registration<int>(kafka), 0), 1) == ((new Registration<int>(kafka), 0), 1);", "class", "==")]
+    [InlineData("_ = ((new Registration<int>(kafka), 0), 1) != ((new Registration<int>(kafka), 0), 1);", "struct", "!=")]
+    [InlineData("_ = ((Registration<int>?)new Registration<int>(kafka), 0) == ((Registration<int>?)new Registration<int>(kafka), 0);", "struct", "==")]
+    [InlineData("_ = ((Registration<int>?)new Registration<int>(kafka), 0) != ((Registration<int>?)new Registration<int>(kafka), 0);", "struct", "!=")]
+    [InlineData("_ = ((Registration<int>, int)?)(new Registration<int>(kafka), 0) == ((Registration<int>, int)?)(new Registration<int>(kafka), 0);", "struct", "==")]
+    [InlineData("_ = ((Registration<int>, int)?)(new Registration<int>(kafka), 0) != ((Registration<int>, int)?)(new Registration<int>(kafka), 0);", "struct", "!=")]
+    [InlineData("var left = (item: new Registration<int>(kafka), number: 0); var right = (item: new Registration<int>(kafka), number: 0); _ = (left) == (right);", "class", "==")]
+    [InlineData("var left = (0, 1, 2, 3, 4, 5, 6, new Registration<int>(kafka)); var right = (0, 1, 2, 3, 4, 5, 6, new Registration<int>(kafka)); _ = left == right;", "class", "==")]
+    public void GeneratorShouldDiscoverTupleComparison(string call, string kind, string operation)
+        => AssertDiscoversGenericHelper(call, TupleComparisonHelper(kind, operation), "int");
+
+    [Fact(DisplayName = "Option generator discovers tuple comparisons in generic field initializers")]
+    public void GeneratorShouldDiscoverFieldTupleComparison()
+        => AssertDiscoversGenericHelper("_ = Values<int>.Result;",
+            TupleComparisonHelper("class", "==") + "class Values<T> { public static readonly bool Result = (new Registration<T>((Kafka)null!), 0) == (new Registration<T>((Kafka)null!), 0); }", "int");
+
+    [Theory(DisplayName = "Option generator discovers metadata-only tuple comparison registrations")]
+    [InlineData("==")]
+    [InlineData("!=")]
+    public void GeneratorShouldDiscoverReferencedTupleComparison(string operation)
+        => AssertReferencedGenericRegistration(false,
+            TupleComparisonHelper("class", operation).Replace("Settings<", "ExportedSettings<", StringComparison.Ordinal),
+            "_ = (new Registration<int>(kafka), 0) " + operation + " (new Registration<int>(kafka), 0);", "");
+
+    [Fact(DisplayName = "Option generator preserves tuple element constants during overload resolution")]
+    public void GeneratorShouldDiscoverConstantTupleComparison()
+        => AssertDiscoversGenericHelper("_ = (new Registration<int>(kafka), 0) == (1, 0);",
+            """
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public static bool operator ==(Registration<T> left, byte right) { left.kafka.AddKafkaBroker<Settings<T>>(); return true; }
+                public static bool operator !=(Registration<T> left, byte right) => false;
+                public override bool Equals(object value) => false;
+                public override int GetHashCode() => 0;
+            }
+            """, "int");
+
+    [Theory(DisplayName = "Option generator discovers tuple elements compared against a tuple value")]
+    [InlineData("_ = ((1, 2), 0) == (new Registration<int>(kafka), 0);")]
+    [InlineData("_ = (new Registration<int>(kafka), 0) == ((1, 2), 0);")]
+    public void GeneratorShouldDiscoverMixedTupleComparison(string call)
+        => AssertDiscoversGenericHelper(call,
+            """
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public static bool operator ==((int, int) left, Registration<T> right) { right.kafka.AddKafkaBroker<Settings<T>>(); return true; }
+                public static bool operator !=((int, int) left, Registration<T> right) => false;
+                public static bool operator ==(Registration<T> left, (int, int) right) { left.kafka.AddKafkaBroker<Settings<T>>(); return true; }
+                public static bool operator !=(Registration<T> left, (int, int) right) => false;
+                public override bool Equals(object value) => false;
+                public override int GetHashCode() => 0;
+            }
+            """, "int");
+
+    [Theory(DisplayName = "Option generator discovers implicit boolean tests of tuple comparison results")]
+    [InlineData("==", false)]
+    [InlineData("!=", false)]
+    [InlineData("==", true)]
+    public void GeneratorShouldDiscoverTruthTupleComparison(string operation, bool conversion)
+        => AssertDiscoversGenericHelper("_ = (new Registration<int>(kafka), 0) " + operation + " (new Registration<int>(kafka), 0);",
+            $$"""
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public static Truth<T> operator ==(Registration<T> left, Registration<T> right) => new(left.kafka);
+                public static Truth<T> operator !=(Registration<T> left, Registration<T> right) => new(left.kafka);
+                public override bool Equals(object value) => false;
+                public override int GetHashCode() => 0;
+            }
+            struct Truth<T>
+            {
+                private readonly Kafka kafka;
+                public Truth(Kafka kafka) => this.kafka = kafka;
+                {{(conversion ? "public static implicit operator bool(Truth<T> value) { value.kafka.AddKafkaBroker<Settings<T>>(); return true; }" :
+                    "public static bool operator true(Truth<T> value) { " + (operation == "!=" ? "value.kafka.AddKafkaBroker<Settings<T>>();" : "") + " return true; } public static bool operator false(Truth<T> value) { " + (operation == "==" ? "value.kafka.AddKafkaBroker<Settings<T>>();" : "") + " return false; }")}}
+            }
+            """, "int");
+
+    private static string TupleComparisonHelper(string kind, string operation)
+        => $$"""
+            public {{kind}} Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public static bool operator ==(Registration<T> left, Registration<T> right) { {{(operation == "==" ? "left.kafka.AddKafkaBroker<Settings<T>>();" : "")}} return true; }
+                public static bool operator !=(Registration<T> left, Registration<T> right) { {{(operation == "!=" ? "left.kafka.AddKafkaBroker<Settings<T>>();" : "")}} return false; }
+                public override bool Equals(object value) => false;
+                public override int GetHashCode() => 0;
+            }
+            """;
+
     [Theory(DisplayName = "Option generator discovers closed field-like event initializers")]
     [InlineData(true, "int")]
     [InlineData(false, "int")]

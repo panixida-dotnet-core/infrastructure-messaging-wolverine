@@ -667,6 +667,13 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         {
             var operation = model.GetOperation(expression, token);
             VisitMethods(substitutions, FindOperator(operation));
+            if (operation is ITupleBinaryOperation)
+            {
+                var comparison = (BinaryExpressionSyntax)expression;
+                VisitTupleComparison(model, comparison.Kind(), comparison.SpanStart,
+                    (comparison.Left, model.GetTypeInfo(comparison.Left, token).Type),
+                    (comparison.Right, model.GetTypeInfo(comparison.Right, token).Type), substitutions);
+            }
             if (operation is IBinaryOperation { OperatorMethod: not null, OperatorKind: BinaryOperatorKind.ConditionalAnd or BinaryOperatorKind.ConditionalOr })
             {
                 // The semantic binary operation exposes & or |; the flow graph exposes its short-circuit operator.
@@ -674,6 +681,72 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             }
         }
     }
+
+    private void VisitTupleComparison(SemanticModel model, SyntaxKind kind, int position,
+        (ExpressionSyntax Syntax, ITypeSymbol? Type) left, (ExpressionSyntax Syntax, ITypeSymbol? Type) right, TypeSubstitutions substitutions)
+    {
+        var leftParts = TupleParts(model, left.Syntax, left.Type);
+        var rightParts = TupleParts(model, right.Syntax, right.Type);
+        if (leftParts.Length != 0 && leftParts.Length == rightParts.Length)
+        {
+            for (var index = 0; index < leftParts.Length; index++)
+            {
+                VisitTupleComparison(model, kind, position, leftParts[index], rightParts[index], substitutions);
+            }
+            return;
+        }
+        // Tuple comparisons omit element operators from both IOperation and CFG. Let Roslyn bind each
+        // element expression at the original location, preserving literal constants and overload selection.
+        var comparison = SyntaxFactory.BinaryExpression(kind, SyntaxFactory.ParenthesizedExpression(left.Syntax.WithoutTrivia()),
+            SyntaxFactory.ParenthesizedExpression(right.Syntax.WithoutTrivia()));
+        IMethodSymbol?[] methods = [model.GetSpeculativeSymbolInfo(position, comparison, SpeculativeBindingOption.BindAsExpression).Symbol as IMethodSymbol];
+        foreach (var method in methods.OfType<IMethodSymbol>())
+        {
+            VisitMethod(method, substitutions);
+            VisitTupleTruth(method, kind, substitutions);
+        }
+    }
+
+    private void VisitTupleTruth(IMethodSymbol method, SyntaxKind kind, TypeSubstitutions substitutions)
+    {
+        var result = Substitute(method.ReturnType, ContainingArguments(method.ContainingType!, substitutions));
+        var conversion = compilation.ClassifyConversion(result, compilation.GetSpecialType(SpecialType.System_Boolean));
+        if (conversion.IsImplicit)
+        {
+            VisitMethods(substitutions, conversion.MethodSymbol);
+            return;
+        }
+        var truth = kind == SyntaxKind.EqualsExpression ? "op_False" : "op_True";
+        INamedTypeSymbol?[] types = [result as INamedTypeSymbol];
+        var hierarchy = types.OfType<INamedTypeSymbol>().SelectMany(type => DispatchContracts(type)
+            .Where(contract => contract.TypeKind != TypeKind.Interface).Prepend(type));
+        VisitMethods(substitutions, hierarchy.SelectMany(type => type.GetMembers(truth)).OfType<IMethodSymbol>().FirstOrDefault());
+    }
+
+    private (ExpressionSyntax Syntax, ITypeSymbol? Type)[] TupleParts(SemanticModel model, ExpressionSyntax expression, ITypeSymbol? type)
+    {
+        while (expression is ParenthesizedExpressionSyntax parenthesized)
+        {
+            expression = parenthesized.Expression;
+        }
+        if (expression is TupleExpressionSyntax literal)
+        {
+            return [.. literal.Arguments.Select(argument => (argument.Expression, model.GetTypeInfo(argument.Expression, token).Type))];
+        }
+        if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+        {
+            type = nullable.TypeArguments[0];
+            expression = TupleMember(expression, "Value");
+        }
+        return type is INamedTypeSymbol { IsTupleType: true } tuple
+            ? [.. tuple.TupleElements.Select((field, index) => ((ExpressionSyntax)TupleMember(expression,
+                "Item" + (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)), (ITypeSymbol?)field.Type))]
+            : [];
+    }
+
+    private static MemberAccessExpressionSyntax TupleMember(ExpressionSyntax expression, string member)
+        => SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression,
+            SyntaxFactory.ParenthesizedExpression(expression.WithoutTrivia()), SyntaxFactory.IdentifierName(member));
 
     private void VisitTruthCondition(SemanticModel model, SyntaxNode node, TypeSubstitutions substitutions)
     {
