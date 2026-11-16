@@ -15,6 +15,7 @@
         <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
         <PackageVersion Include="Testcontainers.Kafka" Version="4.14.0" />
         <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
+        <PackageVersion Include="PANiXiDA.Core.ApiDocumentation" Version="1.0.2" />
         <PackageVersion Include="WolverineFx" Version="6.51.0" />
         <PackageVersion Include="WolverineFx.EntityFrameworkCore" Version="6.51.0" />
         <PackageVersion Include="WolverineFx.Kafka" Version="6.51.0" />
