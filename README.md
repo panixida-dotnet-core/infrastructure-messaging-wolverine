@@ -50,6 +50,18 @@ Reference the package with its analyzer assets enabled:
 </ItemGroup>
 ```
 
+### Wolverine Version and Upgrade Notes
+
+The Wolverine integrations use the stable **6.64.1** package train.
+When upgrading from 6.51.0, apply Wolverine's normal message-store schema migration:
+the newer releases add dead-letter history and failure-group metadata, and a PostgreSQL scheduled-message polling index.
+Keep the shared message-store schema owned by Wolverine managed resources or one dedicated messaging migration context.
+
+Recurring cron expressions now support a minimum cadence of one second. Wolverine uses timer agents by default
+for schedules with a cadence shorter than 15 minutes; this changes the execution path of existing frequent schedules.
+See the [upstream release notes](https://github.com/JasperFx/wolverine/compare/V6.51.0...V6.64.1)
+and [recurring schedule documentation](https://wolverinefx.net/guide/messaging/recurring.html).
+
 ### Minimal Setup
 
 ```csharp
