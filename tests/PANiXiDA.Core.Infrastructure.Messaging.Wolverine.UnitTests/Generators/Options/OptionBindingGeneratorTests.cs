@@ -1126,6 +1126,25 @@ public sealed class OptionBindingGeneratorTests
             }
             """, "int");
 
+    [Theory(DisplayName = "Option generator exports nonpublic constructor templates for metadata activation")]
+    [InlineData("private", "")]
+    [InlineData("protected", "")]
+    [InlineData("internal", "")]
+    [InlineData("private", "Kafka ignored")]
+    public void GeneratorShouldDiscoverNonpublicMetadataActivation(string accessibility, string parameters)
+        => AssertReferencedGenericRegistration(false,
+            $$"""
+            public class Registration<T>
+            {
+                public System.Action<Kafka> Configure { get; }
+                {{accessibility}} Registration({{parameters}}) { Configure = target => target.AddKafkaBroker<ExportedSettings<T>>(); }
+            }
+            """,
+            parameters.Length == 0
+                ? "((Registration<int>)System.Activator.CreateInstance(typeof(Registration<int>), true)).Configure(kafka);"
+                : "((Registration<int>)System.Activator.CreateInstance(typeof(Registration<int>), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new object[] { kafka }, null)).Configure(kafka);",
+            "");
+
     [Theory(DisplayName = "Option generator discovers selected tuple element comparison operators")]
     [InlineData("_ = (new Registration<int>(kafka), 0) == (new Registration<int>(kafka), 0);", "class", "==")]
     [InlineData("_ = (new Registration<int>(kafka), 0) != (new Registration<int>(kafka), 0);", "class", "!=")]

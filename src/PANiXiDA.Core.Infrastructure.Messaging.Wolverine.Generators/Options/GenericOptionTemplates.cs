@@ -66,11 +66,17 @@ internal sealed class GenericOptionTemplates(Compilation compilation, INamedType
             var discovery = new OptionTypeDiscovery(compilation, this, collectTemplates: true, token);
             var types = discovery.DiscoverTemplates(member).Select(DocumentationCommentId.CreateReferenceId)
                 .Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal);
-            foreach (var id in types)
+            ISymbol[] targets = member is IMethodSymbol { MethodKind: MethodKind.Constructor }
+                ? [member, member.ContainingType!]
+                : [member];
+            foreach (var target in targets)
             {
-                source.Append("[assembly: global::System.Reflection.AssemblyMetadata(")
-                    .Append(SymbolDisplay.FormatLiteral(KeyPrefix + member.GetDocumentationCommentId(), true)).Append(", ")
-                    .Append(SymbolDisplay.FormatLiteral(id, true)).Append(")]\n");
+                foreach (var id in types)
+                {
+                    source.Append("[assembly: global::System.Reflection.AssemblyMetadata(")
+                        .Append(SymbolDisplay.FormatLiteral(KeyPrefix + target.GetDocumentationCommentId(), true)).Append(", ")
+                        .Append(SymbolDisplay.FormatLiteral(id, true)).Append(")]\n");
+                }
             }
         }
     }
@@ -79,7 +85,7 @@ internal sealed class GenericOptionTemplates(Compilation compilation, INamedType
         => member switch
         {
             IMethodSymbol method => (method.IsGenericMethod || method.ContainingType.IsGenericType) &&
-                (method.DeclaredAccessibility != Accessibility.Private || !method.ExplicitInterfaceImplementations.IsEmpty) &&
+                (method.MethodKind == MethodKind.Constructor || method.DeclaredAccessibility != Accessibility.Private || !method.ExplicitInterfaceImplementations.IsEmpty) &&
                 (method.DeclaringSyntaxReferences.Length != 0 ||
                  method is { MethodKind: MethodKind.Constructor, IsImplicitlyDeclared: true, Parameters.IsEmpty: true }),
             IFieldSymbol field => field.ContainingType.IsGenericType && field.DeclaringSyntaxReferences.Length != 0 &&

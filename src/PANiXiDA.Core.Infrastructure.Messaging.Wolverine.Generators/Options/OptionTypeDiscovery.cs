@@ -1039,6 +1039,9 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
 
+        // Constructor templates are also exported on their type: nonpublic constructors may not be imported as symbols.
+        var arguments = ContainingArguments(named, new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default));
+        VisitMemberTemplates(named.OriginalDefinition, arguments);
         foreach (var contract in DispatchContracts(named).Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default))
         {
             var dispatch = GetDispatch(contract);
