@@ -2,6 +2,7 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <IsAotCompatible>false</IsAotCompatible>
+        <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
 
         <AssemblyName>PANiXiDA.Core.Infrastructure.Messaging.Wolverine</AssemblyName>
 

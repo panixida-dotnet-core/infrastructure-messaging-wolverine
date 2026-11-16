@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
+using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Generation;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options;
 
 using Wolverine;
@@ -173,27 +174,15 @@ public sealed class WolverineKafkaConfiguration
     }
 
     private TOption GetRequiredOption<TOption>()
-        where TOption : new()
+        where TOption : class, new()
     {
         return GetRequiredOption<TOption>(typeof(TOption).Name);
     }
 
     private TOption GetRequiredOption<TOption>(string sectionName)
-        where TOption : new()
+        where TOption : class, new()
     {
-        var section = configuration.GetSection(sectionName);
-
-        if (!section.Exists())
-        {
-            throw new InvalidOperationException(
-                $"Configuration section '{sectionName}' was not found.");
-        }
-
-        var option = section.Get<TOption>();
-        return option is null
-            ? throw new InvalidOperationException(
-                $"Configuration section '{sectionName}' could not be bound to '{typeof(TOption).FullName}'.")
-            : option;
+        return OptionBindingRegistry.GetRequired<TOption>(configuration, sectionName);
     }
 
     private static void ValidateTopicName(string topicName)
