@@ -1126,6 +1126,74 @@ public sealed class OptionBindingGeneratorTests
             }
             """, "int");
 
+    [Theory(DisplayName = "Option generator discovers closed field-like event initializers")]
+    [InlineData(true, "int")]
+    [InlineData(false, "int")]
+    [InlineData(true, "global::System.Collections.Generic.List<int>")]
+    [InlineData(false, "global::System.Collections.Generic.List<int>")]
+    public void GeneratorShouldDiscoverEventInitializer(bool isStatic, string argument)
+        => AssertDiscoversGenericHelper(isStatic ? "Registration<int>.Register(kafka);" : "new Registration<int>().Register(kafka);",
+            $$"""
+            sealed class Registration<T>
+            {
+                private {{(isStatic ? "static" : "")}} event System.Action<Kafka> Configure = target => target.AddKafkaBroker<Settings<T>>(),
+                    Other = target => target.AddKafkaBroker<Settings<System.Collections.Generic.List<T>>>();
+                public {{(isStatic ? "static" : "")}} void Register(Kafka kafka) { Configure(kafka); Other(kafka); }
+            }
+            """, argument);
+
+    [Theory(DisplayName = "Option generator exports closed event initializer registration templates")]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GeneratorShouldDiscoverReferencedEventInitializer(bool isStatic)
+        => AssertReferencedGenericRegistration(false,
+            $$"""
+            public sealed class Registration<T>
+            {
+                private {{(isStatic ? "static" : "")}} event System.Action<Kafka> Configure = target => target.AddKafkaBroker<ExportedSettings<T>>();
+                public {{(isStatic ? "static" : "")}} void Register(Kafka kafka) => Configure(kafka);
+            }
+            """, isStatic ? "Registration<int>.Register(kafka);" : "new Registration<int>().Register(kafka);", "");
+
+    [Theory(DisplayName = "Option generator discovers eager field-like event initializer registrations")]
+    [InlineData(true, "int")]
+    [InlineData(false, "int")]
+    [InlineData(true, "global::System.Collections.Generic.List<int>")]
+    [InlineData(false, "global::System.Collections.Generic.List<int>")]
+    public void GeneratorShouldDiscoverEagerEventInitializer(bool isStatic, string argument)
+        => AssertDiscoversGenericHelper(isStatic ? "Registration<int>.Register(kafka);" : "new Registration<int>().Register(kafka);",
+            $$"""
+            sealed class Registration<T>
+            {
+                private {{(isStatic ? "static" : "")}} event System.Action<Kafka> Configure = Initialize();
+                private {{(isStatic ? "static" : "")}} readonly int marker = 1;
+                public {{(isStatic ? "static" : "")}} void Register(Kafka kafka) { _ = marker; }
+                private {{(isStatic ? "static" : "")}} void Observe() { _ = Configure; }
+                private static System.Action<Kafka> Initialize()
+                {
+                    ((Kafka)null!).AddKafkaBroker<Settings<T>>();
+                    ((Kafka)null!).AddKafkaBroker<Settings<System.Collections.Generic.List<T>>>();
+                    return _ => { };
+                }
+            }
+            """, argument);
+
+    [Theory(DisplayName = "Option generator exports eager event initializer registration templates")]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GeneratorShouldDiscoverReferencedEagerEventInitializer(bool isStatic)
+        => AssertReferencedGenericRegistration(false,
+            $$"""
+            public sealed class Registration<T>
+            {
+                private {{(isStatic ? "static" : "")}} event System.Action<Kafka> Configure = Initialize();
+                private {{(isStatic ? "static" : "")}} readonly int marker = 1;
+                public {{(isStatic ? "static" : "")}} void Register(Kafka kafka) { _ = marker; }
+                private {{(isStatic ? "static" : "")}} void Observe() { _ = Configure; }
+                private static System.Action<Kafka> Initialize() { ((Kafka)null!).AddKafkaBroker<ExportedSettings<T>>(); return _ => { }; }
+            }
+            """, isStatic ? "Registration<int>.Register(kafka);" : "new Registration<int>().Register(kafka);", "");
+
     [Theory(DisplayName = "Option generator preserves registrations in standard async builders")]
     [InlineData("System.Action run = async () => { await System.Threading.Tasks.Task.Yield(); kafka.AddKafkaBroker<Settings<int>>(); }; run();")]
     [InlineData("System.Func<System.Threading.Tasks.Task<int>> run = async () => { await System.Threading.Tasks.Task.Yield(); kafka.AddKafkaBroker<Settings<int>>(); return 0; }; _ = run();")]

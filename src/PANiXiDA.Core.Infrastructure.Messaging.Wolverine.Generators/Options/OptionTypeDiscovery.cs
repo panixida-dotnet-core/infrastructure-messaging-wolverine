@@ -20,6 +20,10 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     private readonly RecursionGuard activeInstanceInitializers = new();
     private readonly Dictionary<INamedTypeSymbol, MethodDispatch> methodDispatches = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<(SyntaxTree Tree, int Start, int Length), (SyntaxNode Syntax, IMethodSymbol Method, bool Disposal)[]> implicitFlowCalls = [];
+    private static readonly string[] AsyncBuilderMemberNames =
+    [
+        "Create", "Task", "Start", "SetStateMachine", "SetException", "SetResult", "AwaitOnCompleted", "AwaitUnsafeOnCompleted",
+    ];
     private static readonly string[] CollectionContractNames =
     [
         "System.Collections.ICollection", "System.Collections.IList", "System.Collections.IDictionary",
@@ -806,8 +810,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
         var bases = DispatchContracts(builder).Where(type => type.TypeKind != TypeKind.Interface).Concat([builder]);
-        var members = bases.SelectMany(type => type.GetMembers()).Where(member => member.Name is
-            "Create" or "Task" or "Start" or "SetStateMachine" or "SetException" or "SetResult" or "AwaitOnCompleted" or "AwaitUnsafeOnCompleted");
+        var members = bases.SelectMany(type => type.GetMembers()).Where(member => AsyncBuilderMemberNames.Contains(member.Name, StringComparer.Ordinal));
         foreach (var member in members)
         {
             VisitAsyncBuilderMember(member, substitutions);
@@ -933,7 +936,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     private void VisitMemberInitializers(INamedTypeSymbol type, Dictionary<ITypeParameterSymbol, ITypeSymbol> substitutions, bool instanceInitializers)
     {
         var initializers = type.GetMembers()
-            .Where(member => member is IFieldSymbol or IPropertySymbol && member.IsStatic != instanceInitializers)
+            .Where(member => member is IFieldSymbol or IPropertySymbol or IEventSymbol && member.IsStatic != instanceInitializers)
             .SelectMany(member => member.DeclaringSyntaxReferences)
             .SelectMany(reference => reference.GetSyntax(token).ChildNodes().OfType<EqualsValueClauseSyntax>());
         foreach (var initializer in initializers)
