@@ -1126,6 +1126,38 @@ public sealed class OptionBindingGeneratorTests
             }
             """, "int");
 
+    [Theory(DisplayName = "Option generator discovers constructors invoked by framework activation")]
+    [InlineData("System.Activator.CreateInstance<Registration<int>>().Configure(kafka);", "class", "public", "")]
+    [InlineData("System.Activator.CreateInstance<Registration<int>>().Configure(kafka);", "struct", "public", "")]
+    [InlineData("Create<Registration<int>>().Configure(kafka);", "class", "public", "")]
+    [InlineData("((Registration<int>)System.Activator.CreateInstance(typeof(Registration<int>))).Configure(kafka);", "class", "public", "")]
+    [InlineData("((Registration<int>)System.Activator.CreateInstance(typeof(Registration<int>), true)).Configure(kafka);", "class", "private", "")]
+    [InlineData("((Registration<int>)System.Activator.CreateInstance(typeof(Registration<int>), new object[] { kafka })).Configure(kafka);", "class", "public", "Kafka ignored")]
+    public void GeneratorShouldDiscoverActivationConstructor(string call, string kind, string accessibility, string parameters)
+        => AssertDiscoversGenericHelper(call,
+            $$"""
+            static T Create<T>() => System.Activator.CreateInstance<T>();
+            {{kind}} Registration<T>
+            {
+                public System.Action<Kafka> Configure;
+                {{accessibility}} Registration({{parameters}})
+                {
+                    Configure = target => target.AddKafkaBroker<Settings<T>>();
+                }
+            }
+            """, "int");
+
+    [Fact(DisplayName = "Option generator discovers activation registrations exported by a metadata-only constructor")]
+    public void GeneratorShouldDiscoverReferencedActivationConstructor()
+        => AssertReferencedGenericRegistration(false,
+            """
+            public sealed class Registration<T>
+            {
+                public readonly System.Action<Kafka> Configure;
+                public Registration() { Configure = target => target.AddKafkaBroker<ExportedSettings<T>>(); }
+            }
+            """, "System.Activator.CreateInstance<Registration<int>>().Configure(kafka);", "");
+
     [Theory(DisplayName = "Option generator discovers callbacks invoked by framework comparers")]
     [InlineData("_ = System.Collections.Generic.EqualityComparer<Registration<int>>.Default.GetHashCode(new Registration<int>(kafka));", "hash")]
     [InlineData("_ = new System.Collections.Generic.HashSet<Registration<int>> { new Registration<int>(kafka) };", "hash")]

@@ -899,7 +899,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
     private void VisitCallbacks(INamedTypeSymbol type)
     {
-        // Metadata-only callees may dispatch any virtual or interface contract on a closed source type.
+        // Metadata-only callees may construct a closed source type or invoke its virtual/interface contracts.
         Func<ISymbol, IMethodSymbol?[]> callbacks = CallbackMethods;
         var implementations = type.AllInterfaces.SelectMany(contract => contract.GetMembers())
             .Select(type.FindImplementationForInterfaceMember).OfType<ISymbol>()
@@ -908,7 +908,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         var virtuals = bases.SelectMany(contract => contract.GetMembers()).SelectMany(callbacks).OfType<IMethodSymbol>()
             .Where(method => method.IsVirtual || method.IsOverride);
         var substitutions = new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default);
-        foreach (var method in implementations.Concat(virtuals).Distinct<IMethodSymbol>(SymbolEqualityComparer.Default))
+        foreach (var method in implementations.Concat(virtuals).Concat(type.InstanceConstructors).Distinct<IMethodSymbol>(SymbolEqualityComparer.Default))
         {
             VisitMethod(method, substitutions);
         }
