@@ -733,7 +733,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         {
             return [.. literal.Arguments.Select(argument => (argument.Expression, model.GetTypeInfo(argument.Expression, token).Type))];
         }
-        if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+        if (type is INamedTypeSymbol nullable && nullable.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
         {
             type = nullable.TypeArguments[0];
             expression = TupleMember(expression, "Value");

@@ -1137,6 +1137,7 @@ public sealed class OptionBindingGeneratorTests
     [InlineData("_ = ((Registration<int>, int)?)(new Registration<int>(kafka), 0) != ((Registration<int>, int)?)(new Registration<int>(kafka), 0);", "struct", "!=")]
     [InlineData("var left = (item: new Registration<int>(kafka), number: 0); var right = (item: new Registration<int>(kafka), number: 0); _ = (left) == (right);", "class", "==")]
     [InlineData("var left = (0, 1, 2, 3, 4, 5, 6, new Registration<int>(kafka)); var right = (0, 1, 2, 3, 4, 5, 6, new Registration<int>(kafka)); _ = left == right;", "class", "==")]
+    [InlineData("_ = (new Registration<int>(kafka), 0) == (null, 0);", "class", "==")]
     public void GeneratorShouldDiscoverTupleComparison(string call, string kind, string operation)
         => AssertDiscoversGenericHelper(call, TupleComparisonHelper(kind, operation), "int");
 
@@ -1209,6 +1210,31 @@ public sealed class OptionBindingGeneratorTests
                 public Truth(Kafka kafka) => this.kafka = kafka;
                 {{(conversion ? "public static implicit operator bool(Truth<T> value) { value.kafka.AddKafkaBroker<Settings<T>>(); return true; }" :
                     "public static bool operator true(Truth<T> value) { " + (operation == "!=" ? "value.kafka.AddKafkaBroker<Settings<T>>();" : "") + " return true; } public static bool operator false(Truth<T> value) { " + (operation == "==" ? "value.kafka.AddKafkaBroker<Settings<T>>();" : "") + " return false; }")}}
+            }
+            """, "int");
+
+    [Fact(DisplayName = "Option generator discovers inherited tuple result truth operators")]
+    public void GeneratorShouldDiscoverInheritedTruthTupleComparison()
+        => AssertDiscoversGenericHelper("_ = (new Registration<int>(kafka), 0) == (new Registration<int>(kafka), 0);",
+            """
+            sealed class Registration<T>
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public static Truth<T> operator ==(Registration<T> left, Registration<T> right) => new(left.kafka);
+                public static Truth<T> operator !=(Registration<T> left, Registration<T> right) => new(left.kafka);
+                public override bool Equals(object value) => false;
+                public override int GetHashCode() => 0;
+            }
+            sealed class Truth<T>(Kafka kafka) : TruthBase<T>(kafka), System.ICloneable
+            {
+                public object Clone() => this;
+            }
+            class TruthBase<T>(Kafka kafka)
+            {
+                private readonly Kafka target = kafka;
+                public static bool operator true(TruthBase<T> value) => true;
+                public static bool operator false(TruthBase<T> value) { value.target.AddKafkaBroker<Settings<T>>(); return false; }
             }
             """, "int");
 
