@@ -9,7 +9,9 @@ using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Database
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Fixtures;
 using PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests.Messaging.Commands;
 
+using Wolverine;
 using Wolverine.Persistence.Durability;
+using Wolverine.Runtime;
 using Wolverine.Runtime.Recurring;
 
 namespace PANiXiDA.Core.Infrastructure.Messaging.Wolverine.IntegrationTests;
@@ -48,7 +50,11 @@ public sealed class WolverineRecurringCommandIntegrationTests(PostgreSqlContaine
             await WaitForOccurrencesAsync(app, 2);
             var control = app.Host.Services.GetRequiredService<IRecurringScheduleControl>();
             var schedules = await control.QueryAsync(TestContext.Current.CancellationToken);
-            schedules.Count.ShouldBe(1);
+            schedules.ShouldBeEmpty();
+            var schedule = app.Host.Services.GetRequiredService<IWolverineRuntime>()
+                .Options.Schedules.FindByName("integration-recurring-command");
+            schedule.ShouldNotBeNull();
+            schedule.ExecutionPath.ShouldBe(RecurringExecutionPath.Timer);
             beforeRestart = await app.CountRowsAsync("first_module.integration_records");
         }
 

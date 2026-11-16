@@ -59,6 +59,8 @@ Keep the shared message-store schema owned by Wolverine managed resources or one
 
 Recurring cron expressions now support a minimum cadence of one second. Wolverine uses timer agents by default
 for schedules with a cadence shorter than 15 minutes; this changes the execution path of existing frequent schedules.
+Active timer schedules have no pending-envelope tracking row, so `IRecurringScheduleControl.QueryAsync()`
+can return an empty list while these schedules are running.
 See the [upstream release notes](https://github.com/JasperFx/wolverine/compare/V6.51.0...V6.64.1)
 and [recurring schedule documentation](https://wolverinefx.net/guide/messaging/recurring.html).
 
