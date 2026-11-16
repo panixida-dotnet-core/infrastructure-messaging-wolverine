@@ -194,7 +194,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             {
                 continue;
             }
-            // Fixed initializers omit the selected pinnable call from both the operation tree and flow graph.
             var call = SyntaxFactory.InvocationExpression(SyntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression,
                 SyntaxFactory.ParenthesizedExpression(expression.WithoutTrivia()), SyntaxFactory.IdentifierName("GetPinnableReference")));
             VisitMethods(substitutions, model.GetSpeculativeSymbolInfo(expression.SpanStart, call, SpeculativeBindingOption.BindAsExpression).Symbol as IMethodSymbol);
@@ -335,7 +334,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
         VisitMethod(getEnumerator, substitutions);
-        // Enumeration contracts and their implementations return named enumerator types.
         var enumerator = (INamedTypeSymbol)Substitute(getEnumerator.ReturnType, substitutions);
         var members = enumerator.AllInterfaces.Concat([enumerator]).SelectMany(type => type.GetMembers()).ToArray();
         foreach (var method in members.OfType<IMethodSymbol>().Where(method => method.Name is "MoveNext" or "MoveNextAsync" or "Dispose" or "DisposeAsync"))
@@ -452,8 +450,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
     private static ForEachStatementInfo BindSpreadIteration(SemanticModel model, SpreadElementSyntax spread)
     {
-        // ISpreadOperation exposes the item conversion but not the enumeration members.
-        // Bind a foreach at the same location so Roslyn selects the same pattern and extension methods.
         var loop = SyntaxFactory.ForEachStatement(SyntaxFactory.IdentifierName("var"),
             SyntaxFactory.Identifier("__wolverineSpreadItem"), spread.Expression.WithoutTrivia(), SyntaxFactory.Block());
         if (model.TryGetSpeculativeSemanticModel(spread.SpanStart, loop, out var body))
@@ -461,7 +457,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return body.GetForEachStatementInfo(loop);
         }
 
-        // Field and auto-property initializers use a separate semantic model.
         var lambda = SyntaxFactory.ParenthesizedLambdaExpression(SyntaxFactory.Block(loop));
         var cast = SyntaxFactory.CastExpression(SyntaxFactory.ParseTypeName("global::System.Action"),
             SyntaxFactory.ParenthesizedExpression(lambda));
@@ -479,7 +474,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     {
         foreach (var method in methods.OfType<IMethodSymbol>())
         {
-            // Reuse Roslyn's await binding, including extension-method lookup at the original location.
             var statement = SyntaxFactory.ExpressionStatement(SyntaxFactory.AwaitExpression(DefaultExpression(method.ReturnType)));
             model.TryGetSpeculativeSemanticModel(position, statement, out var speculative);
             SemanticModel?[] bindings = [speculative];
@@ -676,7 +670,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             }
             if (operation is IBinaryOperation { OperatorMethod: not null, OperatorKind: BinaryOperatorKind.ConditionalAnd or BinaryOperatorKind.ConditionalOr })
             {
-                // The semantic binary operation exposes & or |; the flow graph exposes its short-circuit operator.
                 VisitImplicitFlowCalls(model, expression, substitutions, disposal: false);
             }
         }
@@ -695,8 +688,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             }
             return;
         }
-        // Tuple comparisons omit element operators from both IOperation and CFG. Let Roslyn bind each
-        // element expression at the original location, preserving literal constants and overload selection.
         var comparison = SyntaxFactory.BinaryExpression(kind, SyntaxFactory.ParenthesizedExpression(left.Syntax.WithoutTrivia()),
             SyntaxFactory.ParenthesizedExpression(right.Syntax.WithoutTrivia()));
         IMethodSymbol?[] methods = [model.GetSpeculativeSymbolInfo(position, comparison, SpeculativeBindingOption.BindAsExpression).Symbol as IMethodSymbol];
@@ -895,8 +886,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         {
             return;
         }
-        // The compiler supplies state-machine type arguments. Collect templates with those arguments open,
-        // then substitute the known builder arguments without inventing a source type for the state machine.
         var arguments = ContainingArguments(method.ContainingType!, substitutions);
         var discovery = new OptionTypeDiscovery(compilation, templates, collectTemplates: true, token);
         foreach (var template in discovery.DiscoverTemplates(method.OriginalDefinition))
@@ -1039,7 +1028,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             return;
         }
 
-        // Constructor templates are also exported on their type: nonpublic constructors may not be imported as symbols.
         var arguments = ContainingArguments(named, new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default));
         VisitMemberTemplates(named.OriginalDefinition, arguments);
         foreach (var contract in DispatchContracts(named).Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default))
@@ -1056,7 +1044,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
     private void VisitCallbacks(INamedTypeSymbol type)
     {
-        // Metadata-only callees may construct a closed source type or invoke its virtual/interface contracts.
         Func<ISymbol, IMethodSymbol?[]> callbacks = CallbackMethods;
         var implementations = type.AllInterfaces.SelectMany(contract => contract.GetMembers())
             .Select(type.FindImplementationForInterfaceMember).OfType<ISymbol>()
