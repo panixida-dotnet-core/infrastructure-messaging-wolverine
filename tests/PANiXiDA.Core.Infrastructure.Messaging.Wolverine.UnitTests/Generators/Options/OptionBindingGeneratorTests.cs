@@ -1126,6 +1126,64 @@ public sealed class OptionBindingGeneratorTests
             }
             """, "int");
 
+    [Theory(DisplayName = "Option generator discovers callbacks invoked by framework comparers")]
+    [InlineData("_ = System.Collections.Generic.EqualityComparer<Registration<int>>.Default.GetHashCode(new Registration<int>(kafka));", "hash")]
+    [InlineData("_ = new System.Collections.Generic.HashSet<Registration<int>> { new Registration<int>(kafka) };", "hash")]
+    [InlineData("_ = System.Collections.Generic.EqualityComparer<Registration<int>>.Default.Equals(new Registration<int>(kafka), new Registration<int>(kafka));", "equals")]
+    [InlineData("_ = System.Collections.Generic.EqualityComparer<Registration<int>>.Default.Equals(new Registration<int>(kafka), new Registration<int>(kafka));", "equatable")]
+    [InlineData("_ = System.Collections.Generic.Comparer<Registration<int>>.Default.Compare(new Registration<int>(kafka), new Registration<int>(kafka));", "compare")]
+    [InlineData("var values = new System.Collections.Generic.List<Registration<int>> { new Registration<int>(kafka), new Registration<int>(kafka) }; values.Sort();", "compare")]
+    public void GeneratorShouldDiscoverComparerCallback(string call, string member)
+        => AssertDiscoversGenericHelper(call,
+            $$"""
+            sealed class Registration<T> : System.IComparable<Registration<T>>{{(member == "equatable" ? ", System.IEquatable<Registration<T>>" : "")}}
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public override int GetHashCode() { {{(member == "hash" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return 1; }
+                public override bool Equals(object value) { {{(member == "equals" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return true; }
+                public bool Equals(Registration<T> value) { {{(member == "equatable" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return true; }
+                public int CompareTo(Registration<T> value) { {{(member == "compare" ? "kafka.AddKafkaBroker<Settings<T>>();" : "")}} return 0; }
+            }
+            """, "int");
+
+    [Theory(DisplayName = "Option generator discovers metadata-only interface property and event callbacks")]
+    [InlineData("get")]
+    [InlineData("set")]
+    [InlineData("add")]
+    [InlineData("remove")]
+    public void GeneratorShouldDiscoverInterfaceAccessorCallback(string member)
+        => AssertReferencedGenericRegistration(false,
+            $$"""
+            public interface ICallback { int Value { get; set; } event System.Action Changed; }
+            public static class External
+            {
+                public static void Invoke(ICallback source)
+                {
+                    _ = source.Value;
+                    source.Value = 1;
+                    System.Action handler = () => { };
+                    source.Changed += handler;
+                    source.Changed -= handler;
+                }
+            }
+            public sealed class Registration<T> : ICallback
+            {
+                private readonly Kafka kafka;
+                public Registration(Kafka kafka) => this.kafka = kafka;
+                public int Value
+                {
+                    get { {{(member == "get" ? "kafka.AddKafkaBroker<ExportedSettings<T>>();" : "")}} return 0; }
+                    set { {{(member == "set" ? "kafka.AddKafkaBroker<ExportedSettings<T>>();" : "")}} }
+                }
+                public event System.Action Changed
+                {
+                    add { {{(member == "add" ? "kafka.AddKafkaBroker<ExportedSettings<T>>();" : "")}} }
+                    remove { {{(member == "remove" ? "kafka.AddKafkaBroker<ExportedSettings<T>>();" : "")}} }
+                }
+            }
+            """, "External.Invoke(new Registration<int>(kafka));", "");
+
     [Theory(DisplayName = "Option generator discovers framework custom formatter callbacks")]
     [InlineData("_ = string.Format(new Registration<int>(kafka), \"{0}\", 42);")]
     [InlineData("_ = string.Create(new Registration<int>(kafka), $\"{42}\");")]

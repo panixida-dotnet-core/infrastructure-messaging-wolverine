@@ -215,7 +215,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         var arguments = operation!.ChildOperations.OfType<IArgumentOperation>().ToArray();
         foreach (var argument in arguments)
         {
-            VisitFormattingContracts(substitutions);
             VisitExternalInterfaceArgument(argument, substitutions);
         }
         var enumerables = arguments.Where(argument => EnumerableContracts(Substitute(argument.Parameter!.Type, substitutions)).Any());
@@ -376,10 +375,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
     private void VisitInterpolation(SemanticModel model, InterpolatedStringExpressionSyntax interpolation, TypeSubstitutions substitutions)
     {
-        if (interpolation.Contents.OfType<InterpolationSyntax>().Any())
-        {
-            VisitFormattingContracts(substitutions);
-        }
         IOperation?[] operations = [model.GetOperation(interpolation, token)];
         foreach (var content in operations.OfType<IInterpolatedStringOperation>())
         {
@@ -402,25 +397,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             {
                 VisitMethod(append.TargetMethod, substitutions);
             }
-        }
-    }
-
-    private void VisitFormattingContracts(TypeSubstitutions substitutions)
-    {
-        // Metadata-only callees can invoke formatting callbacks outside the source operation tree.
-        INamedTypeSymbol?[] contracts =
-        [
-            compilation.GetSpecialType(SpecialType.System_Object),
-            compilation.GetTypeByMetadataName("System.IFormattable"),
-            compilation.GetTypeByMetadataName("System.ISpanFormattable"),
-            compilation.GetTypeByMetadataName("System.IUtf8SpanFormattable"),
-            compilation.GetTypeByMetadataName("System.ICustomFormatter"),
-        ];
-        var methods = contracts.OfType<INamedTypeSymbol>().SelectMany(contract => contract.GetMembers()).OfType<IMethodSymbol>()
-            .Where(method => method.Name is "ToString" or "TryFormat" or "Format");
-        foreach (var method in methods)
-        {
-            VisitMethod(method, substitutions);
         }
     }
 
@@ -682,11 +658,6 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
         {
             var operation = model.GetOperation(expression, token);
             VisitMethods(substitutions, FindOperator(operation));
-            if (operation is IBinaryOperation { OperatorKind: BinaryOperatorKind.Add, Type.SpecialType: SpecialType.System_String } or
-                ICompoundAssignmentOperation { OperatorKind: BinaryOperatorKind.Add, Type.SpecialType: SpecialType.System_String })
-            {
-                VisitFormattingContracts(substitutions);
-            }
             if (operation is IBinaryOperation { OperatorMethod: not null, OperatorKind: BinaryOperatorKind.ConditionalAnd or BinaryOperatorKind.ConditionalOr })
             {
                 // The semantic binary operation exposes & or |; the flow graph exposes its short-circuit operator.
@@ -923,7 +894,34 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
                 VisitImplementations(named, call);
             }
         }
+        VisitCallbacks(named);
     }
+
+    private void VisitCallbacks(INamedTypeSymbol type)
+    {
+        // Metadata-only callees may dispatch any virtual or interface contract on a closed source type.
+        Func<ISymbol, IMethodSymbol?[]> callbacks = CallbackMethods;
+        var implementations = type.AllInterfaces.SelectMany(contract => contract.GetMembers())
+            .Select(type.FindImplementationForInterfaceMember).OfType<ISymbol>()
+            .SelectMany(callbacks).OfType<IMethodSymbol>();
+        var bases = DispatchContracts(type).Where(contract => contract.TypeKind != TypeKind.Interface).Concat([type]);
+        var virtuals = bases.SelectMany(contract => contract.GetMembers()).SelectMany(callbacks).OfType<IMethodSymbol>()
+            .Where(method => method.IsVirtual || method.IsOverride);
+        var substitutions = new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default);
+        foreach (var method in implementations.Concat(virtuals).Distinct<IMethodSymbol>(SymbolEqualityComparer.Default))
+        {
+            VisitMethod(method, substitutions);
+        }
+    }
+
+    private static IMethodSymbol?[] CallbackMethods(ISymbol member)
+        => member switch
+        {
+            IMethodSymbol method => [method],
+            IPropertySymbol property => [property.GetMethod, property.SetMethod],
+            IEventSymbol @event => [@event.AddMethod, @event.RemoveMethod],
+            _ => [],
+        };
 
     private static IEnumerable<INamedTypeSymbol> DispatchContracts(INamedTypeSymbol type)
     {
