@@ -1126,6 +1126,99 @@ public sealed class OptionBindingGeneratorTests
             }
             """, "int");
 
+    [Theory(DisplayName = "Option generator preserves registrations in standard async builders")]
+    [InlineData("System.Action run = async () => { await System.Threading.Tasks.Task.Yield(); kafka.AddKafkaBroker<Settings<int>>(); }; run();")]
+    [InlineData("System.Func<System.Threading.Tasks.Task<int>> run = async () => { await System.Threading.Tasks.Task.Yield(); kafka.AddKafkaBroker<Settings<int>>(); return 0; }; _ = run();")]
+    public void GeneratorShouldPreserveStandardAsyncBuilder(string call)
+        => AssertDiscoversGenericHelper(call, "", "int");
+
+    [Theory(DisplayName = "Option generator discovers closed custom async builder members")]
+    [InlineData("Create", false)]
+    [InlineData("Task", false)]
+    [InlineData("Start", false)]
+    [InlineData("SetStateMachine", false)]
+    [InlineData("SetException", false)]
+    [InlineData("SetResult", false)]
+    [InlineData("AwaitOnCompleted", false)]
+    [InlineData("AwaitUnsafeOnCompleted", false)]
+    [InlineData("Create", true)]
+    public void GeneratorShouldDiscoverAsyncBuilder(string member, bool overrideBuilder)
+        => AssertDiscoversGenericHelper("_ = AsyncRegistration.Run<int>();", AsyncBuilderHelper(member, overrideBuilder), "int");
+
+    [Theory(DisplayName = "Option generator discovers custom async builders for lambdas and local functions")]
+    [InlineData("System.Func<RegistrationTask<int>> run = async () => { await System.Threading.Tasks.Task.Yield(); return 0; }; _ = run();")]
+    [InlineData("_ = Run(); async RegistrationTask<int> Run() { await System.Threading.Tasks.Task.Yield(); return 0; }")]
+    public void GeneratorShouldDiscoverAnonymousAsyncBuilder(string call)
+        => AssertDiscoversGenericHelper(call, AsyncBuilderHelper("Create"), "int");
+
+    [Theory(DisplayName = "Option generator discovers custom async builder templates through a metadata-only helper")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GeneratorShouldDiscoverReferencedAsyncBuilder(bool consumerAsync)
+        => AssertReferencedGenericRegistration(false, AsyncBuilderHelper("Start", option: "ExportedSettings"),
+            consumerAsync ? "_ = Consumer.Run();" : "_ = AsyncRegistration.Run<int>();",
+            "public static class Consumer { public static async RegistrationTask<int> Run() { await System.Threading.Tasks.Task.Yield(); return 0; } }");
+
+    [Fact(DisplayName = "Option generator accepts metadata-only custom tasks without registration templates")]
+    public void GeneratorShouldAcceptUnannotatedMetadataAsyncBuilder()
+    {
+        var library = CreateCompilation(AsyncBuilderHelper(""), "PlainAsyncBuilder");
+        using var stream = new MemoryStream();
+        library.Emit(stream, cancellationToken: TestContext.Current.CancellationToken).Success.ShouldBeTrue();
+        var compilation = CreateCompilation("""
+            using Kafka = PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Configurations.WolverineKafkaConfiguration;
+            public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
+            public static class Host
+            {
+                public static void Configure(Kafka kafka) { _ = Run(); kafka.AddKafkaBroker<Settings>(); }
+                public static async RegistrationTask<int> Run() { await System.Threading.Tasks.Task.Yield(); return 0; }
+            }
+            """).AddReferences(MetadataReference.CreateFromImage(stream.ToArray()));
+
+        var (source, diagnostics) = Generate(compilation);
+
+        diagnostics.ShouldBeEmpty();
+        source.ShouldContain(".Register<global::Settings>");
+    }
+
+    private static string AsyncBuilderHelper(string member, bool overrideBuilder = false, string option = "Settings")
+    {
+        var registration = "((Kafka)null!).AddKafkaBroker<" + option + "<T>>();";
+        return $$"""
+            public static class AsyncRegistration
+            {
+                {{(overrideBuilder ? "[System.Runtime.CompilerServices.AsyncMethodBuilder(typeof(RegistrationBuilder<>))]" : "")}}
+                public static async {{(overrideBuilder ? "System.Threading.Tasks.Task<T>" : "RegistrationTask<T>")}} Run<T>()
+                {
+                    await System.Threading.Tasks.Task.Yield();
+                    return default!;
+                }
+            }
+            [System.Runtime.CompilerServices.AsyncMethodBuilder(typeof(RegistrationBuilder<>))]
+            public struct RegistrationTask<T>(System.Threading.Tasks.Task<T> task)
+            {
+                public System.Runtime.CompilerServices.TaskAwaiter<T> GetAwaiter() => task.GetAwaiter();
+            }
+            public struct RegistrationBuilder<T>
+            {
+                private System.Runtime.CompilerServices.AsyncTaskMethodBuilder<T> inner;
+                public static RegistrationBuilder<T> Create() { {{(member == "Create" ? registration : "")}} return new() { inner = System.Runtime.CompilerServices.AsyncTaskMethodBuilder<T>.Create() }; }
+                public {{(overrideBuilder ? "System.Threading.Tasks.Task<T>" : "RegistrationTask<T>")}} Task { get { {{(member == "Task" ? registration : "")}} return {{(overrideBuilder ? "inner.Task" : "new(inner.Task)")}}; } }
+                public void SetResult(T result) { {{(member == "SetResult" ? registration : "")}} inner.SetResult(result); }
+                public void SetException(System.Exception error) { {{(member == "SetException" ? registration : "")}} inner.SetException(error); }
+                public void SetStateMachine(System.Runtime.CompilerServices.IAsyncStateMachine state) { {{(member == "SetStateMachine" ? registration : "")}} inner.SetStateMachine(state); }
+                public void Start<TState>(ref TState state) where TState : System.Runtime.CompilerServices.IAsyncStateMachine
+                { {{(member == "Start" ? registration : "")}} inner.Start(ref state); }
+                public void AwaitOnCompleted<TAwaiter, TState>(ref TAwaiter awaiter, ref TState state)
+                    where TAwaiter : System.Runtime.CompilerServices.INotifyCompletion where TState : System.Runtime.CompilerServices.IAsyncStateMachine
+                { {{(member == "AwaitOnCompleted" ? registration : "")}} inner.AwaitOnCompleted(ref awaiter, ref state); }
+                public void AwaitUnsafeOnCompleted<TAwaiter, TState>(ref TAwaiter awaiter, ref TState state)
+                    where TAwaiter : System.Runtime.CompilerServices.ICriticalNotifyCompletion where TState : System.Runtime.CompilerServices.IAsyncStateMachine
+                { {{(member == "AwaitUnsafeOnCompleted" ? registration : "")}} inner.AwaitUnsafeOnCompleted(ref awaiter, ref state); }
+            }
+            """;
+    }
+
     [Theory(DisplayName = "Option generator discovers constructors invoked by framework activation")]
     [InlineData("System.Activator.CreateInstance<Registration<int>>().Configure(kafka);", "class", "public", "")]
     [InlineData("System.Activator.CreateInstance<Registration<int>>().Configure(kafka);", "struct", "public", "")]
@@ -1931,6 +2024,16 @@ public sealed class OptionBindingGeneratorTests
         var compilation = CreateCompilation("""
             public sealed class Settings : PANiXiDA.Core.Infrastructure.Messaging.Wolverine.Options.KafkaBrokerOption;
             public sealed class ValuesAttribute(int[] values) : System.Attribute;
+            [System.Runtime.CompilerServices.AsyncMethodBuilder(typeof(BrokenBuilder<,>))]
+            public struct BrokenTask<T>;
+            public struct BrokenBuilder<T, U>;
+            public struct SingleBuilder<T>;
+            public static class BrokenAsync
+            {
+                public static async BrokenTask<int> WrongArity() { await System.Threading.Tasks.Task.Yield(); return default; }
+                [System.Runtime.CompilerServices.AsyncMethodBuilder(typeof(SingleBuilder<>))]
+                public static async T WrongReturn<T>() { await System.Threading.Tasks.Task.Yield(); return default!; }
+            }
             [Values([..new[] { 1 }])]
             public static class Setup
             {

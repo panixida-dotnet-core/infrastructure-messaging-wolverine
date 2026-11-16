@@ -12,6 +12,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 {
     private static readonly Func<ITypeSymbol, bool> IsOpenArgument = new(ContainsTypeParameter);
     private readonly HashSet<INamedTypeSymbol> types = new(SymbolEqualityComparer.Default);
+    private readonly HashSet<INamedTypeSymbol> asyncBuilders = new(SymbolEqualityComparer.Default);
     private readonly HashSet<INamedTypeSymbol> optionTemplates = new(SymbolEqualityComparer.Default);
     private readonly HashSet<string> visited = new(StringComparer.Ordinal);
     private readonly RecursionGuard active = new();
@@ -32,6 +33,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
     private readonly INamedTypeSymbol? enumerable = compilation.GetTypeByMetadataName("System.Collections.IEnumerable");
     private readonly INamedTypeSymbol? genericEnumerable = compilation.GetTypeByMetadataName("System.Collections.Generic.IEnumerable`1");
     private readonly INamedTypeSymbol? asyncEnumerable = compilation.GetTypeByMetadataName("System.Collections.Generic.IAsyncEnumerable`1");
+    private readonly INamedTypeSymbol? asyncBuilderAttribute = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.AsyncMethodBuilderAttribute");
     private readonly INamedTypeSymbol? notifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.INotifyCompletion");
     private readonly INamedTypeSymbol? criticalNotifyCompletion = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.ICriticalNotifyCompletion");
 
@@ -109,6 +111,9 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
 
         switch (node)
         {
+            case MethodDeclarationSyntax or LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax:
+                VisitDeclaredAsyncBuilder(model, node, substitutions);
+                break;
             case InvocationExpressionSyntax or ConstructorInitializerSyntax:
                 VisitExternalArguments(model.GetOperation(node, token), substitutions);
                 break;
@@ -720,6 +725,7 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             AddType(argument);
         }
         AddType(Substitute(method.ReturnType, substitutions));
+        VisitAsyncBuilder(method, substitutions);
         VisitDefinition(DispatchDefinition(definition), substitutions);
         if (method.IsGenericMethod || containing.IsGenericType)
         {
@@ -749,6 +755,80 @@ internal sealed class OptionTypeDiscovery(Compilation compilation, GenericOption
             VisitImplicitBaseConstructor(implementation, containing, substitutions);
         }
         activeMethods.Exit(definition, entered);
+    }
+
+    private void VisitDeclaredAsyncBuilder(SemanticModel model, SyntaxNode node, TypeSubstitutions substitutions)
+    {
+        if (node is AnonymousFunctionExpressionSyntax)
+        {
+            IOperation?[] operations = [model.GetOperation(node, token)];
+            foreach (var operation in operations.OfType<IAnonymousFunctionOperation>())
+            {
+                VisitAsyncBuilder(operation.Symbol, substitutions);
+            }
+            return;
+        }
+        IMethodSymbol?[] methods = [model.GetDeclaredSymbol(node, token) as IMethodSymbol];
+        foreach (var method in methods.OfType<IMethodSymbol>())
+        {
+            VisitAsyncBuilder(method, substitutions);
+        }
+    }
+
+    private void VisitAsyncBuilder(IMethodSymbol method, TypeSubstitutions substitutions)
+    {
+        if (!method.IsAsync)
+        {
+            return;
+        }
+        var attributes = method.GetAttributes().Concat(method.ReturnType.GetAttributes());
+        var builder = attributes.FirstOrDefault(attribute => SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, asyncBuilderAttribute))?
+            .ConstructorArguments.FirstOrDefault().Value as INamedTypeSymbol;
+        if (builder is null)
+        {
+            return;
+        }
+        if (builder.IsUnboundGenericType)
+        {
+            var result = Substitute(method.ReturnType, substitutions) as INamedTypeSymbol;
+            if (result is null || result.TypeArguments.Length != builder.Arity)
+            {
+                return;
+            }
+            builder = builder.OriginalDefinition.Construct([.. result.TypeArguments]);
+        }
+        if (!HasSource(builder) && !templates.HasExports(builder.ContainingAssembly!))
+        {
+            return;
+        }
+        if (!asyncBuilders.Add(builder))
+        {
+            return;
+        }
+        var bases = DispatchContracts(builder).Where(type => type.TypeKind != TypeKind.Interface).Concat([builder]);
+        var members = bases.SelectMany(type => type.GetMembers()).Where(member => member.Name is
+            "Create" or "Task" or "Start" or "SetStateMachine" or "SetException" or "SetResult" or "AwaitOnCompleted" or "AwaitUnsafeOnCompleted");
+        foreach (var member in members)
+        {
+            VisitAsyncBuilderMember(member, substitutions);
+        }
+    }
+
+    private void VisitAsyncBuilderMember(ISymbol member, TypeSubstitutions substitutions)
+    {
+        VisitPatternMember(member, substitutions);
+        if (collectTemplates || member is not IMethodSymbol { IsGenericMethod: true } method || !HasSource(method))
+        {
+            return;
+        }
+        // The compiler supplies state-machine type arguments. Collect templates with those arguments open,
+        // then substitute the known builder arguments without inventing a source type for the state machine.
+        var arguments = ContainingArguments(method.ContainingType!, substitutions);
+        var discovery = new OptionTypeDiscovery(compilation, templates, collectTemplates: true, token);
+        foreach (var template in discovery.DiscoverTemplates(method.OriginalDefinition))
+        {
+            AddType(Substitute(template, arguments));
+        }
     }
 
     private void VisitImplicitBaseConstructor(IMethodSymbol method, INamedTypeSymbol containing,
